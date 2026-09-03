@@ -13,3 +13,6 @@ coverage/
 .vscode/
 
 *.tsbuildinfo
+
+apps/api/generated/
+apps/api/src/generated/

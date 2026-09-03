@@ -27,6 +27,12 @@ describe('HealthController (e2e)', () => {
       service: 'meinager-api',
     });
     expect(response.body.timestamp).toEqual(expect.any(String));
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      service: 'meinager-api',
+      database: 'up',
+    });
   });
 
   afterEach(async () => {
