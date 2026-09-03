@@ -16,7 +16,10 @@
     "test": "turbo test",
     "test:e2e": "turbo test:e2e",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres"
   },
   "devDependencies": {
     "prettier": "^3.9.6",
