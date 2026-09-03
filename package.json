@@ -14,12 +14,13 @@
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "test": "turbo test",
+    "test:e2e": "turbo test:e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
     "prettier": "^3.9.6",
     "turbo": "^2.10.12",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   }
 }
