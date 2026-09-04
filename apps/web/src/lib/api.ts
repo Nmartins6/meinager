@@ -33,6 +33,15 @@ export interface LoginInput {
   password: string;
 }
 
+export interface RegisterInput {
+  name: string;
+  email: string;
+  password: string;
+  organizationName: string;
+  document?: string;
+  segment?: string;
+}
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -103,4 +112,16 @@ export async function logout(): Promise<void> {
   await request('/auth/logout', {
     method: 'POST',
   });
+}
+
+export async function registerAccount(input: RegisterInput): Promise<AuthResponse> {
+  const response = await request('/auth/register', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  return authResponseSchema.parse(await response.json());
 }
