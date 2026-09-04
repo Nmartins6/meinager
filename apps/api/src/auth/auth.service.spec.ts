@@ -1,10 +1,12 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { verify } from 'argon2';
+import { hash, verify } from 'argon2';
 import { OrganizationRole } from '../generated/prisma/enums.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { SessionService } from './session/session.service.js';
+import { LoginDto } from './dto/login.dto.js';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -34,9 +36,18 @@ describe('AuthService', () => {
     auditLog: {
       create: vi.fn().mockResolvedValue({}),
     },
+    session: {
+      create: vi.fn().mockResolvedValue({}),
+    },
   };
 
   const prismaMock = {
+    user: {
+      findUnique: vi
+        .fn<(args: unknown) => Promise<unknown>>()
+        .mockResolvedValue(null),
+    },
+
     $transaction: vi.fn(
       async (
         callback: (transaction: typeof transactionMock) => Promise<unknown>,
@@ -53,6 +64,22 @@ describe('AuthService', () => {
     segment: 'Serviços',
   };
 
+  const sessionExpiresAt = new Date('2026-10-04T12:00:00.000Z');
+
+  const sessionServiceMock = {
+    prepare: vi.fn().mockReturnValue({
+      token: 'raw-session-token',
+      tokenHash: 'hashed-session-token',
+      expiresAt: sessionExpiresAt,
+      ipAddress: '127.0.0.1',
+      userAgent: 'Vitest',
+    }),
+    create: vi.fn().mockResolvedValue({
+      token: 'login-session-token',
+      expiresAt: sessionExpiresAt,
+    }),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
 
@@ -63,6 +90,10 @@ describe('AuthService', () => {
           provide: PrismaService,
           useValue: prismaMock,
         },
+        {
+          provide: SessionService,
+          useValue: sessionServiceMock,
+        },
       ],
     }).compile();
 
@@ -70,7 +101,25 @@ describe('AuthService', () => {
   });
 
   it('should create the owner and organization in one transaction', async () => {
-    const result = await service.register(dto);
+    const result = await service.register(dto, {
+      ipAddress: '127.0.0.1',
+      userAgent: 'Vitest',
+    });
+
+    expect(sessionServiceMock.prepare).toHaveBeenCalledWith({
+      ipAddress: '127.0.0.1',
+      userAgent: 'Vitest',
+    });
+
+    expect(transactionMock.session.create).toHaveBeenCalledWith({
+      data: {
+        userId: user.id,
+        tokenHash: 'hashed-session-token',
+        expiresAt: sessionExpiresAt,
+        ipAddress: '127.0.0.1',
+        userAgent: 'Vitest',
+      },
+    });
 
     expect(prismaMock.$transaction).toHaveBeenCalledOnce();
 
@@ -103,8 +152,81 @@ describe('AuthService', () => {
         ...organization,
         role: OrganizationRole.OWNER,
       },
+      session: {
+        token: 'raw-session-token',
+        expiresAt: sessionExpiresAt,
+      },
     });
+
     expect(result.user).not.toHaveProperty('passwordHash');
+  });
+
+  it('should authenticate a valid user and create a session', async () => {
+    const loginDto: LoginDto = {
+      email: 'Nicolas@example.com',
+      password: 'senha-segura',
+    };
+
+    const passwordHash = await hash(loginDto.password);
+
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      ...user,
+      passwordHash,
+      isActive: true,
+      memberships: [
+        {
+          role: OrganizationRole.OWNER,
+          organization,
+        },
+      ],
+    });
+
+    const result = await service.login(loginDto, {
+      ipAddress: '127.0.0.1',
+      userAgent: 'Vitest',
+    });
+
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          normalizedEmail: 'nicolas@example.com',
+        },
+      }),
+    );
+
+    expect(sessionServiceMock.create).toHaveBeenCalledWith(user.id, {
+      ipAddress: '127.0.0.1',
+      userAgent: 'Vitest',
+    });
+
+    expect(result).toEqual({
+      user,
+      organization: {
+        ...organization,
+        role: OrganizationRole.OWNER,
+      },
+      session: {
+        token: 'login-session-token',
+        expiresAt: sessionExpiresAt,
+      },
+    });
+
+    expect(result.user).not.toHaveProperty('passwordHash');
+  });
+
+  it('should reject an unknown user without creating a session', async () => {
+    const loginDto: LoginDto = {
+      email: 'unknown@example.com',
+      password: 'senha-inexistente',
+    };
+
+    prismaMock.user.findUnique.mockResolvedValueOnce(null);
+
+    await expect(service.login(loginDto)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+
+    expect(sessionServiceMock.create).not.toHaveBeenCalled();
   });
 
   it('should return conflict for duplicated unique data', async () => {

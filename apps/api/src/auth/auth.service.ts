@@ -1,22 +1,42 @@
-import { ConflictException, Injectable } from '@nestjs/common';
-import { argon2id, hash } from 'argon2';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { argon2id, hash, verify } from 'argon2';
 import { randomBytes } from 'node:crypto';
-import { OrganizationRole } from '../generated/prisma/enums.js';
 import { PrismaService } from '../database/prisma.service.js';
+import {
+  OrganizationRole,
+  OrganizationStatus,
+} from '../generated/prisma/enums.js';
+import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { SessionMetadata, SessionService } from './session/session.service.js';
+
+const passwordHashOptions = {
+  type: argon2id,
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+} as const;
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly dummyPasswordHash = hash(
+    'meinager-invalid-password',
+    passwordHashOptions,
+  );
 
-  async register(dto: RegisterDto) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sessionService: SessionService,
+  ) {}
+
+  async register(dto: RegisterDto, metadata: SessionMetadata = {}) {
     const normalizedEmail = dto.email.toLowerCase();
-    const passwordHash = await hash(dto.password, {
-      type: argon2id,
-      memoryCost: 19_456,
-      timeCost: 2,
-      parallelism: 1,
-    });
+    const passwordHash = await hash(dto.password, passwordHashOptions);
+    const session = this.sessionService.prepare(metadata);
 
     try {
       return await this.prisma.$transaction(async (transaction) => {
@@ -56,6 +76,16 @@ export class AuthService {
           },
         });
 
+        await transaction.session.create({
+          data: {
+            userId: user.id,
+            tokenHash: session.tokenHash,
+            expiresAt: session.expiresAt,
+            ipAddress: session.ipAddress,
+            userAgent: session.userAgent,
+          },
+        });
+
         await transaction.auditLog.create({
           data: {
             organizationId: organization.id,
@@ -72,6 +102,10 @@ export class AuthService {
             ...organization,
             role: OrganizationRole.OWNER,
           },
+          session: {
+            token: session.token,
+            expiresAt: session.expiresAt,
+          },
         };
       });
     } catch (error) {
@@ -81,6 +115,70 @@ export class AuthService {
 
       throw error;
     }
+  }
+
+  async login(dto: LoginDto, metadata: SessionMetadata = {}) {
+    const normalizedEmail = dto.email.toLowerCase();
+
+    const user = await this.prisma.user.findUnique({
+      where: {
+        normalizedEmail,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        passwordHash: true,
+        isActive: true,
+        memberships: {
+          where: {
+            isActive: true,
+            organization: {
+              is: {
+                status: OrganizationStatus.ACTIVE,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+          take: 1,
+          select: {
+            role: true,
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const passwordHash = user?.passwordHash ?? (await this.dummyPasswordHash);
+    const passwordIsValid = await verify(passwordHash, dto.password);
+    const membership = user?.memberships[0];
+
+    if (!user || !user.isActive || !passwordIsValid || !membership) {
+      throw new UnauthorizedException('E-mail ou senha inválidos.');
+    }
+
+    const session = await this.sessionService.create(user.id, metadata);
+
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+      organization: {
+        ...membership.organization,
+        role: membership.role,
+      },
+      session,
+    };
   }
 
   private createOrganizationSlug(name: string): string {
