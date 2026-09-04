@@ -1,14 +1,15 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ChartNoAxesCombined, CheckCircle2, LockKeyhole } from 'lucide-react';
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+import { useLoginMutation } from '@/features/auth/use-login-mutation';
 
 const loginSchema = z.object({
   email: z.string().trim().email('Informe um e-mail válido.'),
@@ -24,7 +25,8 @@ const benefits = [
 ];
 
 export function LoginPage() {
-  const [validated, setValidated] = useState(false);
+  const navigate = useNavigate();
+  const loginMutation = useLoginMutation();
 
   const {
     register,
@@ -38,8 +40,12 @@ export function LoginPage() {
     },
   });
 
-  function handleValidSubmit() {
-    setValidated(true);
+  function handleValidSubmit(data: LoginFormData) {
+    loginMutation.mutate(data, {
+      onSuccess: () => {
+        navigate('/app', { replace: true });
+      },
+    });
   }
 
   return (
@@ -136,17 +142,22 @@ export function LoginPage() {
                   )}
                 </div>
 
-                {validated && (
+                {loginMutation.isError && (
                   <p
-                    role="status"
-                    className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
+                    role="alert"
+                    className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
                   >
-                    Formulário validado. A autenticação será conectada na próxima etapa.
+                    {loginMutation.error.message}
                   </p>
                 )}
 
-                <Button type="submit" size="lg" className="h-11 w-full">
-                  Entrar
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="h-11 w-full"
+                  disabled={loginMutation.isPending}
+                >
+                  {loginMutation.isPending ? 'Entrando...' : 'Entrar'}
                 </Button>
               </form>
 
