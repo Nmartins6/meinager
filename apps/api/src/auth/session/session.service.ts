@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service.js';
+import { OrganizationStatus } from '../../generated/prisma/enums.js';
+import type { AuthenticatedSession } from './session.types.js';
 
 export interface SessionMetadata {
   ipAddress?: string;
@@ -72,6 +74,83 @@ export class SessionService {
       token: session.token,
       expiresAt: session.expiresAt,
     };
+  }
+
+  async findAuthenticated(token: string): Promise<AuthenticatedSession | null> {
+    const session = await this.prisma.session.findFirst({
+      where: {
+        tokenHash: this.hashToken(token),
+        revokedAt: null,
+        expiresAt: {
+          gt: new Date(),
+        },
+        user: {
+          isActive: true,
+        },
+      },
+      select: {
+        id: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      return null;
+    }
+
+    const membership = await this.prisma.organizationMember.findFirst({
+      where: {
+        userId: session.user.id,
+        isActive: true,
+        organization: {
+          status: OrganizationStatus.ACTIVE,
+        },
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      select: {
+        role: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+      },
+    });
+
+    if (!membership) {
+      return null;
+    }
+
+    return {
+      sessionId: session.id,
+      user: session.user,
+      organization: {
+        ...membership.organization,
+        role: membership.role,
+      },
+    };
+  }
+
+  async revokeById(sessionId: string): Promise<void> {
+    await this.prisma.session.updateMany({
+      where: {
+        id: sessionId,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
   }
 
   async revoke(token: string): Promise<void> {

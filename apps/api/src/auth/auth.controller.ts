@@ -1,17 +1,22 @@
 import {
   Body,
   Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
   Post,
   Req,
   Res,
-  HttpCode,
-  HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { SessionAuthGuard } from './session/session-auth.guard.js';
+import type { AuthenticatedRequest } from './session/session.types.js';
+import { SessionService } from './session/session.service.js';
 
 interface SessionCookie {
   token: string;
@@ -24,6 +29,7 @@ export class AuthController {
 
   constructor(
     private readonly authService: AuthService,
+    private readonly sessionService: SessionService,
     configService: ConfigService,
   ) {
     this.sessionCookieName =
@@ -70,6 +76,32 @@ export class AuthController {
       user,
       organization,
     };
+  }
+
+  @Get('me')
+  @UseGuards(SessionAuthGuard)
+  getCurrentUser(@Req() request: AuthenticatedRequest) {
+    return {
+      user: request.auth.user,
+      organization: request.auth.organization,
+    };
+  }
+
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('logout')
+  @UseGuards(SessionAuthGuard)
+  async logout(
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<void> {
+    await this.sessionService.revokeById(request.auth.sessionId);
+
+    response.clearCookie(this.sessionCookieName, {
+      httpOnly: true,
+      secure: process.env['NODE_ENV'] === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
   }
 
   private setSessionCookie(response: Response, session: SessionCookie): void {

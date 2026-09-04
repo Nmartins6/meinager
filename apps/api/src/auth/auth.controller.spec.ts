@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { SessionService } from './session/session.service.js';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -39,6 +40,12 @@ describe('AuthController', () => {
           provide: ConfigService,
           useValue: {
             get: vi.fn().mockReturnValue('meinager_session'),
+          },
+        },
+        {
+          provide: SessionService,
+          useValue: {
+            findAuthenticated: vi.fn(),
           },
         },
       ],
