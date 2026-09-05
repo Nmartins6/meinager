@@ -58,7 +58,7 @@ if (!apiUrl) {
   throw new Error('VITE_API_URL is not configured');
 }
 
-async function request(path: string, init?: RequestInit): Promise<Response> {
+export async function apiRequest(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`${apiUrl}${path}`, {
     ...init,
     credentials: 'include',
@@ -85,13 +85,13 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 }
 
 export async function getHealth(): Promise<HealthResponse> {
-  const response = await request('/health');
+  const response = await apiRequest('/health');
 
   return healthResponseSchema.parse(await response.json());
 }
 
 export async function login(input: LoginInput): Promise<AuthResponse> {
-  const response = await request('/auth/login', {
+  const response = await apiRequest('/auth/login', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -103,19 +103,19 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
 }
 
 export async function getCurrentUser(): Promise<AuthResponse> {
-  const response = await request('/auth/me');
+  const response = await apiRequest('/auth/me');
 
   return authResponseSchema.parse(await response.json());
 }
 
 export async function logout(): Promise<void> {
-  await request('/auth/logout', {
+  await apiRequest('/auth/logout', {
     method: 'POST',
   });
 }
 
 export async function registerAccount(input: RegisterInput): Promise<AuthResponse> {
-  const response = await request('/auth/register', {
+  const response = await apiRequest('/auth/register', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

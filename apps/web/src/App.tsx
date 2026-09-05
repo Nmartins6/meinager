@@ -4,6 +4,9 @@ import { HomePage } from '@/pages/home-page';
 import { LoginPage } from '@/pages/login-page';
 import { RegisterPage } from '@/pages/register-page';
 import { ProtectedRoute } from '@/features/auth/protected-route';
+import { AppLayout } from '@/components/layout/app-layout';
+import { ClientsPage } from '@/pages/clients-page';
+import { NewClientPage } from '@/pages/new-client-page';
 
 export function App() {
   return (
@@ -16,10 +19,14 @@ export function App() {
           path="/app"
           element={
             <ProtectedRoute>
-              <DashboardPage />
+              <AppLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route path="clientes/novo" element={<NewClientPage />} />
+          <Route index element={<DashboardPage />} />
+          <Route path="clientes" element={<ClientsPage />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
