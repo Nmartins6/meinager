@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
 import { FinancialPeriodForm } from '@/features/finance/financial-period-form';
+import { FinancialNavigation } from '@/features/finance/financial-navigation';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useFinancialPeriodsQuery } from '@/features/finance/use-financial-periods-query';
@@ -107,6 +108,8 @@ export function FinancialPage() {
           )}
         </div>
       </div>
+
+      <FinancialNavigation />
 
       {isCreatingPeriod && (
         <FinancialPeriodForm
