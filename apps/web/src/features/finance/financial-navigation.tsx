@@ -18,6 +18,11 @@ const items = [
     label: 'Contas',
     end: true,
   },
+  {
+    to: '/app/financeiro/lancamentos',
+    label: 'Lançamentos',
+    end: false,
+  },
 ];
 
 export function FinancialNavigation() {

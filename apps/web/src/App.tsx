@@ -12,6 +12,8 @@ import { HomePage } from '@/pages/home-page';
 import { LoginPage } from '@/pages/login-page';
 import { NewClientPage } from '@/pages/new-client-page';
 import { RegisterPage } from '@/pages/register-page';
+import { FinancialEntriesPage } from '@/pages/financial-entries-page';
+import { NewFinancialEntryPage } from '@/pages/new-financial-entry-page';
 
 export function App() {
   return (
@@ -38,6 +40,8 @@ export function App() {
           <Route path="financeiro" element={<FinancialPage />} />
           <Route path="financeiro/categorias" element={<FinancialCategoriesPage />} />
           <Route path="financeiro/contas" element={<FinancialAccountsPage />} />
+          <Route path="financeiro/lancamentos" element={<FinancialEntriesPage />} />
+          <Route path="financeiro/lancamentos/novo" element={<NewFinancialEntryPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
