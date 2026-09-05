@@ -1,4 +1,4 @@
-import { LayoutDashboard, LogOut, Users } from 'lucide-react';
+import { LayoutDashboard, LogOut, Users, WalletCards } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,12 @@ const navigation = [
     to: '/app/clientes',
     label: 'Clientes',
     icon: Users,
+    end: false,
+  },
+  {
+    to: '/app/financeiro',
+    label: 'Financeiro',
+    icon: WalletCards,
     end: false,
   },
 ];
