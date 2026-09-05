@@ -31,6 +31,44 @@ enum ClientType {
   COMPANY
 }
 
+enum FinancialPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+enum FinancialRevenueSource {
+  ENTRIES
+  MANUAL_TOTAL
+}
+
+enum FinancialCategoryType {
+  REVENUE
+  FIXED_EXPENSE
+  VARIABLE_EXPENSE
+}
+
+enum FinancialAccountType {
+  CASH
+  CHECKING_ACCOUNT
+  SAVINGS_ACCOUNT
+  DIGITAL_WALLET
+  OTHER
+}
+
+enum FinancialEntryStatus {
+  PENDING
+  PARTIAL
+  SETTLED
+  CANCELLED
+}
+
+enum FinancialEntryOrigin {
+  MANUAL
+  DUPLICATED
+  ORDER
+  ADJUSTMENT
+}
+
 model User {
   id              String    @id @default(uuid()) @db.Uuid
   name            String    @db.VarChar(120)
@@ -62,9 +100,14 @@ model Organization {
   createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  members   OrganizationMember[]
-  auditLogs AuditLog[]
-  clients   Client[]
+  members              OrganizationMember[]
+  auditLogs            AuditLog[]
+  clients              Client[]
+  financialPeriods     FinancialPeriod[]
+  financialCategories  FinancialCategory[]
+  financialAccounts    FinancialAccount[]
+  financialEntries     FinancialEntry[]
+  financialSettlements FinancialSettlement[]
 
   @@map("organizations")
 }
@@ -153,10 +196,124 @@ model Client {
   createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  financialEntries FinancialEntry[]
 
   @@unique([organizationId, document])
   @@index([organizationId, name])
   @@index([organizationId, isActive])
   @@map("clients")
+}
+
+model FinancialPeriod {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  year           Int                    @db.SmallInt
+  month          Int                    @db.SmallInt
+  status         FinancialPeriodStatus  @default(OPEN)
+  revenueSource  FinancialRevenueSource @default(ENTRIES) @map("revenue_source")
+  manualRevenue  Decimal?               @map("manual_revenue") @db.Decimal(14, 2)
+  closedAt       DateTime?              @map("closed_at") @db.Timestamptz(3)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entries      FinancialEntry[]
+
+  @@unique([organizationId, year, month])
+  @@index([organizationId, status])
+  @@map("financial_periods")
+}
+
+model FinancialCategory {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  name           String                @db.VarChar(100)
+  normalizedName String                @map("normalized_name") @db.VarChar(100)
+  type           FinancialCategoryType
+  isActive       Boolean               @default(true) @map("is_active")
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entries      FinancialEntry[]
+
+  @@unique([organizationId, type, normalizedName])
+  @@index([organizationId, isActive])
+  @@map("financial_categories")
+}
+
+model FinancialAccount {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  name           String               @db.VarChar(100)
+  normalizedName String               @map("normalized_name") @db.VarChar(100)
+  type           FinancialAccountType
+  openingBalance Decimal              @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  isActive       Boolean              @default(true) @map("is_active")
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  settlements  FinancialSettlement[]
+
+  @@unique([organizationId, normalizedName])
+  @@index([organizationId, isActive])
+  @@map("financial_accounts")
+}
+
+model FinancialEntry {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  periodId       String               @map("period_id") @db.Uuid
+  categoryId     String               @map("category_id") @db.Uuid
+  clientId       String?              @map("client_id") @db.Uuid
+  sourceEntryId  String?              @map("source_entry_id") @db.Uuid
+  description    String               @db.VarChar(160)
+  amount         Decimal              @db.Decimal(14, 2)
+  dueDate        DateTime             @map("due_date") @db.Date
+  status         FinancialEntryStatus @default(PENDING)
+  origin         FinancialEntryOrigin @default(MANUAL)
+  notes          String?              @db.Text
+  cancelledAt    DateTime?            @map("cancelled_at") @db.Timestamptz(3)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  period       FinancialPeriod       @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  category     FinancialCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  client       Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  sourceEntry  FinancialEntry?       @relation("FinancialEntryDuplication", fields: [sourceEntryId], references: [id], onDelete: SetNull)
+  duplicates   FinancialEntry[]      @relation("FinancialEntryDuplication")
+  settlements  FinancialSettlement[]
+
+  @@index([organizationId, dueDate])
+  @@index([organizationId, status])
+  @@index([periodId, categoryId])
+  @@index([clientId])
+  @@index([sourceEntryId])
+  @@map("financial_entries")
+}
+
+model FinancialSettlement {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  entryId        String    @map("entry_id") @db.Uuid
+  accountId      String    @map("account_id") @db.Uuid
+  amount         Decimal   @db.Decimal(14, 2)
+  settledAt      DateTime  @map("settled_at") @db.Timestamptz(3)
+  notes          String?   @db.Text
+  reversedAt     DateTime? @map("reversed_at") @db.Timestamptz(3)
+  reversalReason String?   @map("reversal_reason") @db.VarChar(255)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entry        FinancialEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account      FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, settledAt])
+  @@index([entryId, settledAt])
+  @@index([accountId, settledAt])
+  @@map("financial_settlements")
 }
