@@ -15,6 +15,7 @@ import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useFinancialPeriodsQuery } from '@/features/finance/use-financial-periods-query';
 import { useFinancialSummaryQuery } from '@/features/finance/use-financial-summary-query';
+import { FinancialPeriodActions } from '@/features/finance/financial-period-actions';
 import { cn } from '@/lib/utils';
 
 const monthNames = [
@@ -170,6 +171,8 @@ export function FinancialPage() {
           </span>
         </div>
       )}
+
+      {selectedPeriod && role && <FinancialPeriodActions period={selectedPeriod} role={role} />}
 
       {summaryQuery.isPending && activePeriodId && (
         <p role="status" className="py-16 text-center text-muted-foreground">

@@ -58,6 +58,11 @@ export interface CreateFinancialPeriodInput {
   manualRevenue?: string;
 }
 
+export interface UpdateFinancialPeriodInput {
+  revenueSource?: 'ENTRIES' | 'MANUAL_TOTAL';
+  manualRevenue?: string;
+}
+
 export async function getFinancialPeriods(
   input: ListFinancialPeriodsInput = {},
 ): Promise<FinancialPeriod[]> {
@@ -99,4 +104,35 @@ export async function getFinancialPeriodSummary(periodId: string): Promise<Finan
   const response = await apiRequest(`/finance/periods/${periodId}/summary`);
 
   return financialSummarySchema.parse(await response.json());
+}
+
+export async function updateFinancialPeriod(
+  periodId: string,
+  input: UpdateFinancialPeriodInput,
+): Promise<FinancialPeriod> {
+  const response = await apiRequest(`/finance/periods/${periodId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  return financialPeriodSchema.parse(await response.json());
+}
+
+export async function closeFinancialPeriod(periodId: string): Promise<FinancialPeriod> {
+  const response = await apiRequest(`/finance/periods/${periodId}/close`, {
+    method: 'POST',
+  });
+
+  return financialPeriodSchema.parse(await response.json());
+}
+
+export async function reopenFinancialPeriod(periodId: string): Promise<FinancialPeriod> {
+  const response = await apiRequest(`/finance/periods/${periodId}/reopen`, {
+    method: 'POST',
+  });
+
+  return financialPeriodSchema.parse(await response.json());
 }

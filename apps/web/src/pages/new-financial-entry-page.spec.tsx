@@ -101,10 +101,7 @@ describe('NewFinancialEntryPage', () => {
     };
 
     const fetchMock = vi.fn(
-      async (
-        input: RequestInfo | URL,
-        init?: RequestInit,
-      ): Promise<Response> => {
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input);
 
         if (url.endsWith('/auth/me')) {
@@ -131,10 +128,7 @@ describe('NewFinancialEntryPage', () => {
           });
         }
 
-        if (
-          url.endsWith('/finance/entries') &&
-          init?.method === 'POST'
-        ) {
+        if (url.endsWith('/finance/entries') && init?.method === 'POST') {
           return jsonResponse(createdEntry, 201);
         }
 
@@ -157,18 +151,10 @@ describe('NewFinancialEntryPage', () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter
-          initialEntries={['/app/financeiro/lancamentos/novo']}
-        >
+        <MemoryRouter initialEntries={['/app/financeiro/lancamentos/novo']}>
           <Routes>
-            <Route
-              path="/app/financeiro/lancamentos/novo"
-              element={<NewFinancialEntryPage />}
-            />
-            <Route
-              path="/app/financeiro/lancamentos"
-              element={<h1>Listagem de lançamentos</h1>}
-            />
+            <Route path="/app/financeiro/lancamentos/novo" element={<NewFinancialEntryPage />} />
+            <Route path="/app/financeiro/lancamentos" element={<h1>Listagem de lançamentos</h1>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,
@@ -177,27 +163,12 @@ describe('NewFinancialEntryPage', () => {
     const periodSelect = await screen.findByLabelText('Competência');
 
     await user.selectOptions(periodSelect, period.id);
-    await user.selectOptions(
-      screen.getByLabelText('Categoria'),
-      category.id,
-    );
-    await user.type(
-      screen.getByLabelText('Descrição'),
-      'Venda de materiais',
-    );
+    await user.selectOptions(screen.getByLabelText('Categoria'), category.id);
+    await user.type(screen.getByLabelText('Descrição'), 'Venda de materiais');
     await user.type(screen.getByLabelText('Valor'), '1250.50');
-    await user.type(
-      screen.getByLabelText('Data de vencimento'),
-      '2026-09-10',
-    );
-    await user.selectOptions(
-      screen.getByLabelText('Cliente opcional'),
-      client.id,
-    );
-    await user.type(
-      screen.getByLabelText('Observações'),
-      'Pagamento previsto para setembro.',
-    );
+    await user.type(screen.getByLabelText('Data de vencimento'), '2026-09-10');
+    await user.selectOptions(screen.getByLabelText('Cliente opcional'), client.id);
+    await user.type(screen.getByLabelText('Observações'), 'Pagamento previsto para setembro.');
 
     await user.click(
       screen.getByRole('button', {

@@ -1,4 +1,4 @@
-import { FileText, Plus, Search } from 'lucide-react';
+import { ExternalLink, FileText, Plus, Search } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -278,6 +278,7 @@ export function FinancialEntriesPage() {
                           <th className="px-4 py-3 font-medium">Vencimento</th>
                           <th className="px-4 py-3 text-right font-medium">Valor</th>
                           <th className="px-4 py-3 font-medium">Status</th>
+                          <th className="px-4 py-3 text-right font-medium">Ações</th>
                         </tr>
                       </thead>
 
@@ -332,6 +333,19 @@ export function FinancialEntriesPage() {
                                 >
                                   {entryStatusLabels[entry.status]}
                                 </span>
+                              </td>
+
+                              <td className="px-4 py-3 text-right">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() =>
+                                    navigate(`/app/financeiro/lancamentos/${entry.id}`)
+                                  }
+                                >
+                                  <ExternalLink data-icon="inline-start" />
+                                  Abrir
+                                </Button>
                               </td>
                             </tr>
                           );
