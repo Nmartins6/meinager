@@ -10,6 +10,8 @@ import { EntriesController } from './entries/entries.controller.js';
 import { EntriesService } from './entries/entries.service.js';
 import { SettlementsController } from './settlements/settlements.controller.js';
 import { SettlementsService } from './settlements/settlements.service.js';
+import { SummaryController } from './summary/summary.controller.js';
+import { SummaryService } from './summary/summary.service.js';
 
 @Module({
   controllers: [
@@ -18,6 +20,7 @@ import { SettlementsService } from './settlements/settlements.service.js';
     PeriodsController,
     EntriesController,
     SettlementsController,
+    SummaryController,
   ],
   providers: [
     CategoriesService,
@@ -25,6 +28,7 @@ import { SettlementsService } from './settlements/settlements.service.js';
     PeriodsService,
     EntriesService,
     SettlementsService,
+    SummaryService,
   ],
   imports: [AuthModule],
 })
