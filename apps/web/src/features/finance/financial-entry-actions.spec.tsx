@@ -1,10 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  MemoryRouter,
-  useLocation,
-} from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 import type { FinancialEntry } from './financial-entries-api';
 import { FinancialEntryActions } from './financial-entry-actions';
@@ -64,11 +61,7 @@ function renderActions() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter
-        initialEntries={[
-          `/app/financeiro/lancamentos/${entry.id}`,
-        ]}
-      >
+      <MemoryRouter initialEntries={[`/app/financeiro/lancamentos/${entry.id}`]}>
         <FinancialEntryActions
           entry={entry}
           currentStatus="PENDING"
@@ -97,18 +90,10 @@ describe('FinancialEntryActions', () => {
     };
 
     const fetchMock = vi.fn(
-      async (
-        input: RequestInfo | URL,
-        init?: RequestInit,
-      ): Promise<Response> => {
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input);
 
-        if (
-          url.endsWith(
-            `/finance/entries/${entry.id}/cancel`,
-          ) &&
-          init?.method === 'POST'
-        ) {
+        if (url.endsWith(`/finance/entries/${entry.id}/cancel`) && init?.method === 'POST') {
           return jsonResponse(cancelledEntry);
         }
 
@@ -133,9 +118,7 @@ describe('FinancialEntryActions', () => {
     );
 
     expect(
-      await screen.findByText(
-        'Informe um motivo com pelo menos 3 caracteres.',
-      ),
+      await screen.findByText('Informe um motivo com pelo menos 3 caracteres.'),
     ).toBeInTheDocument();
 
     await user.type(
@@ -183,16 +166,11 @@ describe('FinancialEntryActions', () => {
     };
 
     const fetchMock = vi.fn(
-      async (
-        input: RequestInfo | URL,
-        init?: RequestInit,
-      ): Promise<Response> => {
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input);
 
         if (
-          url.endsWith(
-            `/finance/entries/${entry.id}/duplicate-next-month`,
-          ) &&
+          url.endsWith(`/finance/entries/${entry.id}/duplicate-next-month`) &&
           init?.method === 'POST'
         ) {
           return jsonResponse(duplicatedEntry, 201);
@@ -212,9 +190,7 @@ describe('FinancialEntryActions', () => {
       }),
     );
 
-    expect(
-      screen.getByText('Duplicar este custo fixo?'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Duplicar este custo fixo?')).toBeInTheDocument();
 
     await user.click(
       screen.getByRole('button', {
@@ -222,9 +198,7 @@ describe('FinancialEntryActions', () => {
       }),
     );
 
-    expect(
-      await screen.findByTestId('current-location'),
-    ).toHaveTextContent(
+    expect(await screen.findByTestId('current-location')).toHaveTextContent(
       `/app/financeiro/lancamentos/${duplicatedEntry.id}`,
     );
 

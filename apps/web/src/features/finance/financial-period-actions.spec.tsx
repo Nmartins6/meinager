@@ -64,16 +64,10 @@ describe('FinancialPeriodActions', () => {
     const user = userEvent.setup();
 
     const fetchMock = vi.fn(
-      async (
-        input: RequestInfo | URL,
-        init?: RequestInit,
-      ): Promise<Response> => {
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input);
 
-        if (
-          url.endsWith(`/finance/periods/${openPeriod.id}/close`) &&
-          init?.method === 'POST'
-        ) {
+        if (url.endsWith(`/finance/periods/${openPeriod.id}/close`) && init?.method === 'POST') {
           return jsonResponse(closedPeriod);
         }
 
@@ -91,9 +85,7 @@ describe('FinancialPeriodActions', () => {
       }),
     );
 
-    expect(
-      screen.getByText('Fechar esta competência?'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Fechar esta competência?')).toBeInTheDocument();
 
     await user.click(
       screen.getByRole('button', {
@@ -116,18 +108,10 @@ describe('FinancialPeriodActions', () => {
     const user = userEvent.setup();
 
     const fetchMock = vi.fn(
-      async (
-        input: RequestInfo | URL,
-        init?: RequestInit,
-      ): Promise<Response> => {
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input);
 
-        if (
-          url.endsWith(
-            `/finance/periods/${closedPeriod.id}/reopen`,
-          ) &&
-          init?.method === 'POST'
-        ) {
+        if (url.endsWith(`/finance/periods/${closedPeriod.id}/reopen`) && init?.method === 'POST') {
           return jsonResponse(openPeriod);
         }
 
@@ -145,9 +129,7 @@ describe('FinancialPeriodActions', () => {
       }),
     );
 
-    expect(
-      screen.getByText('Reabrir esta competência?'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Reabrir esta competência?')).toBeInTheDocument();
 
     await user.click(
       screen.getByRole('button', {

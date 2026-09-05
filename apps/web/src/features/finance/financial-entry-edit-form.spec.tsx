@@ -63,11 +63,7 @@ function renderForm(settledAmount: string) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <FinancialEntryEditForm
-        entry={entry}
-        settledAmount={settledAmount}
-        canManage
-      />
+      <FinancialEntryEditForm entry={entry} settledAmount={settledAmount} canManage />
     </QueryClientProvider>,
   );
 }
@@ -89,10 +85,7 @@ describe('FinancialEntryEditForm', () => {
     };
 
     const fetchMock = vi.fn(
-      async (
-        input: RequestInfo | URL,
-        init?: RequestInit,
-      ): Promise<Response> => {
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = String(input);
 
         if (url.includes('/finance/categories')) {
@@ -111,10 +104,7 @@ describe('FinancialEntryEditForm', () => {
           });
         }
 
-        if (
-          url.endsWith(`/finance/entries/${entry.id}`) &&
-          init?.method === 'PATCH'
-        ) {
+        if (url.endsWith(`/finance/entries/${entry.id}`) && init?.method === 'PATCH') {
           return jsonResponse(updatedEntry);
         }
 
@@ -133,21 +123,12 @@ describe('FinancialEntryEditForm', () => {
     );
 
     await user.clear(screen.getByLabelText('Descrição'));
-    await user.type(
-      screen.getByLabelText('Descrição'),
-      'Aluguel da loja',
-    );
+    await user.type(screen.getByLabelText('Descrição'), 'Aluguel da loja');
 
     await user.clear(screen.getByLabelText('Data de vencimento'));
-    await user.type(
-      screen.getByLabelText('Data de vencimento'),
-      '2026-09-15',
-    );
+    await user.type(screen.getByLabelText('Data de vencimento'), '2026-09-15');
 
-    await user.type(
-      screen.getByLabelText('Observações'),
-      'Vencimento atualizado.',
-    );
+    await user.type(screen.getByLabelText('Observações'), 'Vencimento atualizado.');
 
     await user.click(
       screen.getByRole('button', {
@@ -174,29 +155,27 @@ describe('FinancialEntryEditForm', () => {
   it('should protect amount and category when active settlements exist', async () => {
     const user = userEvent.setup();
 
-    const fetchMock = vi.fn(
-      async (input: RequestInfo | URL): Promise<Response> => {
-        const url = String(input);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
 
-        if (url.includes('/finance/categories')) {
-          return jsonResponse([category]);
-        }
+      if (url.includes('/finance/categories')) {
+        return jsonResponse([category]);
+      }
 
-        if (url.includes('/clients')) {
-          return jsonResponse({
-            data: [],
-            pagination: {
-              page: 1,
-              pageSize: 100,
-              total: 0,
-              totalPages: 0,
-            },
-          });
-        }
+      if (url.includes('/clients')) {
+        return jsonResponse({
+          data: [],
+          pagination: {
+            page: 1,
+            pageSize: 100,
+            total: 0,
+            totalPages: 0,
+          },
+        });
+      }
 
-        throw new Error(`Unexpected request: ${url}`);
-      },
-    );
+      throw new Error(`Unexpected request: ${url}`);
+    });
 
     vi.stubGlobal('fetch', fetchMock);
 
@@ -209,20 +188,14 @@ describe('FinancialEntryEditForm', () => {
     );
 
     expect(screen.getByLabelText('Categoria')).toBeDisabled();
-    expect(screen.getByLabelText('Valor')).toHaveAttribute(
-      'readonly',
-    );
+    expect(screen.getByLabelText('Valor')).toHaveAttribute('readonly');
 
     expect(
-      screen.getByText(
-        'A categoria não pode ser alterada enquanto houver baixas ativas.',
-      ),
+      screen.getByText('A categoria não pode ser alterada enquanto houver baixas ativas.'),
     ).toBeInTheDocument();
 
     expect(
-      screen.getByText(
-        'O valor não pode ser alterado enquanto houver baixas ativas.',
-      ),
+      screen.getByText('O valor não pode ser alterado enquanto houver baixas ativas.'),
     ).toBeInTheDocument();
   });
 });
