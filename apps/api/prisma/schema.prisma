@@ -31,6 +31,11 @@ enum ClientType {
   COMPANY
 }
 
+enum ProductType {
+  PRODUCT
+  SERVICE
+}
+
 enum FinancialPeriodStatus {
   OPEN
   CLOSED
@@ -103,6 +108,7 @@ model Organization {
   members              OrganizationMember[]
   auditLogs            AuditLog[]
   clients              Client[]
+  products             Product[]
   financialPeriods     FinancialPeriod[]
   financialCategories  FinancialCategory[]
   financialAccounts    FinancialAccount[]
@@ -203,6 +209,32 @@ model Client {
   @@index([organizationId, name])
   @@index([organizationId, isActive])
   @@map("clients")
+}
+
+model Product {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  type           ProductType @default(PRODUCT)
+  name           String      @db.VarChar(150)
+  normalizedName String      @map("normalized_name") @db.VarChar(150)
+  sku            String?     @db.VarChar(60)
+  barcode        String?     @db.VarChar(50)
+  unit           String      @db.VarChar(20)
+  directCost     Decimal?    @map("direct_cost") @db.Decimal(18, 6)
+  trackInventory Boolean     @default(false) @map("track_inventory")
+  minimumStock   Decimal?    @map("minimum_stock") @db.Decimal(18, 6)
+  notes          String?     @db.Text
+  isActive       Boolean     @default(true) @map("is_active")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sku])
+  @@unique([organizationId, barcode])
+  @@index([organizationId, normalizedName])
+  @@index([organizationId, type, isActive])
+  @@map("products")
 }
 
 model FinancialPeriod {
