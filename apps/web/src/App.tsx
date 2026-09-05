@@ -7,6 +7,7 @@ import { ProtectedRoute } from '@/features/auth/protected-route';
 import { AppLayout } from '@/components/layout/app-layout';
 import { ClientsPage } from '@/pages/clients-page';
 import { NewClientPage } from '@/pages/new-client-page';
+import { EditClientPage } from '@/pages/edit-client-page';
 
 export function App() {
   return (
@@ -26,6 +27,8 @@ export function App() {
           <Route path="clientes/novo" element={<NewClientPage />} />
           <Route index element={<DashboardPage />} />
           <Route path="clientes" element={<ClientsPage />} />
+          <Route path="clientes/novo" element={<NewClientPage />} />
+          <Route path="clientes/:clientId" element={<EditClientPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

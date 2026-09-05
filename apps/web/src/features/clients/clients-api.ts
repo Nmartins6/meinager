@@ -23,6 +23,16 @@ export interface CreateClientInput {
   notes?: string;
 }
 
+export interface UpdateClientInput {
+  type?: 'INDIVIDUAL' | 'COMPANY';
+  name?: string;
+  document?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+}
+
 const clientsResponseSchema = z.object({
   data: z.array(clientSchema),
   pagination: z.object({
@@ -70,6 +80,24 @@ export async function getClients(input: ListClientsInput = {}): Promise<ClientsR
 export async function createClient(input: CreateClientInput): Promise<Client> {
   const response = await apiRequest('/clients', {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  return clientSchema.parse(await response.json());
+}
+
+export async function getClient(clientId: string): Promise<Client> {
+  const response = await apiRequest(`/clients/${clientId}`);
+
+  return clientSchema.parse(await response.json());
+}
+
+export async function updateClient(clientId: string, input: UpdateClientInput): Promise<Client> {
+  const response = await apiRequest(`/clients/${clientId}`, {
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
     },

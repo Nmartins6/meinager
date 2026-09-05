@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { useClientsQuery } from '@/features/clients/use-clients-query';
 import { useNavigate } from 'react-router-dom';
 
+type ClientStatusFilter = 'active' | 'inactive' | 'all';
+
 function formatDocument(document: string | null): string {
   if (!document) {
     return 'Não informado';
@@ -29,10 +31,11 @@ export function ClientsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [status, setStatus] = useState<ClientStatusFilter>('active');
 
   const clientsQuery = useClientsQuery({
     search: search || undefined,
-    isActive: true,
+    isActive: status === 'all' ? undefined : status === 'active',
     page,
     pageSize: 10,
   });
@@ -79,6 +82,22 @@ export function ClientsPage() {
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Nome, e-mail, CPF/CNPJ ou telefone"
               />
+              <div className="space-y-2 sm:w-44">
+                <Label htmlFor="client-status">Status</Label>
+                <select
+                  id="client-status"
+                  value={status}
+                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  onChange={(event) => {
+                    setStatus(event.target.value as ClientStatusFilter);
+                    setPage(1);
+                  }}
+                >
+                  <option value="active">Ativos</option>
+                  <option value="inactive">Inativos</option>
+                  <option value="all">Todos</option>
+                </select>
+              </div>
             </div>
 
             <Button type="submit" disabled={clientsQuery.isFetching}>
@@ -130,7 +149,15 @@ export function ClientsPage() {
                   <tbody>
                     {response.data.map((client) => (
                       <tr key={client.id} className="border-t bg-background">
-                        <td className="px-4 py-3 font-medium">{client.name}</td>
+                        <td className="px-4 py-3 font-medium">
+                          <button
+                            type="button"
+                            className="text-left text-primary hover:underline"
+                            onClick={() => navigate(`/app/clientes/${client.id}`)}
+                          >
+                            {client.name}
+                          </button>
+                        </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {client.type === 'INDIVIDUAL' ? 'Pessoa física' : 'Pessoa jurídica'}
                         </td>
@@ -141,8 +168,14 @@ export function ClientsPage() {
                           {client.email ?? client.phone ?? 'Não informado'}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800">
-                            Ativo
+                          <span
+                            className={
+                              client.isActive
+                                ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800'
+                                : 'rounded-full bg-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-700'
+                            }
+                          >
+                            {client.isActive ? 'Ativo' : 'Inativo'}
                           </span>
                         </td>
                       </tr>
