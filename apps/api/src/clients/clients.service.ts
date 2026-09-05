@@ -1,9 +1,15 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import type { ClientType } from '../generated/prisma/enums.js';
 import type { CreateClientDto } from './dto/create-client.dto.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { ListClientsQueryDto } from './dto/list-clients-query.dto.js';
+import type { UpdateClientDto } from './dto/update-client.dto.js';
 
 export interface ClientResponse {
   id: string;
@@ -68,6 +74,114 @@ export class ClientsService {
             organizationId,
             actorUserId,
             action: 'client.created',
+            entityType: 'client',
+            entityId: client.id,
+          },
+        });
+
+        return client;
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'Já existe um cliente com este CPF ou CNPJ.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async findOne(
+    organizationId: string,
+    clientId: string,
+  ): Promise<ClientResponse> {
+    const client = await this.prisma.client.findFirst({
+      where: {
+        id: clientId,
+        organizationId,
+      },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        document: true,
+        phone: true,
+        email: true,
+        notes: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Cliente não encontrado.');
+    }
+
+    return client;
+  }
+
+  async update(
+    organizationId: string,
+    actorUserId: string,
+    clientId: string,
+    dto: UpdateClientDto,
+  ): Promise<ClientResponse> {
+    const hasChanges = Object.values(dto).some((value) => value !== undefined);
+
+    if (!hasChanges) {
+      throw new BadRequestException(
+        'Informe ao menos um campo para atualizar.',
+      );
+    }
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const updateResult = await transaction.client.updateMany({
+          where: {
+            id: clientId,
+            organizationId,
+          },
+          data: {
+            ...(dto.type !== undefined ? { type: dto.type } : {}),
+            ...(dto.name !== undefined ? { name: dto.name } : {}),
+            ...(dto.document !== undefined ? { document: dto.document } : {}),
+            ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+            ...(dto.email !== undefined ? { email: dto.email } : {}),
+            ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+            ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+          },
+        });
+
+        if (updateResult.count === 0) {
+          throw new NotFoundException('Cliente não encontrado.');
+        }
+
+        const client = await transaction.client.findFirstOrThrow({
+          where: {
+            id: clientId,
+            organizationId,
+          },
+          select: {
+            id: true,
+            type: true,
+            name: true,
+            document: true,
+            phone: true,
+            email: true,
+            notes: true,
+            isActive: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+        await transaction.auditLog.create({
+          data: {
+            organizationId,
+            actorUserId,
+            action: 'client.updated',
             entityType: 'client',
             entityId: client.id,
           },

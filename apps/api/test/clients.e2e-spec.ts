@@ -14,6 +14,7 @@ describe('ClientsController (e2e)', () => {
   let organizationId: string;
   let clientId: string | undefined;
   let otherOrganizationId: string | undefined;
+  let otherClientId: string | undefined;
 
   const registrationPayload = {
     name: 'Proprietário Clientes E2E',
@@ -114,13 +115,14 @@ describe('ClientsController (e2e)', () => {
 
     otherOrganizationId = otherOrganization.id;
 
-    await prisma.client.create({
+    const otherClient = await prisma.client.create({
       data: {
         organizationId: otherOrganization.id,
         name: 'Cliente Externo',
         document: '12345678901',
       },
     });
+    otherClientId = otherClient.id;
 
     const response = await request(app.getHttpServer())
       .get('/api/clients')
@@ -154,6 +156,103 @@ describe('ClientsController (e2e)', () => {
         (client: { name: string }) => client.name === 'Cliente Externo',
       ),
     ).toBe(false);
+  });
+
+  it('GET /api/clients/:id should return a client from the authenticated organization', async () => {
+    if (!clientId) {
+      throw new Error('Client was not created');
+    }
+
+    const response = await request(app.getHttpServer())
+      .get(`/api/clients/${clientId}`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      id: clientId,
+      name: 'Cliente E2E',
+      document: '12345678901',
+    });
+  });
+
+  it('GET /api/clients/:id should not expose a client from another organization', async () => {
+    if (!otherClientId) {
+      throw new Error('External client was not created');
+    }
+
+    const response = await request(app.getHttpServer())
+      .get(`/api/clients/${otherClientId}`)
+      .set('Cookie', sessionCookie)
+      .expect(404);
+
+    expect(response.body.message).toBe('Cliente não encontrado.');
+  });
+
+  it('PATCH /api/clients/:id should update and deactivate a client', async () => {
+    if (!clientId) {
+      throw new Error('Client was not created');
+    }
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/clients/${clientId}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        name: 'Cliente E2E Atualizado',
+        phone: '',
+        isActive: false,
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      id: clientId,
+      name: 'Cliente E2E Atualizado',
+      phone: null,
+      isActive: false,
+    });
+
+    const auditLog = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        entityType: 'client',
+        entityId: clientId,
+        action: 'client.updated',
+      },
+    });
+
+    expect(auditLog.entityId).toBe(clientId);
+  });
+
+  it('PATCH /api/clients/:id should not update a client from another organization', async () => {
+    if (!otherClientId) {
+      throw new Error('External client was not created');
+    }
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/clients/${otherClientId}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        name: 'Tentativa indevida',
+      })
+      .expect(404);
+
+    expect(response.body.message).toBe('Cliente não encontrado.');
+  });
+
+  it('PATCH /api/clients/:id should reject an empty payload', async () => {
+    if (!clientId) {
+      throw new Error('Client was not created');
+    }
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/clients/${clientId}`)
+      .set('Cookie', sessionCookie)
+      .send({})
+      .expect(400);
+
+    expect(response.body.message).toBe(
+      'Informe ao menos um campo para atualizar.',
+    );
   });
 
   it('POST /api/clients should reject a duplicated document', async () => {
