@@ -8,6 +8,8 @@ import { PeriodsController } from './periods/periods.controller.js';
 import { PeriodsService } from './periods/periods.service.js';
 import { EntriesController } from './entries/entries.controller.js';
 import { EntriesService } from './entries/entries.service.js';
+import { SettlementsController } from './settlements/settlements.controller.js';
+import { SettlementsService } from './settlements/settlements.service.js';
 
 @Module({
   controllers: [
@@ -15,12 +17,14 @@ import { EntriesService } from './entries/entries.service.js';
     AccountsController,
     PeriodsController,
     EntriesController,
+    SettlementsController,
   ],
   providers: [
     CategoriesService,
     AccountsService,
     PeriodsService,
     EntriesService,
+    SettlementsService,
   ],
   imports: [AuthModule],
 })
