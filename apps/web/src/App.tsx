@@ -1,28 +1,124 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from '@/components/layout/app-layout';
 import { ProtectedRoute } from '@/features/auth/protected-route';
-import { ClientsPage } from '@/pages/clients-page';
-import { DashboardPage } from '@/pages/dashboard-page';
-import { EditClientPage } from '@/pages/edit-client-page';
-import { FinancialAccountsPage } from '@/pages/financial-accounts-page';
-import { FinancialCategoriesPage } from '@/pages/financial-categories-page';
-import { FinancialPage } from '@/pages/financial-page';
-import { HomePage } from '@/pages/home-page';
-import { LoginPage } from '@/pages/login-page';
-import { NewClientPage } from '@/pages/new-client-page';
-import { RegisterPage } from '@/pages/register-page';
-import { FinancialEntriesPage } from '@/pages/financial-entries-page';
-import { NewFinancialEntryPage } from '@/pages/new-financial-entry-page';
-import { FinancialEntryPage } from '@/pages/financial-entry-page';
+
+const HomePage = lazy(async () => {
+  const module = await import('@/pages/home-page');
+  return { default: module.HomePage };
+});
+
+const LoginPage = lazy(async () => {
+  const module = await import('@/pages/login-page');
+  return { default: module.LoginPage };
+});
+
+const RegisterPage = lazy(async () => {
+  const module = await import('@/pages/register-page');
+  return { default: module.RegisterPage };
+});
+
+const DashboardPage = lazy(async () => {
+  const module = await import('@/pages/dashboard-page');
+  return { default: module.DashboardPage };
+});
+
+const ClientsPage = lazy(async () => {
+  const module = await import('@/pages/clients-page');
+  return { default: module.ClientsPage };
+});
+
+const NewClientPage = lazy(async () => {
+  const module = await import('@/pages/new-client-page');
+  return { default: module.NewClientPage };
+});
+
+const EditClientPage = lazy(async () => {
+  const module = await import('@/pages/edit-client-page');
+  return { default: module.EditClientPage };
+});
+
+const FinancialPage = lazy(async () => {
+  const module = await import('@/pages/financial-page');
+  return { default: module.FinancialPage };
+});
+
+const FinancialCategoriesPage = lazy(async () => {
+  const module = await import('@/pages/financial-categories-page');
+  return { default: module.FinancialCategoriesPage };
+});
+
+const FinancialAccountsPage = lazy(async () => {
+  const module = await import('@/pages/financial-accounts-page');
+  return { default: module.FinancialAccountsPage };
+});
+
+const FinancialEntriesPage = lazy(async () => {
+  const module = await import('@/pages/financial-entries-page');
+  return { default: module.FinancialEntriesPage };
+});
+
+const NewFinancialEntryPage = lazy(async () => {
+  const module = await import('@/pages/new-financial-entry-page');
+  return { default: module.NewFinancialEntryPage };
+});
+
+const FinancialEntryPage = lazy(async () => {
+  const module = await import('@/pages/financial-entry-page');
+  return { default: module.FinancialEntryPage };
+});
+
+interface LazyRouteProps {
+  children: ReactNode;
+}
+
+function LazyRoute({ children }: LazyRouteProps) {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-64 place-items-center px-6 py-10">
+          <p role="status" className="text-sm text-muted-foreground">
+            Carregando página...
+          </p>
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/cadastro" element={<RegisterPage />} />
+        <Route
+          path="/"
+          element={
+            <LazyRoute>
+              <HomePage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="/login"
+          element={
+            <LazyRoute>
+              <LoginPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="/cadastro"
+          element={
+            <LazyRoute>
+              <RegisterPage />
+            </LazyRoute>
+          }
+        />
 
         <Route
           path="/app"
@@ -32,18 +128,95 @@ export function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<DashboardPage />} />
+          <Route
+            index
+            element={
+              <LazyRoute>
+                <DashboardPage />
+              </LazyRoute>
+            }
+          />
 
-          <Route path="clientes" element={<ClientsPage />} />
-          <Route path="clientes/novo" element={<NewClientPage />} />
-          <Route path="clientes/:clientId" element={<EditClientPage />} />
+          <Route
+            path="clientes"
+            element={
+              <LazyRoute>
+                <ClientsPage />
+              </LazyRoute>
+            }
+          />
 
-          <Route path="financeiro" element={<FinancialPage />} />
-          <Route path="financeiro/categorias" element={<FinancialCategoriesPage />} />
-          <Route path="financeiro/contas" element={<FinancialAccountsPage />} />
-          <Route path="financeiro/lancamentos" element={<FinancialEntriesPage />} />
-          <Route path="financeiro/lancamentos/novo" element={<NewFinancialEntryPage />} />
-          <Route path="financeiro/lancamentos/:entryId" element={<FinancialEntryPage />} />
+          <Route
+            path="clientes/novo"
+            element={
+              <LazyRoute>
+                <NewClientPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="clientes/:clientId"
+            element={
+              <LazyRoute>
+                <EditClientPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro"
+            element={
+              <LazyRoute>
+                <FinancialPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/categorias"
+            element={
+              <LazyRoute>
+                <FinancialCategoriesPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/contas"
+            element={
+              <LazyRoute>
+                <FinancialAccountsPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/lancamentos"
+            element={
+              <LazyRoute>
+                <FinancialEntriesPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/lancamentos/novo"
+            element={
+              <LazyRoute>
+                <NewFinancialEntryPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/lancamentos/:entryId"
+            element={
+              <LazyRoute>
+                <FinancialEntryPage />
+              </LazyRoute>
+            }
+          />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
