@@ -18,6 +18,7 @@ import { OrganizationRole } from '../generated/prisma/enums.js';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto.js';
 import { ListStockMovementsQueryDto } from './dto/list-stock-movements-query.dto.js';
 import { InventoryService } from './inventory.service.js';
+import { ReverseStockMovementDto } from './dto/reverse-stock-movement.dto.js';
 
 @Controller('inventory/products/:productId')
 @UseGuards(SessionAuthGuard, OrganizationRolesGuard)
@@ -40,6 +41,29 @@ export class InventoryController {
       request.auth.organization.id,
       request.auth.user.id,
       productId,
+      dto,
+    );
+  }
+
+    @Post('movements/:movementId/reverse')
+  @OrganizationRoles(
+    OrganizationRole.OWNER,
+    OrganizationRole.ADMIN,
+    OrganizationRole.OPERATIONS,
+  )
+  reverse(
+    @Param('productId', new ParseUUIDPipe({ version: '4' }))
+    productId: string,
+    @Param('movementId', new ParseUUIDPipe({ version: '4' }))
+    movementId: string,
+    @Body() dto: ReverseStockMovementDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.reverse(
+      request.auth.organization.id,
+      request.auth.user.id,
+      productId,
+      movementId,
       dto,
     );
   }

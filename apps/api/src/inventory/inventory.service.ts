@@ -15,6 +15,7 @@ import {
 import { lockProduct } from '../products/lock-product.js';
 import type { CreateStockMovementDto } from './dto/create-stock-movement.dto.js';
 import type { ListStockMovementsQueryDto } from './dto/list-stock-movements-query.dto.js';
+import type { ReverseStockMovementDto } from './dto/reverse-stock-movement.dto.js';
 
 const movementSelect = {
   id: true,
@@ -151,6 +152,116 @@ export class InventoryService {
         });
 
         return this.toResponse(movement);
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      },
+    );
+  }
+
+    async reverse(
+    organizationId: string,
+    actorUserId: string,
+    productId: string,
+    movementId: string,
+    dto: ReverseStockMovementDto,
+  ): Promise<StockMovementResponse> {
+    return this.prisma.$transaction(
+      async (transaction) => {
+        await lockProduct(transaction, organizationId, productId);
+
+        const original = await transaction.stockMovement.findFirst({
+          where: {
+            id: movementId,
+            organizationId,
+            productId,
+          },
+          select: movementSelect,
+        });
+
+        if (!original) {
+          throw new NotFoundException(
+            'Movimentação de estoque não encontrada.',
+          );
+        }
+
+        if (original.origin === StockMovementOrigin.REVERSAL) {
+          throw new BadRequestException(
+            'Não é possível estornar uma movimentação de estorno.',
+          );
+        }
+
+        const existingReversal = await transaction.stockMovement.findFirst({
+          where: {
+            organizationId,
+            productId,
+            reversalOfId: original.id,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (existingReversal) {
+          throw new ConflictException(
+            'Esta movimentação já foi estornada.',
+          );
+        }
+
+        const reversalType =
+          original.type === StockMovementType.IN
+            ? StockMovementType.OUT
+            : StockMovementType.IN;
+
+        const totals = await this.calculateTotals(
+          transaction,
+          organizationId,
+          productId,
+        );
+
+        if (
+          reversalType === StockMovementType.OUT &&
+          original.quantity.greaterThan(totals.balance)
+        ) {
+          throw new ConflictException(
+            'Saldo de estoque insuficiente para estornar esta entrada.',
+          );
+        }
+
+        const reversal = await transaction.stockMovement.create({
+          data: {
+            organizationId,
+            productId,
+            type: reversalType,
+            origin: StockMovementOrigin.REVERSAL,
+            quantity: original.quantity,
+            reason: dto.reason,
+            notes: dto.notes ?? null,
+            reversalOfId: original.id,
+            occurredAt: new Date(),
+          },
+          select: movementSelect,
+        });
+
+        await transaction.auditLog.create({
+          data: {
+            organizationId,
+            actorUserId,
+            action: 'stock_movement.reversed',
+            entityType: 'stock_movement',
+            entityId: original.id,
+            metadata: {
+              productId,
+              reversalId: reversal.id,
+              originalType: original.type,
+              reversalType: reversal.type,
+              quantity: original.quantity.toString(),
+              reason: reversal.reason,
+            },
+          },
+        });
+
+        return this.toResponse(reversal);
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,

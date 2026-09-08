@@ -629,6 +629,278 @@ describe('Inventory (e2e)', () => {
     }
   });
 
+    it('POST reverse should reverse an entry and preserve its original record', async () => {
+    const productId = await createProduct();
+    const original = await createMovement(
+      productId,
+      'IN',
+      '1.000001',
+    ).expect(201);
+
+    const originalRecord = await prisma.stockMovement.findUniqueOrThrow({
+      where: { id: original.body.id },
+    });
+
+    const response = await request(httpServer())
+      .post(
+        `/api/inventory/products/${productId}/movements/${original.body.id}/reverse`,
+      )
+      .set('Cookie', sessionCookie)
+      .send({
+        reason: '  Entrada registrada por engano  ',
+        notes: 'Correção do estoque.',
+      })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      productId,
+      type: 'OUT',
+      origin: 'REVERSAL',
+      quantity: '1.000001',
+      reversalOfId: original.body.id,
+      reason: 'Entrada registrada por engano',
+      notes: 'Correção do estoque.',
+    });
+
+    const preservedRecord = await prisma.stockMovement.findUniqueOrThrow({
+      where: { id: original.body.id },
+    });
+
+    expect(preservedRecord).toEqual(originalRecord);
+
+    const balance = await request(httpServer())
+      .get(`/api/inventory/products/${productId}/balance`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(balance.body).toMatchObject({
+      totalIn: '1.000001',
+      totalOut: '1.000001',
+      balance: '0',
+    });
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        action: 'stock_movement.reversed',
+        entityId: original.body.id,
+      },
+    });
+
+    expect(audit.entityType).toBe('stock_movement');
+    expect(audit.metadata).toEqual({
+      productId,
+      reversalId: response.body.id,
+      originalType: 'IN',
+      reversalType: 'OUT',
+      quantity: '1.000001',
+      reason: 'Entrada registrada por engano',
+    });
+  });
+
+  it('POST reverse should restore a withdrawal from an inactive product', async () => {
+    const productId = await createProduct();
+
+    await createMovement(productId, 'IN', '2').expect(201);
+
+    const withdrawal = await createMovement(
+      productId,
+      'OUT',
+      '0.500001',
+    ).expect(201);
+
+    await request(httpServer())
+      .patch(`/api/products/${productId}`)
+      .set('Cookie', sessionCookie)
+      .send({ isActive: false })
+      .expect(200);
+
+    const response = await request(httpServer())
+      .post(
+        `/api/inventory/products/${productId}/movements/${withdrawal.body.id}/reverse`,
+      )
+      .set('Cookie', sessionCookie)
+      .send({ reason: 'Saída registrada por engano' })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      productId,
+      type: 'IN',
+      origin: 'REVERSAL',
+      quantity: '0.500001',
+      reversalOfId: withdrawal.body.id,
+    });
+
+    const balance = await request(httpServer())
+      .get(`/api/inventory/products/${productId}/balance`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(balance.body).toMatchObject({
+      totalIn: '2.500001',
+      totalOut: '0.500001',
+      balance: '2',
+    });
+
+    const product = await prisma.product.findUniqueOrThrow({
+      where: { id: productId },
+    });
+
+    expect(product.isActive).toBe(false);
+  });
+
+  it('POST reverse should reject repeated reversals and reversing a reversal', async () => {
+    const productId = await createProduct();
+    const original = await createMovement(productId, 'IN', '1').expect(201);
+
+    const originalUrl =
+      `/api/inventory/products/${productId}/movements/${original.body.id}/reverse`;
+
+    const reversal = await request(httpServer())
+      .post(originalUrl)
+      .set('Cookie', sessionCookie)
+      .send({ reason: 'Correção de entrada' })
+      .expect(201);
+
+    const repeated = await request(httpServer())
+      .post(originalUrl)
+      .set('Cookie', sessionCookie)
+      .send({ reason: 'Tentativa de repetir o estorno' })
+      .expect(409);
+
+    expect(repeated.body.message).toBe(
+      'Esta movimentação já foi estornada.',
+    );
+
+    const chained = await request(httpServer())
+      .post(
+        `/api/inventory/products/${productId}/movements/${reversal.body.id}/reverse`,
+      )
+      .set('Cookie', sessionCookie)
+      .send({ reason: 'Tentativa de estornar um estorno' })
+      .expect(400);
+
+    expect(chained.body.message).toBe(
+      'Não é possível estornar uma movimentação de estorno.',
+    );
+
+    expect(
+      await prisma.stockMovement.count({
+        where: { organizationId, productId },
+      }),
+    ).toBe(2);
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId,
+          action: 'stock_movement.reversed',
+          entityId: original.body.id,
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it('POST reverse should reject insufficient stock without persisting changes', async () => {
+    const productId = await createProduct();
+    const original = await createMovement(productId, 'IN', '2').expect(201);
+
+    await createMovement(productId, 'OUT', '0.000001').expect(201);
+
+    const response = await request(httpServer())
+      .post(
+        `/api/inventory/products/${productId}/movements/${original.body.id}/reverse`,
+      )
+      .set('Cookie', sessionCookie)
+      .send({ reason: 'Correção da entrada original' })
+      .expect(409);
+
+    expect(response.body.message).toBe(
+      'Saldo de estoque insuficiente para estornar esta entrada.',
+    );
+
+    expect(
+      await prisma.stockMovement.count({
+        where: { organizationId, productId },
+      }),
+    ).toBe(2);
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId,
+          action: 'stock_movement.reversed',
+          entityId: original.body.id,
+        },
+      }),
+    ).toBe(0);
+
+    const balance = await request(httpServer())
+      .get(`/api/inventory/products/${productId}/balance`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(balance.body.balance).toBe('1.999999');
+  });
+
+  it('POST reverse should serialize concurrent reversals of the same movement', async () => {
+    const productId = await createProduct();
+
+    await createMovement(productId, 'IN', '1').expect(201);
+
+    const withdrawal = await createMovement(
+      productId,
+      'OUT',
+      '1',
+    ).expect(201);
+
+    const url =
+      `/api/inventory/products/${productId}/movements/${withdrawal.body.id}/reverse`;
+
+    const responses = await Promise.all([
+      request(httpServer())
+        .post(url)
+        .set('Cookie', sessionCookie)
+        .send({ reason: 'Primeira solicitação de estorno' }),
+      request(httpServer())
+        .post(url)
+        .set('Cookie', sessionCookie)
+        .send({ reason: 'Segunda solicitação de estorno' }),
+    ]);
+
+    expect(
+      responses.map((response) => response.status).sort(),
+    ).toEqual([201, 409]);
+
+    expect(
+      await prisma.stockMovement.count({
+        where: {
+          organizationId,
+          productId,
+          reversalOfId: withdrawal.body.id,
+        },
+      }),
+    ).toBe(1);
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId,
+          action: 'stock_movement.reversed',
+          entityId: withdrawal.body.id,
+        },
+      }),
+    ).toBe(1);
+
+    const balance = await request(httpServer())
+      .get(`/api/inventory/products/${productId}/balance`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(balance.body.balance).toBe('1');
+  });
+
   afterAll(async () => {
     try {
       if (organizationId) {
@@ -661,5 +933,245 @@ describe('Inventory (e2e)', () => {
     } finally {
       await app?.close();
     }
+  });
+
+    it('POST reverse should enforce permissions for every organization role', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Authenticated organization was not initialized');
+    }
+
+    const productId = await createProduct();
+    const cases = [
+      { role: OrganizationRole.OWNER, expectedStatus: 201 },
+      { role: OrganizationRole.ADMIN, expectedStatus: 201 },
+      { role: OrganizationRole.OPERATIONS, expectedStatus: 201 },
+      { role: OrganizationRole.FINANCE, expectedStatus: 403 },
+      { role: OrganizationRole.VIEWER, expectedStatus: 403 },
+    ];
+
+    const movementIds: string[] = [];
+
+    for (let index = 0; index < cases.length; index += 1) {
+      const movement = await createMovement(
+        productId,
+        'IN',
+        '1',
+      ).expect(201);
+
+      movementIds.push(movement.body.id);
+    }
+
+    const membershipWhere = {
+      organizationId_userId: {
+        organizationId,
+        userId,
+      },
+    };
+
+    try {
+      for (const [index, permissionCase] of cases.entries()) {
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: { role: permissionCase.role },
+        });
+
+        await request(httpServer())
+          .post(
+            `/api/inventory/products/${productId}/movements/${movementIds[index]}/reverse`,
+          )
+          .set('Cookie', sessionCookie)
+          .send({ reason: 'Correção de movimentação' })
+          .expect(permissionCase.expectedStatus);
+      }
+
+      expect(
+        await prisma.stockMovement.count({
+          where: {
+            organizationId,
+            productId,
+            origin: 'REVERSAL',
+          },
+        }),
+      ).toBe(3);
+
+      const balance = await request(httpServer())
+        .get(`/api/inventory/products/${productId}/balance`)
+        .set('Cookie', sessionCookie)
+        .expect(200);
+
+      expect(balance.body.balance).toBe('2');
+    } finally {
+      await prisma.organizationMember.update({
+        where: membershipWhere,
+        data: { role: OrganizationRole.OWNER },
+      });
+    }
+  });
+
+  it('POST reverse should isolate movements by organization and product', async () => {
+    const productId = await createProduct();
+    const anotherProductId = await createProduct();
+
+    const ownMovement = await createMovement(
+      productId,
+      'IN',
+      '1',
+    ).expect(201);
+
+    const otherOrganization = await prisma.organization.create({
+      data: {
+        name: 'Empresa externa de estoque',
+        slug: `estoque-externo-${randomUUID()}`,
+      },
+    });
+
+    try {
+      const externalProduct = await prisma.product.create({
+        data: {
+          organizationId: otherOrganization.id,
+          name: 'Produto externo',
+          normalizedName: 'produto externo',
+          unit: 'UN',
+          type: 'PRODUCT',
+          trackInventory: true,
+        },
+      });
+
+      const externalMovement = await prisma.stockMovement.create({
+        data: {
+          organizationId: otherOrganization.id,
+          productId: externalProduct.id,
+          type: 'IN',
+          origin: 'MANUAL',
+          quantity: '1',
+          reason: 'Entrada externa de teste',
+          occurredAt: new Date(),
+        },
+      });
+
+      const attempts = [
+        {
+          productId: externalProduct.id,
+          movementId: externalMovement.id,
+        },
+        {
+          productId,
+          movementId: externalMovement.id,
+        },
+        {
+          productId: anotherProductId,
+          movementId: ownMovement.body.id,
+        },
+        {
+          productId,
+          movementId: randomUUID(),
+        },
+      ];
+
+      for (const attempt of attempts) {
+        await request(httpServer())
+          .post(
+            `/api/inventory/products/${attempt.productId}/movements/${attempt.movementId}/reverse`,
+          )
+          .set('Cookie', sessionCookie)
+          .send({ reason: 'Tentativa de estorno indevido' })
+          .expect(404);
+      }
+
+      expect(
+        await prisma.stockMovement.count({
+          where: {
+            reversalOfId: {
+              in: [ownMovement.body.id, externalMovement.id],
+            },
+          },
+        }),
+      ).toBe(0);
+
+      expect(
+        await prisma.auditLog.count({
+          where: {
+            action: 'stock_movement.reversed',
+            entityId: {
+              in: [ownMovement.body.id, externalMovement.id],
+            },
+          },
+        }),
+      ).toBe(0);
+    } finally {
+      await prisma.$transaction([
+        prisma.auditLog.deleteMany({
+          where: { organizationId: otherOrganization.id },
+        }),
+        prisma.stockMovement.deleteMany({
+          where: { organizationId: otherOrganization.id },
+        }),
+        prisma.organization.delete({
+          where: { id: otherOrganization.id },
+        }),
+      ]);
+    }
+  });
+
+  it('POST reverse should require authentication and validate its payload', async () => {
+    const productId = await createProduct();
+    const original = await createMovement(
+      productId,
+      'IN',
+      '1',
+    ).expect(201);
+
+    const url =
+      `/api/inventory/products/${productId}/movements/${original.body.id}/reverse`;
+
+    await request(httpServer())
+      .post(url)
+      .send({ reason: 'Correção sem autenticação' })
+      .expect(401);
+
+    const invalidPayloads = [
+      {},
+      { reason: null },
+      { reason: 123 },
+      { reason: '' },
+      { reason: '   ' },
+      { reason: 'ab' },
+      { reason: 'a'.repeat(256) },
+      { reason: 'Correção válida', notes: 'a'.repeat(2001) },
+      { reason: 'Correção válida', quantity: '0.5' },
+      { reason: 'Correção válida', type: 'IN' },
+      { reason: 'Correção válida', origin: 'MANUAL' },
+      { reason: 'Correção válida', organizationId: randomUUID() },
+      { reason: 'Correção válida', productId: randomUUID() },
+      { reason: 'Correção válida', reversalOfId: randomUUID() },
+      {
+        reason: 'Correção válida',
+        occurredAt: '2026-01-01T12:00:00.000Z',
+      },
+    ];
+
+    for (const payload of invalidPayloads) {
+      await request(httpServer())
+        .post(url)
+        .set('Cookie', sessionCookie)
+        .send(payload)
+        .expect(400);
+    }
+
+    expect(
+      await prisma.stockMovement.count({
+        where: { organizationId, productId },
+      }),
+    ).toBe(1);
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId,
+          action: 'stock_movement.reversed',
+          entityId: original.body.id,
+        },
+      }),
+    ).toBe(0);
   });
 });
