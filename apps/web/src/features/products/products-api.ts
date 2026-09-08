@@ -55,6 +55,19 @@ export interface CreateProductInput {
   notes?: string;
 }
 
+export interface UpdateProductInput {
+  type?: ProductType;
+  name?: string;
+  sku?: string | null;
+  barcode?: string | null;
+  unit?: string;
+  directCost?: string | null;
+  trackInventory?: boolean;
+  minimumStock?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+}
+
 export async function getProducts(input: ListProductsInput = {}): Promise<ProductsResponse> {
   const parameters = new URLSearchParams();
 
@@ -91,6 +104,21 @@ export async function getProduct(productId: string): Promise<Product> {
 export async function createProduct(input: CreateProductInput): Promise<Product> {
   const response = await apiRequest('/products', {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  return productSchema.parse(await response.json());
+}
+
+export async function updateProduct(
+  productId: string,
+  input: UpdateProductInput,
+): Promise<Product> {
+  const response = await apiRequest(`/products/${encodeURIComponent(productId)}`, {
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
     },

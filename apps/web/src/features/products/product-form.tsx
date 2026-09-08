@@ -56,16 +56,30 @@ const productFormSchema = z
 
 export type ProductFormData = z.infer<typeof productFormSchema>;
 
+const defaultValues: ProductFormData = {
+  type: 'PRODUCT',
+  name: '',
+  sku: '',
+  barcode: '',
+  unit: 'UN',
+  directCost: '',
+  trackInventory: false,
+  minimumStock: '',
+  notes: '',
+};
+
 interface ProductFormProps {
   isPending: boolean;
   errorMessage?: string;
   submitLabel: string;
   pendingLabel: string;
+  initialValues?: ProductFormData;
   onSubmit: (data: ProductFormData) => void;
   onCancel: () => void;
 }
 
 export function ProductForm({
+  initialValues = defaultValues,
   isPending,
   errorMessage,
   submitLabel,
@@ -82,17 +96,7 @@ export function ProductForm({
     formState: { errors },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productFormSchema),
-    defaultValues: {
-      type: 'PRODUCT',
-      name: '',
-      sku: '',
-      barcode: '',
-      unit: 'UN',
-      directCost: '',
-      trackInventory: false,
-      minimumStock: '',
-      notes: '',
-    },
+    defaultValues: initialValues,
   });
 
   const productType = useWatch({

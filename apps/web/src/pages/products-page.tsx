@@ -234,7 +234,15 @@ export function ProductsPage() {
                 <tbody>
                   {response.data.map((product) => (
                     <tr key={product.id} className="border-t bg-background">
-                      <td className="px-4 py-3 font-medium">{product.name}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <button
+                          type="button"
+                          className="text-left text-primary hover:underline"
+                          onClick={() => navigate(`/app/produtos/${product.id}`)}
+                        >
+                          {product.name}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {product.type === 'PRODUCT' ? 'Produto' : 'Serviço'}
                       </td>
