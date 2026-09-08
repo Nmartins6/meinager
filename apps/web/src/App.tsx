@@ -69,6 +69,16 @@ const FinancialEntryPage = lazy(async () => {
   return { default: module.FinancialEntryPage };
 });
 
+const ProductsPage = lazy(async () => {
+  const module = await import('@/pages/products-page');
+  return { default: module.ProductsPage };
+});
+
+const NewProductPage = lazy(async () => {
+  const module = await import('@/pages/new-product-page');
+  return { default: module.NewProductPage };
+});
+
 interface LazyRouteProps {
   children: ReactNode;
 }
@@ -165,6 +175,15 @@ export function App() {
           />
 
           <Route
+            path="produtos"
+            element={
+              <LazyRoute>
+                <ProductsPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
             path="financeiro"
             element={
               <LazyRoute>
@@ -214,6 +233,15 @@ export function App() {
             element={
               <LazyRoute>
                 <FinancialEntryPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="produtos/novo"
+            element={
+              <LazyRoute>
+                <NewProductPage />
               </LazyRoute>
             }
           />
