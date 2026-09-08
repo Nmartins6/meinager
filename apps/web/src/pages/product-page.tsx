@@ -7,6 +7,7 @@ import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
 import { ProductForm, type ProductFormData } from '@/features/products/product-form';
 import { useProductQuery } from '@/features/products/use-product-query';
 import { useUpdateProductMutation } from '@/features/products/use-update-product-mutation';
+import { ProductInventory } from '@/features/inventory/product-inventory';
 
 export function ProductPage() {
   const navigate = useNavigate();
@@ -185,6 +186,15 @@ export function ProductPage() {
           </CardContent>
         </Card>
       )}
+
+      {product.type === 'PRODUCT' && product.trackInventory ? (
+        <ProductInventory
+          productId={product.id}
+          unit={product.unit}
+          canManage={canManage}
+          isActive={product.isActive}
+        />
+      ) : null}
     </section>
   );
 }
