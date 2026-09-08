@@ -36,6 +36,17 @@ enum ProductType {
   SERVICE
 }
 
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum StockMovementOrigin {
+  MANUAL
+  ADJUSTMENT
+  REVERSAL
+}
+
 enum FinancialPeriodStatus {
   OPEN
   CLOSED
@@ -109,6 +120,7 @@ model Organization {
   auditLogs            AuditLog[]
   clients              Client[]
   products             Product[]
+  stockMovements       StockMovement[]
   financialPeriods     FinancialPeriod[]
   financialCategories  FinancialCategory[]
   financialAccounts    FinancialAccount[]
@@ -228,13 +240,38 @@ model Product {
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stockMovements StockMovement[]
 
+  @@unique([organizationId, id])
   @@unique([organizationId, sku])
   @@unique([organizationId, barcode])
   @@index([organizationId, normalizedName])
   @@index([organizationId, type, isActive])
   @@map("products")
+}
+
+model StockMovement {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  productId      String              @map("product_id") @db.Uuid
+  type           StockMovementType
+  origin         StockMovementOrigin @default(MANUAL)
+  quantity       Decimal             @db.Decimal(18, 6)
+  reason         String              @db.VarChar(255)
+  notes          String?             @db.Text
+  reversalOfId   String?             @unique @map("reversal_of_id") @db.Uuid
+  occurredAt     DateTime            @map("occurred_at") @db.Timestamptz(3)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product        @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  reversalOf   StockMovement? @relation("StockMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal     StockMovement? @relation("StockMovementReversal")
+
+  @@index([organizationId, productId, occurredAt, id])
+  @@index([organizationId, occurredAt, id])
+  @@map("stock_movements")
 }
 
 model FinancialPeriod {
