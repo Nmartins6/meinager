@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -19,6 +20,7 @@ import { CreateStockMovementDto } from './dto/create-stock-movement.dto.js';
 import { ListStockMovementsQueryDto } from './dto/list-stock-movements-query.dto.js';
 import { InventoryService } from './inventory.service.js';
 import { ReverseStockMovementDto } from './dto/reverse-stock-movement.dto.js';
+import { AdjustStockDto } from './dto/adjust-stock.dto.js';
 
 @Controller('inventory/products/:productId')
 @UseGuards(SessionAuthGuard, OrganizationRolesGuard)
@@ -64,6 +66,27 @@ export class InventoryController {
       request.auth.user.id,
       productId,
       movementId,
+      dto,
+    );
+  }
+
+    @Post('adjustments')
+  @HttpCode(200)
+  @OrganizationRoles(
+    OrganizationRole.OWNER,
+    OrganizationRole.ADMIN,
+    OrganizationRole.OPERATIONS,
+  )
+  adjust(
+    @Param('productId', new ParseUUIDPipe({ version: '4' }))
+    productId: string,
+    @Body() dto: AdjustStockDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.adjust(
+      request.auth.organization.id,
+      request.auth.user.id,
+      productId,
       dto,
     );
   }

@@ -901,41 +901,290 @@ describe('Inventory (e2e)', () => {
     expect(balance.body.balance).toBe('1');
   });
 
-  afterAll(async () => {
-    try {
-      if (organizationId) {
-        await prisma.$transaction([
-          prisma.auditLog.deleteMany({
-            where: {
-              organizationId,
-            },
-          }),
-          prisma.stockMovement.deleteMany({
-            where: {
-              organizationId,
-            },
-          }),
-          prisma.organization.delete({
-            where: {
-              id: organizationId,
-            },
-          }),
-        ]);
-      }
+    it('POST adjustments should increase stock and audit the difference', async () => {
+    const productId = await createProduct();
 
-      if (userId) {
-        await prisma.user.delete({
-          where: {
-            id: userId,
-          },
-        });
-      }
-    } finally {
-      await app?.close();
-    }
+    await createMovement(productId, 'IN', '2').expect(201);
+
+    const response = await request(httpServer())
+      .post(`/api/inventory/products/${productId}/adjustments`)
+      .set('Cookie', sessionCookie)
+      .send({
+        countedQuantity: '3.000001',
+        expectedBalance: '2',
+        reason: '  Conferência física do estoque  ',
+        notes: 'Material encontrado na conferência.',
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      productId,
+      previousBalance: '2',
+      balance: '3.000001',
+      movement: {
+        productId,
+        type: 'IN',
+        origin: 'ADJUSTMENT',
+        quantity: '1.000001',
+        reason: 'Conferência física do estoque',
+        notes: 'Material encontrado na conferência.',
+        reversalOfId: null,
+      },
+    });
+
+    const persisted = await prisma.stockMovement.findUniqueOrThrow({
+      where: { id: response.body.movement.id },
+    });
+
+    expect(persisted.organizationId).toBe(organizationId);
+    expect(persisted.quantity.toString()).toBe('1.000001');
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        action: 'stock_movement.adjusted',
+        entityId: response.body.movement.id,
+      },
+    });
+
+    expect(audit.entityType).toBe('stock_movement');
+    expect(audit.metadata).toEqual({
+      productId,
+      type: 'IN',
+      origin: 'ADJUSTMENT',
+      quantity: '1.000001',
+      previousBalance: '2',
+      countedQuantity: '3.000001',
+      expectedBalance: '2',
+      reason: 'Conferência física do estoque',
+    });
+
+    const balance = await request(httpServer())
+      .get(`/api/inventory/products/${productId}/balance`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(balance.body.balance).toBe('3.000001');
   });
 
-    it('POST reverse should enforce permissions for every organization role', async () => {
+  it('POST adjustments should decrease stock and allow a zero count', async () => {
+    const productId = await createProduct();
+
+    await createMovement(productId, 'IN', '3.000001').expect(201);
+
+    const decreased = await request(httpServer())
+      .post(`/api/inventory/products/${productId}/adjustments`)
+      .set('Cookie', sessionCookie)
+      .send({
+        countedQuantity: '1',
+        expectedBalance: '3.000001',
+        reason: 'Correção após contagem física',
+      })
+      .expect(200);
+
+    expect(decreased.body).toMatchObject({
+      previousBalance: '3.000001',
+      balance: '1',
+      movement: {
+        type: 'OUT',
+        origin: 'ADJUSTMENT',
+        quantity: '2.000001',
+      },
+    });
+
+    const zeroed = await request(httpServer())
+      .post(`/api/inventory/products/${productId}/adjustments`)
+      .set('Cookie', sessionCookie)
+      .send({
+        countedQuantity: '0',
+        expectedBalance: '1',
+        reason: 'Nenhuma unidade encontrada',
+      })
+      .expect(200);
+
+    expect(zeroed.body).toMatchObject({
+      previousBalance: '1',
+      balance: '0',
+      movement: {
+        type: 'OUT',
+        origin: 'ADJUSTMENT',
+        quantity: '1',
+      },
+    });
+
+    const balance = await request(httpServer())
+      .get(`/api/inventory/products/${productId}/balance`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(balance.body).toMatchObject({
+      totalIn: '3.000001',
+      totalOut: '3.000001',
+      balance: '0',
+    });
+  });
+
+  it('POST adjustments should not persist changes when the count matches the balance', async () => {
+    const productId = await createProduct();
+
+    await createMovement(productId, 'IN', '2').expect(201);
+
+    const response = await request(httpServer())
+      .post(`/api/inventory/products/${productId}/adjustments`)
+      .set('Cookie', sessionCookie)
+      .send({
+        countedQuantity: '2.000000',
+        expectedBalance: '2.0',
+        reason: 'Contagem confere com o sistema',
+      })
+      .expect(200);
+
+    expect(response.body).toEqual({
+      productId,
+      previousBalance: '2',
+      balance: '2',
+      movement: null,
+    });
+
+    expect(
+      await prisma.stockMovement.count({
+        where: { organizationId, productId },
+      }),
+    ).toBe(1);
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId,
+          action: 'stock_movement.adjusted',
+          metadata: {
+            path: ['productId'],
+            equals: productId,
+          },
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it('POST adjustments should reject a stale balance even when the count matches the current stock', async () => {
+    const productId = await createProduct();
+
+    await createMovement(productId, 'IN', '2').expect(201);
+    await createMovement(productId, 'OUT', '1').expect(201);
+
+    const response = await request(httpServer())
+      .post(`/api/inventory/products/${productId}/adjustments`)
+      .set('Cookie', sessionCookie)
+      .send({
+        countedQuantity: '1',
+        expectedBalance: '2',
+        reason: 'Contagem baseada em consulta anterior',
+      })
+      .expect(409);
+
+    expect(response.body.message).toBe(
+      'O saldo de estoque mudou. Atualize os dados e confira a contagem antes de tentar novamente.',
+    );
+
+    expect(
+      await prisma.stockMovement.count({
+        where: { organizationId, productId },
+      }),
+    ).toBe(2);
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId,
+          action: 'stock_movement.adjusted',
+          metadata: {
+            path: ['productId'],
+            equals: productId,
+          },
+        },
+      }),
+    ).toBe(0);
+
+    const balance = await request(httpServer())
+      .get(`/api/inventory/products/${productId}/balance`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(balance.body.balance).toBe('1');
+  });
+
+  it('POST adjustments should serialize concurrent adjustments using the same expected balance', async () => {
+    const productId = await createProduct();
+
+    await createMovement(productId, 'IN', '2').expect(201);
+
+    const url = `/api/inventory/products/${productId}/adjustments`;
+
+    const responses = await Promise.all([
+      request(httpServer())
+        .post(url)
+        .set('Cookie', sessionCookie)
+        .send({
+          countedQuantity: '3',
+          expectedBalance: '2',
+          reason: 'Primeira contagem física',
+        }),
+      request(httpServer())
+        .post(url)
+        .set('Cookie', sessionCookie)
+        .send({
+          countedQuantity: '4',
+          expectedBalance: '2',
+          reason: 'Segunda contagem física',
+        }),
+    ]);
+
+    expect(
+      responses.map((response) => response.status).sort(),
+    ).toEqual([200, 409]);
+
+    const successful = responses.find(
+      (response) => response.status === 200,
+    );
+
+    if (!successful) {
+      throw new Error('No adjustment succeeded');
+    }
+
+    expect(
+      await prisma.stockMovement.count({
+        where: {
+          organizationId,
+          productId,
+          origin: 'ADJUSTMENT',
+        },
+      }),
+    ).toBe(1);
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId,
+          action: 'stock_movement.adjusted',
+          metadata: {
+            path: ['productId'],
+            equals: productId,
+          },
+        },
+      }),
+    ).toBe(1);
+
+    const balance = await request(httpServer())
+      .get(`/api/inventory/products/${productId}/balance`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(balance.body.balance).toBe(successful.body.balance);
+    expect(['3', '4']).toContain(balance.body.balance);
+  });
+
+  it('POST reverse should enforce permissions for every organization role', async () => {
     if (!organizationId || !userId) {
       throw new Error('Authenticated organization was not initialized');
     }
@@ -1173,5 +1422,324 @@ describe('Inventory (e2e)', () => {
         },
       }),
     ).toBe(0);
+  });
+
+    it('POST adjustments should enforce permissions for every organization role', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Authenticated organization was not initialized');
+    }
+
+    const productId = await createProduct();
+    const membershipWhere = {
+      organizationId_userId: {
+        organizationId,
+        userId,
+      },
+    };
+
+    const cases = [
+      { role: OrganizationRole.OWNER, canWrite: true },
+      { role: OrganizationRole.ADMIN, canWrite: true },
+      { role: OrganizationRole.OPERATIONS, canWrite: true },
+      { role: OrganizationRole.FINANCE, canWrite: false },
+      { role: OrganizationRole.VIEWER, canWrite: false },
+    ];
+
+    let balance = 0;
+
+    try {
+      for (const permissionCase of cases) {
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: { role: permissionCase.role },
+        });
+
+        await request(httpServer())
+          .post(`/api/inventory/products/${productId}/adjustments`)
+          .set('Cookie', sessionCookie)
+          .send({
+            countedQuantity: String(balance + 1),
+            expectedBalance: String(balance),
+            reason: 'Conferência física do estoque',
+          })
+          .expect(permissionCase.canWrite ? 200 : 403);
+
+        if (permissionCase.canWrite) {
+          balance += 1;
+        }
+      }
+
+      expect(
+        await prisma.stockMovement.count({
+          where: {
+            organizationId,
+            productId,
+            origin: 'ADJUSTMENT',
+          },
+        }),
+      ).toBe(3);
+
+      expect(
+        await prisma.auditLog.count({
+          where: {
+            organizationId,
+            action: 'stock_movement.adjusted',
+            metadata: {
+              path: ['productId'],
+              equals: productId,
+            },
+          },
+        }),
+      ).toBe(3);
+
+      const response = await request(httpServer())
+        .get(`/api/inventory/products/${productId}/balance`)
+        .set('Cookie', sessionCookie)
+        .expect(200);
+
+      expect(response.body.balance).toBe('3');
+    } finally {
+      await prisma.organizationMember.update({
+        where: membershipWhere,
+        data: { role: OrganizationRole.OWNER },
+      });
+    }
+  });
+
+  it('POST adjustments should require authentication and reject invalid payloads', async () => {
+    const productId = await createProduct();
+    const url = `/api/inventory/products/${productId}/adjustments`;
+
+    const validPayload = {
+      countedQuantity: '1',
+      expectedBalance: '0',
+      reason: 'Conferência física do estoque',
+    };
+
+    await request(httpServer())
+      .post(url)
+      .send(validPayload)
+      .expect(401);
+
+    const invalidPayloads = [
+      {},
+      { expectedBalance: '0', reason: 'Contagem sem quantidade' },
+      { countedQuantity: '1', reason: 'Contagem sem saldo esperado' },
+      { ...validPayload, countedQuantity: '-1' },
+      { ...validPayload, countedQuantity: 1 },
+      { ...validPayload, countedQuantity: null },
+      { ...validPayload, countedQuantity: '0.1234567' },
+      { ...validPayload, countedQuantity: '1000000000000' },
+      { ...validPayload, countedQuantity: '1,5' },
+      { ...validPayload, countedQuantity: 'NaN' },
+      { ...validPayload, countedQuantity: 'Infinity' },
+      { ...validPayload, countedQuantity: '1e3' },
+      { ...validPayload, expectedBalance: '-1' },
+      { ...validPayload, expectedBalance: 0 },
+      { ...validPayload, expectedBalance: null },
+      { ...validPayload, expectedBalance: 'NaN' },
+      { ...validPayload, expectedBalance: '0.1234567' },
+      { ...validPayload, reason: null },
+      { ...validPayload, reason: '   ' },
+      { ...validPayload, reason: 'ab' },
+      { ...validPayload, reason: 'a'.repeat(256) },
+      { ...validPayload, notes: 'a'.repeat(2001) },
+      { ...validPayload, organizationId: randomUUID() },
+      { ...validPayload, productId: randomUUID() },
+      { ...validPayload, type: 'IN' },
+      { ...validPayload, origin: 'MANUAL' },
+      { ...validPayload, quantity: '1' },
+      { ...validPayload, reversalOfId: randomUUID() },
+      {
+        ...validPayload,
+        occurredAt: '2026-01-01T12:00:00.000Z',
+      },
+    ];
+
+    for (const payload of invalidPayloads) {
+      await request(httpServer())
+        .post(url)
+        .set('Cookie', sessionCookie)
+        .send(payload)
+        .expect(400);
+    }
+
+    expect(
+      await prisma.stockMovement.count({
+        where: { organizationId, productId },
+      }),
+    ).toBe(0);
+
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId,
+          action: 'stock_movement.adjusted',
+          metadata: {
+            path: ['productId'],
+            equals: productId,
+          },
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it('POST adjustments should reject inactive products, services and untracked products', async () => {
+    const inactiveProductId = await createProduct();
+
+    await request(httpServer())
+      .patch(`/api/products/${inactiveProductId}`)
+      .set('Cookie', sessionCookie)
+      .send({ isActive: false })
+      .expect(200);
+
+    const productIds = [inactiveProductId];
+
+    for (const type of ['PRODUCT', 'SERVICE'] as const) {
+      const response = await request(httpServer())
+        .post('/api/products')
+        .set('Cookie', sessionCookie)
+        .send({
+          name: `Produto sem estoque ${randomUUID()}`,
+          type,
+          unit: 'UN',
+          trackInventory: false,
+        })
+        .expect(201);
+
+      productIds.push(response.body.id);
+    }
+
+    for (const productId of productIds) {
+      await request(httpServer())
+        .post(`/api/inventory/products/${productId}/adjustments`)
+        .set('Cookie', sessionCookie)
+        .send({
+          countedQuantity: '1',
+          expectedBalance: '0',
+          reason: 'Conferência física do estoque',
+        })
+        .expect(400);
+    }
+
+    expect(
+      await prisma.stockMovement.count({
+        where: {
+          organizationId,
+          productId: { in: productIds },
+        },
+      }),
+    ).toBe(0);
+
+    for (const productId of productIds) {
+      expect(
+        await prisma.auditLog.count({
+          where: {
+            organizationId,
+            action: 'stock_movement.adjusted',
+            metadata: {
+              path: ['productId'],
+              equals: productId,
+            },
+          },
+        }),
+      ).toBe(0);
+    }
+  });
+
+  it('POST adjustments should not adjust another organization product', async () => {
+    const otherOrganization = await prisma.organization.create({
+      data: {
+        name: 'Empresa externa para ajustes',
+        slug: `ajustes-externos-${randomUUID()}`,
+      },
+    });
+
+    try {
+      const product = await prisma.product.create({
+        data: {
+          organizationId: otherOrganization.id,
+          name: 'Produto externo',
+          normalizedName: 'produto externo',
+          type: 'PRODUCT',
+          unit: 'UN',
+          trackInventory: true,
+        },
+      });
+
+      await request(httpServer())
+        .post(`/api/inventory/products/${product.id}/adjustments`)
+        .set('Cookie', sessionCookie)
+        .send({
+          countedQuantity: '1',
+          expectedBalance: '0',
+          reason: 'Tentativa de ajuste externo',
+        })
+        .expect(404);
+
+      expect(
+        await prisma.stockMovement.count({
+          where: { productId: product.id },
+        }),
+      ).toBe(0);
+
+      expect(
+        await prisma.auditLog.count({
+          where: {
+            action: 'stock_movement.adjusted',
+            metadata: {
+              path: ['productId'],
+              equals: product.id,
+            },
+          },
+        }),
+      ).toBe(0);
+    } finally {
+      await prisma.$transaction([
+        prisma.auditLog.deleteMany({
+          where: { organizationId: otherOrganization.id },
+        }),
+        prisma.stockMovement.deleteMany({
+          where: { organizationId: otherOrganization.id },
+        }),
+        prisma.organization.delete({
+          where: { id: otherOrganization.id },
+        }),
+      ]);
+    }
+  });
+
+  afterAll(async () => {
+    try {
+      if (organizationId) {
+        await prisma.$transaction([
+          prisma.auditLog.deleteMany({
+            where: {
+              organizationId,
+            },
+          }),
+          prisma.stockMovement.deleteMany({
+            where: {
+              organizationId,
+            },
+          }),
+          prisma.organization.delete({
+            where: {
+              id: organizationId,
+            },
+          }),
+        ]);
+      }
+
+      if (userId) {
+        await prisma.user.delete({
+          where: {
+            id: userId,
+          },
+        });
+      }
+    } finally {
+      await app?.close();
+    }
   });
 });

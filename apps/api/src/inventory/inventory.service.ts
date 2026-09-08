@@ -16,6 +16,7 @@ import { lockProduct } from '../products/lock-product.js';
 import type { CreateStockMovementDto } from './dto/create-stock-movement.dto.js';
 import type { ListStockMovementsQueryDto } from './dto/list-stock-movements-query.dto.js';
 import type { ReverseStockMovementDto } from './dto/reverse-stock-movement.dto.js';
+import type { AdjustStockDto } from './dto/adjust-stock.dto.js';
 
 const movementSelect = {
   id: true,
@@ -60,6 +61,13 @@ export interface PaginatedStockMovementsResponse {
     total: number;
     totalPages: number;
   };
+}
+
+export interface StockAdjustmentResponse {
+  productId: string;
+  previousBalance: string;
+  balance: string;
+  movement: StockMovementResponse | null;
 }
 
 @Injectable()
@@ -262,6 +270,133 @@ export class InventoryService {
         });
 
         return this.toResponse(reversal);
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      },
+    );
+  }
+
+    async adjust(
+    organizationId: string,
+    actorUserId: string,
+    productId: string,
+    dto: AdjustStockDto,
+  ): Promise<StockAdjustmentResponse> {
+    const countedQuantity = new Prisma.Decimal(dto.countedQuantity);
+    const expectedBalance = new Prisma.Decimal(dto.expectedBalance);
+
+    if (
+      !countedQuantity.isFinite() ||
+      countedQuantity.isNegative() ||
+      !expectedBalance.isFinite() ||
+      expectedBalance.isNegative()
+    ) {
+      throw new BadRequestException(
+        'A contagem e o saldo esperado devem ser não negativos.',
+      );
+    }
+
+    return this.prisma.$transaction(
+      async (transaction) => {
+        await lockProduct(transaction, organizationId, productId);
+
+        const product = await this.findProduct(
+          transaction,
+          organizationId,
+          productId,
+        );
+
+        if (!product.isActive) {
+          throw new BadRequestException(
+            'Produtos inativos não podem receber ajustes de estoque.',
+          );
+        }
+
+        if (
+          product.type !== ProductType.PRODUCT ||
+          !product.trackInventory
+        ) {
+          throw new BadRequestException(
+            'O produto deve ter o controle de estoque habilitado.',
+          );
+        }
+
+        const totals = await this.calculateTotals(
+          transaction,
+          organizationId,
+          productId,
+        );
+
+        const currentBalance = new Prisma.Decimal(totals.balance);
+
+        if (!currentBalance.equals(expectedBalance)) {
+          throw new ConflictException(
+            'O saldo de estoque mudou. Atualize os dados e confira a contagem antes de tentar novamente.',
+          );
+        }
+
+        const difference = countedQuantity.minus(currentBalance);
+
+        if (difference.isZero()) {
+          return {
+            productId,
+            previousBalance: currentBalance.toString(),
+            balance: currentBalance.toString(),
+            movement: null,
+          };
+        }
+
+        const quantity = difference.abs();
+
+        if (quantity.greaterThan('999999999999.999999')) {
+          throw new BadRequestException(
+            'A diferença excede o limite permitido por movimentação.',
+          );
+        }
+
+        const movement = await transaction.stockMovement.create({
+          data: {
+            organizationId,
+            productId,
+            type: difference.isPositive()
+              ? StockMovementType.IN
+              : StockMovementType.OUT,
+            origin: StockMovementOrigin.ADJUSTMENT,
+            quantity,
+            reason: dto.reason,
+            notes: dto.notes ?? null,
+            occurredAt: new Date(),
+          },
+          select: movementSelect,
+        });
+
+        await transaction.auditLog.create({
+          data: {
+            organizationId,
+            actorUserId,
+            action: 'stock_movement.adjusted',
+            entityType: 'stock_movement',
+            entityId: movement.id,
+            metadata: {
+              productId,
+              type: movement.type,
+              origin: movement.origin,
+              quantity: quantity.toString(),
+              previousBalance: currentBalance.toString(),
+              countedQuantity: countedQuantity.toString(),
+              expectedBalance: expectedBalance.toString(),
+              reason: movement.reason,
+            },
+          },
+        });
+
+        return {
+          productId,
+          previousBalance: currentBalance.toString(),
+          balance: countedQuantity.toString(),
+          movement: this.toResponse(movement),
+        };
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
