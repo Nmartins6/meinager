@@ -11,6 +11,7 @@ import { ProductType } from '../generated/prisma/enums.js';
 import type { CreateProductDto } from './dto/create-product.dto.js';
 import type { ListProductsQueryDto } from './dto/list-products-query.dto.js';
 import type { UpdateProductDto } from './dto/update-product.dto.js';
+import { lockProduct } from './lock-product.js';
 
 const productSelect = {
   id: true,
@@ -196,7 +197,9 @@ export class ProductsService {
 
     try {
       return await this.prisma.$transaction(async (transaction) => {
-        const existingProduct = await transaction.product.findFirst({
+  await lockProduct(transaction, organizationId, productId);
+
+  const existingProduct = await transaction.product.findFirst({
           where: {
             id: productId,
             organizationId,
@@ -207,6 +210,30 @@ export class ProductsService {
         if (!existingProduct) {
           throw new NotFoundException('Produto não encontrado.');
         }
+
+        const changesInventoryDefinition =
+  (dto.unit !== undefined && dto.unit !== existingProduct.unit) ||
+  (dto.type !== undefined && dto.type !== existingProduct.type) ||
+  (dto.trackInventory !== undefined &&
+    dto.trackInventory !== existingProduct.trackInventory);
+
+if (changesInventoryDefinition) {
+  const movement = await transaction.stockMovement.findFirst({
+    where: {
+      organizationId,
+      productId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (movement) {
+    throw new BadRequestException(
+      'Produtos com histórico de estoque não podem alterar unidade, tipo ou controle de estoque.',
+    );
+  }
+}
 
         const type = dto.type ?? existingProduct.type;
         const trackInventory =

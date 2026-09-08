@@ -28,14 +28,18 @@ describe('ProductsService', () => {
   };
 
   const transaction = {
-    product: {
-      findFirst: vi.fn(),
-      update: vi.fn(),
-    },
-    auditLog: {
-      create: vi.fn(),
-    },
-  };
+  $queryRaw: vi.fn(),
+  product: {
+    findFirst: vi.fn(),
+    update: vi.fn(),
+  },
+  stockMovement: {
+    findFirst: vi.fn(),
+  },
+  auditLog: {
+    create: vi.fn(),
+  },
+};
 
   const prismaMock = {
     $transaction: vi.fn(),
@@ -45,6 +49,9 @@ describe('ProductsService', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks();
+
+    transaction.$queryRaw.mockResolvedValue([{ id: productId }]);
+transaction.stockMovement.findFirst.mockResolvedValue(null);
 
     prismaMock.$transaction.mockImplementation(
       async (callback: (tx: typeof transaction) => Promise<unknown>) =>
@@ -159,6 +166,37 @@ describe('ProductsService', () => {
         type: ProductType.SERVICE,
       }),
     ).rejects.toThrow('Serviços não podem controlar estoque.');
+
+    expect(transaction.product.update).not.toHaveBeenCalled();
+    expect(transaction.auditLog.create).not.toHaveBeenCalled();
+  });
+
+    it.each([
+    {
+      field: 'unit',
+      dto: { unit: 'KG' },
+    },
+    {
+      field: 'type',
+      dto: {
+        type: ProductType.SERVICE,
+        trackInventory: false,
+      },
+    },
+    {
+      field: 'trackInventory',
+      dto: { trackInventory: false },
+    },
+  ])('should protect $field when stock history exists', async ({ dto }) => {
+    transaction.stockMovement.findFirst.mockResolvedValue({
+      id: 'ff7e2b0c-a8d5-4f91-bb63-3e751754dfe4',
+    });
+
+    await expect(
+      service.update(organizationId, actorUserId, productId, dto),
+    ).rejects.toThrow(
+      'Produtos com histórico de estoque não podem alterar unidade, tipo ou controle de estoque.',
+    );
 
     expect(transaction.product.update).not.toHaveBeenCalled();
     expect(transaction.auditLog.create).not.toHaveBeenCalled();
