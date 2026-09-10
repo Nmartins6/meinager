@@ -47,7 +47,7 @@ export class InventoryController {
     );
   }
 
-    @Post('movements/:movementId/reverse')
+  @Post('movements/:movementId/reverse')
   @OrganizationRoles(
     OrganizationRole.OWNER,
     OrganizationRole.ADMIN,
@@ -70,7 +70,7 @@ export class InventoryController {
     );
   }
 
-    @Post('adjustments')
+  @Post('adjustments')
   @HttpCode(200)
   @OrganizationRoles(
     OrganizationRole.OWNER,

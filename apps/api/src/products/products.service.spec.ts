@@ -28,18 +28,18 @@ describe('ProductsService', () => {
   };
 
   const transaction = {
-  $queryRaw: vi.fn(),
-  product: {
-    findFirst: vi.fn(),
-    update: vi.fn(),
-  },
-  stockMovement: {
-    findFirst: vi.fn(),
-  },
-  auditLog: {
-    create: vi.fn(),
-  },
-};
+    $queryRaw: vi.fn(),
+    product: {
+      findFirst: vi.fn(),
+      update: vi.fn(),
+    },
+    stockMovement: {
+      findFirst: vi.fn(),
+    },
+    auditLog: {
+      create: vi.fn(),
+    },
+  };
 
   const prismaMock = {
     $transaction: vi.fn(),
@@ -51,7 +51,7 @@ describe('ProductsService', () => {
     vi.resetAllMocks();
 
     transaction.$queryRaw.mockResolvedValue([{ id: productId }]);
-transaction.stockMovement.findFirst.mockResolvedValue(null);
+    transaction.stockMovement.findFirst.mockResolvedValue(null);
 
     prismaMock.$transaction.mockImplementation(
       async (callback: (tx: typeof transaction) => Promise<unknown>) =>
@@ -171,7 +171,7 @@ transaction.stockMovement.findFirst.mockResolvedValue(null);
     expect(transaction.auditLog.create).not.toHaveBeenCalled();
   });
 
-    it.each([
+  it.each([
     {
       field: 'unit',
       dto: { unit: 'KG' },

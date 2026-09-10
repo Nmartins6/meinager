@@ -83,9 +83,7 @@ export class InventoryService {
     const quantity = new Prisma.Decimal(dto.quantity);
 
     if (!quantity.isFinite() || quantity.lessThanOrEqualTo(0)) {
-      throw new BadRequestException(
-        'A quantidade deve ser maior que zero.',
-      );
+      throw new BadRequestException('A quantidade deve ser maior que zero.');
     }
 
     return this.prisma.$transaction(
@@ -104,10 +102,7 @@ export class InventoryService {
           );
         }
 
-        if (
-          product.type !== ProductType.PRODUCT ||
-          !product.trackInventory
-        ) {
+        if (product.type !== ProductType.PRODUCT || !product.trackInventory) {
           throw new BadRequestException(
             'O produto deve ter o controle de estoque habilitado.',
           );
@@ -167,7 +162,7 @@ export class InventoryService {
     );
   }
 
-    async reverse(
+  async reverse(
     organizationId: string,
     actorUserId: string,
     productId: string,
@@ -211,9 +206,7 @@ export class InventoryService {
         });
 
         if (existingReversal) {
-          throw new ConflictException(
-            'Esta movimentação já foi estornada.',
-          );
+          throw new ConflictException('Esta movimentação já foi estornada.');
         }
 
         const reversalType =
@@ -277,7 +270,7 @@ export class InventoryService {
     );
   }
 
-    async adjust(
+  async adjust(
     organizationId: string,
     actorUserId: string,
     productId: string,
@@ -313,10 +306,7 @@ export class InventoryService {
           );
         }
 
-        if (
-          product.type !== ProductType.PRODUCT ||
-          !product.trackInventory
-        ) {
+        if (product.type !== ProductType.PRODUCT || !product.trackInventory) {
           throw new BadRequestException(
             'O produto deve ter o controle de estoque habilitado.',
           );
@@ -421,11 +411,7 @@ export class InventoryService {
 
     return this.prisma.$transaction(
       async (transaction) => {
-        await this.findProduct(
-          transaction,
-          organizationId,
-          productId,
-        );
+        await this.findProduct(transaction, organizationId, productId);
 
         const movements = await transaction.stockMovement.findMany({
           where,
@@ -482,9 +468,7 @@ export class InventoryService {
           isBelowMinimum:
             product.trackInventory &&
             product.minimumStock !== null &&
-            new Prisma.Decimal(totals.balance).lessThan(
-              product.minimumStock,
-            ),
+            new Prisma.Decimal(totals.balance).lessThan(product.minimumStock),
         };
       },
       {
@@ -562,9 +546,7 @@ export class InventoryService {
     };
   }
 
-  private toResponse(
-    movement: SelectedMovement,
-  ): StockMovementResponse {
+  private toResponse(movement: SelectedMovement): StockMovementResponse {
     return {
       ...movement,
       quantity: movement.quantity.toString(),

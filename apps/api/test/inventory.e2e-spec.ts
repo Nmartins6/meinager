@@ -78,9 +78,7 @@ describe('Inventory (e2e)', () => {
     organizationId = registration.body.organization.id;
 
     const cookieHeader = registration.headers['set-cookie'];
-    const cookie = Array.isArray(cookieHeader)
-      ? cookieHeader[0]
-      : cookieHeader;
+    const cookie = Array.isArray(cookieHeader) ? cookieHeader[0] : cookieHeader;
 
     if (!cookie) {
       throw new Error('Session cookie was not returned');
@@ -112,11 +110,7 @@ describe('Inventory (e2e)', () => {
   it('should preserve decimal precision and filter history independently of balance', async () => {
     const productId = await createProduct();
 
-    const entry = await createMovement(
-      productId,
-      'IN',
-      '1.000001',
-    ).expect(201);
+    const entry = await createMovement(productId, 'IN', '1.000001').expect(201);
 
     expect(entry.body).toMatchObject({
       productId,
@@ -126,11 +120,7 @@ describe('Inventory (e2e)', () => {
       reversalOfId: null,
     });
 
-    const exit = await createMovement(
-      productId,
-      'OUT',
-      '0.000002',
-    ).expect(201);
+    const exit = await createMovement(productId, 'OUT', '0.000002').expect(201);
 
     const history = await request(httpServer())
       .get(`/api/inventory/products/${productId}/movements`)
@@ -200,11 +190,9 @@ describe('Inventory (e2e)', () => {
 
     await createMovement(productId, 'IN', '2').expect(201);
 
-    const response = await createMovement(
-      productId,
-      'OUT',
-      '2.000001',
-    ).expect(409);
+    const response = await createMovement(productId, 'OUT', '2.000001').expect(
+      409,
+    );
 
     expect(response.body.message).toBe(
       'Saldo de estoque insuficiente para esta saída.',
@@ -281,7 +269,7 @@ describe('Inventory (e2e)', () => {
     expect(withdrawalCount).toBe(1);
   });
 
-    it('should enforce movement permissions for every organization role', async () => {
+  it('should enforce movement permissions for every organization role', async () => {
     if (!organizationId || !userId) {
       throw new Error('Test membership was not initialized');
     }
@@ -320,8 +308,7 @@ describe('Inventory (e2e)', () => {
           .set('Cookie', sessionCookie)
           .expect(200);
 
-        await createMovement(productId, 'IN', '1')
-          .expect(canWrite ? 201 : 403);
+        await createMovement(productId, 'IN', '1').expect(canWrite ? 201 : 403);
       }
 
       const movementCount = await prisma.stockMovement.count({
@@ -376,8 +363,7 @@ describe('Inventory (e2e)', () => {
         .set('Cookie', sessionCookie)
         .expect(404);
 
-      await createMovement(externalProduct.id, 'IN', '10')
-        .expect(404);
+      await createMovement(externalProduct.id, 'IN', '10').expect(404);
 
       const movementCount = await prisma.stockMovement.count({
         where: {
@@ -474,7 +460,7 @@ describe('Inventory (e2e)', () => {
     });
   });
 
-    it('should reject unauthenticated inventory requests', async () => {
+  it('should reject unauthenticated inventory requests', async () => {
     const productId = await createProduct();
 
     await request(httpServer())
@@ -571,8 +557,7 @@ describe('Inventory (e2e)', () => {
       .expect(200);
 
     for (const type of ['IN', 'OUT'] as const) {
-      const response = await createMovement(productId, type, '1')
-        .expect(400);
+      const response = await createMovement(productId, type, '1').expect(400);
 
       expect(response.body.message).toBe(
         'Produtos inativos não podem receber movimentações.',
@@ -609,11 +594,9 @@ describe('Inventory (e2e)', () => {
         })
         .expect(201);
 
-      const response = await createMovement(
-        creation.body.id,
-        'IN',
-        '1',
-      ).expect(400);
+      const response = await createMovement(creation.body.id, 'IN', '1').expect(
+        400,
+      );
 
       expect(response.body.message).toBe(
         'O produto deve ter o controle de estoque habilitado.',
@@ -629,13 +612,11 @@ describe('Inventory (e2e)', () => {
     }
   });
 
-    it('POST reverse should reverse an entry and preserve its original record', async () => {
+  it('POST reverse should reverse an entry and preserve its original record', async () => {
     const productId = await createProduct();
-    const original = await createMovement(
-      productId,
-      'IN',
-      '1.000001',
-    ).expect(201);
+    const original = await createMovement(productId, 'IN', '1.000001').expect(
+      201,
+    );
 
     const originalRecord = await prisma.stockMovement.findUniqueOrThrow({
       where: { id: original.body.id },
@@ -754,8 +735,7 @@ describe('Inventory (e2e)', () => {
     const productId = await createProduct();
     const original = await createMovement(productId, 'IN', '1').expect(201);
 
-    const originalUrl =
-      `/api/inventory/products/${productId}/movements/${original.body.id}/reverse`;
+    const originalUrl = `/api/inventory/products/${productId}/movements/${original.body.id}/reverse`;
 
     const reversal = await request(httpServer())
       .post(originalUrl)
@@ -769,9 +749,7 @@ describe('Inventory (e2e)', () => {
       .send({ reason: 'Tentativa de repetir o estorno' })
       .expect(409);
 
-    expect(repeated.body.message).toBe(
-      'Esta movimentação já foi estornada.',
-    );
+    expect(repeated.body.message).toBe('Esta movimentação já foi estornada.');
 
     const chained = await request(httpServer())
       .post(
@@ -849,14 +827,9 @@ describe('Inventory (e2e)', () => {
 
     await createMovement(productId, 'IN', '1').expect(201);
 
-    const withdrawal = await createMovement(
-      productId,
-      'OUT',
-      '1',
-    ).expect(201);
+    const withdrawal = await createMovement(productId, 'OUT', '1').expect(201);
 
-    const url =
-      `/api/inventory/products/${productId}/movements/${withdrawal.body.id}/reverse`;
+    const url = `/api/inventory/products/${productId}/movements/${withdrawal.body.id}/reverse`;
 
     const responses = await Promise.all([
       request(httpServer())
@@ -869,9 +842,9 @@ describe('Inventory (e2e)', () => {
         .send({ reason: 'Segunda solicitação de estorno' }),
     ]);
 
-    expect(
-      responses.map((response) => response.status).sort(),
-    ).toEqual([201, 409]);
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      201, 409,
+    ]);
 
     expect(
       await prisma.stockMovement.count({
@@ -901,7 +874,7 @@ describe('Inventory (e2e)', () => {
     expect(balance.body.balance).toBe('1');
   });
 
-    it('POST adjustments should increase stock and audit the difference', async () => {
+  it('POST adjustments should increase stock and audit the difference', async () => {
     const productId = await createProduct();
 
     await createMovement(productId, 'IN', '2').expect(201);
@@ -1122,31 +1095,23 @@ describe('Inventory (e2e)', () => {
     const url = `/api/inventory/products/${productId}/adjustments`;
 
     const responses = await Promise.all([
-      request(httpServer())
-        .post(url)
-        .set('Cookie', sessionCookie)
-        .send({
-          countedQuantity: '3',
-          expectedBalance: '2',
-          reason: 'Primeira contagem física',
-        }),
-      request(httpServer())
-        .post(url)
-        .set('Cookie', sessionCookie)
-        .send({
-          countedQuantity: '4',
-          expectedBalance: '2',
-          reason: 'Segunda contagem física',
-        }),
+      request(httpServer()).post(url).set('Cookie', sessionCookie).send({
+        countedQuantity: '3',
+        expectedBalance: '2',
+        reason: 'Primeira contagem física',
+      }),
+      request(httpServer()).post(url).set('Cookie', sessionCookie).send({
+        countedQuantity: '4',
+        expectedBalance: '2',
+        reason: 'Segunda contagem física',
+      }),
     ]);
 
-    expect(
-      responses.map((response) => response.status).sort(),
-    ).toEqual([200, 409]);
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 409,
+    ]);
 
-    const successful = responses.find(
-      (response) => response.status === 200,
-    );
+    const successful = responses.find((response) => response.status === 200);
 
     if (!successful) {
       throw new Error('No adjustment succeeded');
@@ -1201,11 +1166,7 @@ describe('Inventory (e2e)', () => {
     const movementIds: string[] = [];
 
     for (let index = 0; index < cases.length; index += 1) {
-      const movement = await createMovement(
-        productId,
-        'IN',
-        '1',
-      ).expect(201);
+      const movement = await createMovement(productId, 'IN', '1').expect(201);
 
       movementIds.push(movement.body.id);
     }
@@ -1261,11 +1222,7 @@ describe('Inventory (e2e)', () => {
     const productId = await createProduct();
     const anotherProductId = await createProduct();
 
-    const ownMovement = await createMovement(
-      productId,
-      'IN',
-      '1',
-    ).expect(201);
+    const ownMovement = await createMovement(productId, 'IN', '1').expect(201);
 
     const otherOrganization = await prisma.organization.create({
       data: {
@@ -1364,14 +1321,9 @@ describe('Inventory (e2e)', () => {
 
   it('POST reverse should require authentication and validate its payload', async () => {
     const productId = await createProduct();
-    const original = await createMovement(
-      productId,
-      'IN',
-      '1',
-    ).expect(201);
+    const original = await createMovement(productId, 'IN', '1').expect(201);
 
-    const url =
-      `/api/inventory/products/${productId}/movements/${original.body.id}/reverse`;
+    const url = `/api/inventory/products/${productId}/movements/${original.body.id}/reverse`;
 
     await request(httpServer())
       .post(url)
@@ -1424,7 +1376,7 @@ describe('Inventory (e2e)', () => {
     ).toBe(0);
   });
 
-    it('POST adjustments should enforce permissions for every organization role', async () => {
+  it('POST adjustments should enforce permissions for every organization role', async () => {
     if (!organizationId || !userId) {
       throw new Error('Authenticated organization was not initialized');
     }
@@ -1516,10 +1468,7 @@ describe('Inventory (e2e)', () => {
       reason: 'Conferência física do estoque',
     };
 
-    await request(httpServer())
-      .post(url)
-      .send(validPayload)
-      .expect(401);
+    await request(httpServer()).post(url).send(validPayload).expect(401);
 
     const invalidPayloads = [
       {},

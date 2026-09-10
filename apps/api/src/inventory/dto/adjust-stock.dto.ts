@@ -8,9 +8,7 @@ import {
 } from 'class-validator';
 
 export class AdjustStockDto {
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @Matches(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/, {
     message:
@@ -18,9 +16,7 @@ export class AdjustStockDto {
   })
   countedQuantity!: string;
 
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MaxLength(100)
   @Matches(/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/, {
@@ -28,9 +24,7 @@ export class AdjustStockDto {
   })
   expectedBalance!: string;
 
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MinLength(3, {
     message: 'Informe um motivo com pelo menos 3 caracteres.',

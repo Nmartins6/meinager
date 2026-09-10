@@ -14,9 +14,7 @@ export class CreateStockMovementDto {
   @IsEnum(StockMovementType)
   type!: StockMovementType;
 
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @Matches(/^(?=.*[1-9])(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/, {
     message:
@@ -24,9 +22,7 @@ export class CreateStockMovementDto {
   })
   quantity!: string;
 
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MinLength(3, {
     message: 'Informe um motivo com pelo menos 3 caracteres.',

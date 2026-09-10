@@ -197,9 +197,9 @@ export class ProductsService {
 
     try {
       return await this.prisma.$transaction(async (transaction) => {
-  await lockProduct(transaction, organizationId, productId);
+        await lockProduct(transaction, organizationId, productId);
 
-  const existingProduct = await transaction.product.findFirst({
+        const existingProduct = await transaction.product.findFirst({
           where: {
             id: productId,
             organizationId,
@@ -212,28 +212,28 @@ export class ProductsService {
         }
 
         const changesInventoryDefinition =
-  (dto.unit !== undefined && dto.unit !== existingProduct.unit) ||
-  (dto.type !== undefined && dto.type !== existingProduct.type) ||
-  (dto.trackInventory !== undefined &&
-    dto.trackInventory !== existingProduct.trackInventory);
+          (dto.unit !== undefined && dto.unit !== existingProduct.unit) ||
+          (dto.type !== undefined && dto.type !== existingProduct.type) ||
+          (dto.trackInventory !== undefined &&
+            dto.trackInventory !== existingProduct.trackInventory);
 
-if (changesInventoryDefinition) {
-  const movement = await transaction.stockMovement.findFirst({
-    where: {
-      organizationId,
-      productId,
-    },
-    select: {
-      id: true,
-    },
-  });
+        if (changesInventoryDefinition) {
+          const movement = await transaction.stockMovement.findFirst({
+            where: {
+              organizationId,
+              productId,
+            },
+            select: {
+              id: true,
+            },
+          });
 
-  if (movement) {
-    throw new BadRequestException(
-      'Produtos com histórico de estoque não podem alterar unidade, tipo ou controle de estoque.',
-    );
-  }
-}
+          if (movement) {
+            throw new BadRequestException(
+              'Produtos com histórico de estoque não podem alterar unidade, tipo ou controle de estoque.',
+            );
+          }
+        }
 
         const type = dto.type ?? existingProduct.type;
         const trackInventory =
