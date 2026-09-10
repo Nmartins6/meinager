@@ -12,6 +12,7 @@ import {
 import { ProductType } from '../../generated/prisma/enums.js';
 
 const decimalPattern = /^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/;
+const moneyPattern = /^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/;
 
 export class CreateProductDto {
   @IsOptional()
@@ -68,6 +69,17 @@ export class CreateProductDto {
       'directCost must be a non-negative decimal with up to 6 decimal places',
   })
   directCost?: string;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() || undefined : value,
+  )
+  @IsString()
+  @Matches(moneyPattern, {
+    message:
+      'salePrice must be a non-negative decimal with up to 2 decimal places',
+  })
+  salePrice?: string;
 
   @IsOptional()
   @IsBoolean()

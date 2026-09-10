@@ -25,6 +25,7 @@ describe('ProductsService', () => {
     isActive: true,
     createdAt: new Date('2026-09-05T12:00:00.000Z'),
     updatedAt: new Date('2026-09-05T12:00:00.000Z'),
+    salePrice: new Prisma.Decimal('19.90'),
   };
 
   const transaction = {
@@ -158,6 +159,36 @@ describe('ProductsService', () => {
 
     expect(result.trackInventory).toBe(false);
     expect(result.minimumStock).toBeNull();
+  });
+
+  it('should update sale price even when stock history exists', async () => {
+    transaction.stockMovement.findFirst.mockResolvedValue({
+      id: 'ff7e2b0c-a8d5-4f91-bb63-3e751754dfe4',
+    });
+
+    transaction.product.update.mockResolvedValue({
+      ...existingProduct,
+      salePrice: new Prisma.Decimal('29.90'),
+    });
+
+    const result = await service.update(
+      organizationId,
+      actorUserId,
+      productId,
+      {
+        salePrice: '29.90',
+      },
+    );
+
+    expect(transaction.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          salePrice: '29.90',
+        }),
+      }),
+    );
+
+    expect(result.salePrice?.toString()).toBe('29.9');
   });
 
   it('should reject changing a tracked product into a service', async () => {

@@ -21,6 +21,7 @@ const productSelect = {
   barcode: true,
   unit: true,
   directCost: true,
+  salePrice: true,
   trackInventory: true,
   minimumStock: true,
   notes: true,
@@ -70,6 +71,7 @@ export class ProductsService {
             barcode: dto.barcode ?? null,
             unit: dto.unit,
             directCost: dto.directCost ?? null,
+            salePrice: dto.salePrice ?? null,
             trackInventory,
             minimumStock,
             notes: dto.notes ?? null,
@@ -275,6 +277,9 @@ export class ProductsService {
             ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
             ...(dto.directCost !== undefined
               ? { directCost: dto.directCost }
+              : {}),
+            ...(dto.salePrice !== undefined
+              ? { salePrice: dto.salePrice }
               : {}),
             trackInventory,
             minimumStock,

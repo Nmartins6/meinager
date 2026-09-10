@@ -79,6 +79,7 @@ describe('Products (e2e)', () => {
         directCost: '0.123456',
         trackInventory: true,
         minimumStock: '10.5',
+        salePrice: '29.9',
       })
       .expect(201);
 
@@ -92,6 +93,7 @@ describe('Products (e2e)', () => {
       trackInventory: true,
       minimumStock: '10.5',
       isActive: true,
+      salePrice: '29.9',
     });
 
     const product = await prisma.product.findUniqueOrThrow({
@@ -103,6 +105,7 @@ describe('Products (e2e)', () => {
     expect(product.organizationId).toBe(organizationId);
     expect(product.normalizedName).toBe('papel especial');
     expect(product.directCost?.toString()).toBe('0.123456');
+    expect(product.salePrice?.toString()).toBe('29.9');
 
     const auditLog = await prisma.auditLog.findFirstOrThrow({
       where: {
@@ -139,6 +142,7 @@ describe('Products (e2e)', () => {
       directCost: null,
       trackInventory: false,
       minimumStock: null,
+      salePrice: null,
     });
   });
 
@@ -236,6 +240,7 @@ describe('Products (e2e)', () => {
         directCost: '12.345678',
         trackInventory: true,
         minimumStock: '5',
+        salePrice: '24.90',
       })
       .expect(201);
 
@@ -249,6 +254,7 @@ describe('Products (e2e)', () => {
         directCost: null,
         trackInventory: false,
         isActive: false,
+        salePrice: null,
       })
       .expect(200);
 
@@ -260,6 +266,7 @@ describe('Products (e2e)', () => {
       trackInventory: false,
       minimumStock: null,
       isActive: false,
+      salePrice: null,
     });
 
     const persisted = await prisma.product.findUniqueOrThrow({
@@ -272,6 +279,7 @@ describe('Products (e2e)', () => {
     expect(persisted.directCost).toBeNull();
     expect(persisted.minimumStock).toBeNull();
     expect(persisted.isActive).toBe(false);
+    expect(persisted.salePrice).toBeNull();
 
     const auditLog = await prisma.auditLog.findFirstOrThrow({
       where: {
@@ -603,6 +611,7 @@ describe('Products (e2e)', () => {
         directCost: '1.25',
         trackInventory: true,
         minimumStock: '2',
+        salePrice: '10.50',
       })
       .expect(201);
 
@@ -636,6 +645,26 @@ describe('Products (e2e)', () => {
           })
           .expect(400);
       }
+
+      for (const value of [...invalidValues, '0.123']) {
+        await request(httpServer())
+          .post('/api/products')
+          .set('Cookie', sessionCookie)
+          .send({
+            name: 'Produto com preço de venda inválido',
+            unit: 'UN',
+            salePrice: value,
+          })
+          .expect(400);
+
+        await request(httpServer())
+          .patch(`/api/products/${creation.body.id}`)
+          .set('Cookie', sessionCookie)
+          .send({
+            salePrice: value,
+          })
+          .expect(400);
+      }
     }
 
     const persisted = await prisma.product.findUniqueOrThrow({
@@ -644,6 +673,7 @@ describe('Products (e2e)', () => {
 
     expect(persisted.directCost?.toString()).toBe('1.25');
     expect(persisted.minimumStock?.toString()).toBe('2');
+    expect(persisted.salePrice?.toString()).toBe('10.5');
   });
 
   afterAll(async () => {
