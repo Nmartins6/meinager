@@ -84,6 +84,11 @@ const ProductPage = lazy(async () => {
   return { default: module.ProductPage };
 });
 
+const QuotesPage = lazy(async () => {
+  const module = await import('@/pages/quotes-page');
+  return { default: module.QuotesPage };
+});
+
 interface LazyRouteProps {
   children: ReactNode;
 }
@@ -260,6 +265,15 @@ export function App() {
             }
           />
         </Route>
+
+        <Route
+          path="financeiro/orcamentos"
+          element={
+            <LazyRoute>
+              <QuotesPage />
+            </LazyRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

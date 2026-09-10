@@ -23,6 +23,11 @@ const items = [
     label: 'Lançamentos',
     end: false,
   },
+  {
+    to: '/app/financeiro/orcamentos',
+    label: 'Orçamentos',
+    end: false,
+  },
 ];
 
 export function FinancialNavigation() {
