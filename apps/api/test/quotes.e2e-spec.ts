@@ -105,10 +105,6 @@ describe('Quotes (e2e)', () => {
     otherOrganizationId = otherOrganization.id;
   });
 
-  afterAll(async () => {
-    await app?.close();
-  });
-
   it('POST should calculate totals, preserve item snapshots and number the quote', async () => {
     const client = await createClient();
     const product = await createProduct();
@@ -328,6 +324,14 @@ describe('Quotes (e2e)', () => {
 
     expect(response.body.data).toEqual([]);
     expect(response.body.pagination.total).toBe(0);
+
+    await request(httpServer())
+      .patch(`/api/quotes/${externalQuote.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        notes: 'Tentativa externa',
+      })
+      .expect(404);
   });
 
   it('POST should reject inactive resources and a discount greater than subtotal', async () => {
@@ -913,9 +917,196 @@ describe('Quotes (e2e)', () => {
     }
   });
 
+  it('PATCH should replace draft items and recalculate totals', async () => {
+    const originalClient = await createClient();
+    const updatedClient = await createClient();
+    const product = await createProduct();
+
+    const creation = await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: originalClient.id,
+        validUntil: '2027-01-10',
+        discount: '2',
+        notes: 'Observação original',
+        items: [
+          {
+            description: 'Item original',
+            unit: 'UN',
+            quantity: '1',
+            unitPrice: '10',
+          },
+        ],
+      })
+      .expect(201);
+
+    const response = await request(httpServer())
+      .patch(`/api/quotes/${creation.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: updatedClient.id,
+        validUntil: null,
+        discount: '1.2',
+        notes: null,
+        items: [
+          {
+            productId: product.id,
+            description: 'Item atualizado',
+            unit: 'UN',
+            quantity: '2.5',
+            unitPrice: '10.01',
+            notes: 'Novo item do orçamento',
+          },
+        ],
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      id: creation.body.id,
+      status: 'DRAFT',
+      validUntil: null,
+      subtotal: '25.03',
+      total: '23.83',
+      notes: null,
+      client: {
+        id: updatedClient.id,
+      },
+    });
+
+    expect(response.body.items).toEqual([
+      expect.objectContaining({
+        productId: product.id,
+        position: 1,
+        description: 'Item atualizado',
+        quantity: '2.5',
+        unitPrice: '10.01',
+        total: '25.03',
+        notes: 'Novo item do orçamento',
+      }),
+    ]);
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        entityId: creation.body.id,
+        action: 'quote.updated',
+      },
+    });
+
+    expect(audit.entityType).toBe('financial_quote');
+  });
+
+  it('PATCH should preserve items and clear the discount on a draft quote', async () => {
+    const client = await createClient();
+
+    const creation = await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        discount: '2',
+        notes: 'Observação removível',
+        items: [
+          {
+            description: 'Item preservado',
+            unit: 'UN',
+            quantity: '1',
+            unitPrice: '10',
+          },
+        ],
+      })
+      .expect(201);
+
+    const response = await request(httpServer())
+      .patch(`/api/quotes/${creation.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        discount: null,
+        notes: null,
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      discount: '0',
+      subtotal: '10',
+      total: '10',
+      notes: null,
+    });
+    expect(response.body.items).toHaveLength(1);
+    expect(response.body.items[0].description).toBe('Item preservado');
+  });
+
+  it('PATCH should reject empty payloads, inactive products and sent quotes', async () => {
+    const client = await createClient();
+    const inactiveProduct = await createProduct(false);
+
+    const creation = await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [
+          {
+            description: 'Item com atualização inválida',
+            unit: 'UN',
+            quantity: '1',
+            unitPrice: '10',
+          },
+        ],
+      })
+      .expect(201);
+
+    await request(httpServer())
+      .patch(`/api/quotes/${creation.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({})
+      .expect(400);
+
+    await request(httpServer())
+      .patch(`/api/quotes/${creation.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        items: [
+          {
+            productId: inactiveProduct.id,
+            description: 'Produto inativo',
+            unit: 'UN',
+            quantity: '1',
+            unitPrice: '10',
+          },
+        ],
+      })
+      .expect(400);
+
+    await request(httpServer())
+      .post(`/api/quotes/${creation.body.id}/send`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    await request(httpServer())
+      .patch(`/api/quotes/${creation.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        notes: 'Alteração proibida',
+      })
+      .expect(409);
+  });
+
   it('should reject unauthenticated quote lifecycle actions', async () => {
     await request(httpServer())
       .post(`/api/quotes/${randomUUID()}/send`)
       .expect(401);
+
+    await request(httpServer())
+      .patch(`/api/quotes/${randomUUID()}`)
+      .send({
+        notes: 'Tentativa não autorizada',
+      })
+      .expect(401);
+  });
+
+  afterAll(async () => {
+    await app?.close();
   });
 });

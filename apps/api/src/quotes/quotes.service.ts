@@ -10,6 +10,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import type { CreateQuoteDto } from './dto/create-quote.dto.js';
 import type { ListQuotesQueryDto } from './dto/list-quotes-query.dto.js';
+import type { UpdateQuoteDto } from './dto/update-quote.dto.js';
 
 const quoteItemSelect = {
   id: true,
@@ -238,6 +239,242 @@ export class QuotesService {
             clientId: quote.client.id,
             itemCount: quote.items.length,
             total: total.toString(),
+          },
+        },
+      });
+
+      return quote;
+    });
+  }
+
+  async update(
+    organizationId: string,
+    actorUserId: string,
+    quoteId: string,
+    dto: UpdateQuoteDto,
+  ): Promise<QuoteResponse> {
+    const hasUpdates =
+      dto.clientId !== undefined ||
+      dto.validUntil !== undefined ||
+      dto.discount !== undefined ||
+      dto.notes !== undefined ||
+      dto.items !== undefined;
+
+    if (!hasUpdates) {
+      throw new BadRequestException(
+        'Informe ao menos um campo para atualizar o orçamento.',
+      );
+    }
+
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`
+      SELECT "id"
+      FROM "financial_quotes"
+      WHERE "id" = ${quoteId}
+        AND "organization_id" = ${organizationId}
+      FOR UPDATE
+    `;
+
+      const currentQuote = await transaction.financialQuote.findFirst({
+        where: {
+          id: quoteId,
+          organizationId,
+        },
+        select: {
+          id: true,
+          status: true,
+          clientId: true,
+          validUntil: true,
+          discount: true,
+          notes: true,
+          subtotal: true,
+          total: true,
+          items: {
+            orderBy: {
+              position: 'asc',
+            },
+            select: {
+              productId: true,
+              description: true,
+              unit: true,
+              quantity: true,
+              unitPrice: true,
+              total: true,
+              notes: true,
+            },
+          },
+        },
+      });
+
+      if (!currentQuote) {
+        throw new NotFoundException('Orçamento não encontrado.');
+      }
+
+      if (currentQuote.status !== QuoteStatus.DRAFT) {
+        throw new ConflictException(
+          'Somente orçamentos em rascunho podem ser editados.',
+        );
+      }
+
+      const clientId = dto.clientId ?? currentQuote.clientId;
+
+      if (dto.clientId !== undefined) {
+        const client = await transaction.client.findFirst({
+          where: {
+            id: clientId,
+            organizationId,
+            isActive: true,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (!client) {
+          throw new NotFoundException(
+            'Cliente não encontrado ou está inativo.',
+          );
+        }
+      }
+
+      if (dto.items !== undefined) {
+        const productIds = [
+          ...new Set(
+            dto.items.flatMap((item) =>
+              item.productId ? [item.productId] : [],
+            ),
+          ),
+        ];
+
+        if (productIds.length > 0) {
+          const activeProducts = await transaction.product.findMany({
+            where: {
+              organizationId,
+              id: {
+                in: productIds,
+              },
+              isActive: true,
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          if (activeProducts.length !== productIds.length) {
+            throw new BadRequestException(
+              'Informe apenas produtos ou serviços ativos da organização.',
+            );
+          }
+        }
+      }
+
+      const items =
+        dto.items?.map((item) => {
+          const quantity = new Prisma.Decimal(item.quantity);
+          const unitPrice = new Prisma.Decimal(item.unitPrice);
+
+          return {
+            productId: item.productId ?? null,
+            description: item.description,
+            unit: item.unit,
+            quantity,
+            unitPrice,
+            total: quantity
+              .mul(unitPrice)
+              .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
+            notes: item.notes ?? null,
+          };
+        }) ??
+        currentQuote.items.map((item) => ({
+          productId: item.productId,
+          description: item.description,
+          unit: item.unit,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.total,
+          notes: item.notes,
+        }));
+
+      const subtotal = items.reduce(
+        (sum, item) => sum.plus(item.total),
+        new Prisma.Decimal(0),
+      );
+
+      const discount =
+        dto.discount === undefined
+          ? currentQuote.discount
+          : new Prisma.Decimal(dto.discount ?? '0');
+
+      if (discount.greaterThan(subtotal)) {
+        throw new BadRequestException(
+          'O desconto não pode ultrapassar o subtotal do orçamento.',
+        );
+      }
+
+      const total = subtotal.minus(discount);
+      const validUntil =
+        dto.validUntil === undefined
+          ? currentQuote.validUntil
+          : dto.validUntil
+            ? new Date(`${dto.validUntil}T00:00:00.000Z`)
+            : null;
+
+      const notes = dto.notes === undefined ? currentQuote.notes : dto.notes;
+
+      const quote = await transaction.financialQuote.update({
+        where: {
+          id: currentQuote.id,
+        },
+        data: {
+          clientId,
+          validUntil,
+          subtotal,
+          discount,
+          total,
+          notes,
+          ...(dto.items !== undefined
+            ? {
+                items: {
+                  deleteMany: {},
+                  create: items.map((item, index) => ({
+                    productId: item.productId,
+                    position: index + 1,
+                    description: item.description,
+                    unit: item.unit,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    total: item.total,
+                    notes: item.notes,
+                  })),
+                },
+              }
+            : {}),
+        },
+        select: quoteSelect,
+      });
+
+      await transaction.auditLog.create({
+        data: {
+          organizationId,
+          actorUserId,
+          action: 'quote.updated',
+          entityType: 'financial_quote',
+          entityId: quote.id,
+          metadata: {
+            previous: {
+              clientId: currentQuote.clientId,
+              itemCount: currentQuote.items.length,
+              subtotal: currentQuote.subtotal.toString(),
+              discount: currentQuote.discount.toString(),
+              total: currentQuote.total.toString(),
+            },
+            current: {
+              clientId: quote.client.id,
+              itemCount: quote.items.length,
+              subtotal: quote.subtotal.toString(),
+              discount: quote.discount.toString(),
+              total: quote.total.toString(),
+            },
           },
         },
       });
