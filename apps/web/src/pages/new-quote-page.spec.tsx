@@ -209,4 +209,39 @@ describe('NewQuotePage', () => {
       }),
     );
   });
+
+  it('should add an empty item without breaking the quote form', async () => {
+    const user = userEvent.setup();
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
+
+      if (url.includes('/clients?')) {
+        return jsonResponse(paginatedResponse([client]));
+      }
+
+      if (url.includes('/products?')) {
+        return jsonResponse(paginatedResponse([product]));
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    await screen.findByLabelText('Cliente');
+
+    await user.click(screen.getByRole('button', { name: 'Adicionar item' }));
+
+    expect(screen.getByLabelText('Descrição do item 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Descrição do item 2')).toBeInTheDocument();
+
+    expect(screen.getAllByText('Informe quantidade e preço válidos.')).toHaveLength(2);
+  });
 });

@@ -134,9 +134,10 @@ function calculatePreview(items: QuoteFormData['items'], discountValue: string):
 }
 
 function formatCents(value: bigint): string {
-  const integer = value / centsScale;
-  const fraction = (value % centsScale).toString().padStart(2, '0');
-  const groupedInteger = integer.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const cents = value.toString().padStart(3, '0');
+  const integer = cents.slice(0, -2);
+  const fraction = cents.slice(-2);
+  const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
   return `R$ ${groupedInteger},${fraction}`;
 }
@@ -279,7 +280,7 @@ export function QuoteForm({
         {fields.map((field, index) => {
           const productIdRegistration = register(`items.${index}.productId`);
           const itemErrors = errors.items?.[index];
-          const lineTotal = preview.lineTotals[index];
+          const lineTotal = preview.lineTotals[index] ?? null;
 
           return (
             <fieldset key={field.id} className="space-y-5 rounded-lg border p-4">
