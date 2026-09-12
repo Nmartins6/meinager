@@ -126,3 +126,22 @@ export async function createQuote(input: CreateQuoteInput): Promise<Quote> {
 
   return quoteSchema.parse(await response.json());
 }
+
+export async function getQuote(quoteId: string): Promise<Quote> {
+  const response = await apiRequest(`/quotes/${encodeURIComponent(quoteId)}`);
+
+  return quoteSchema.parse(await response.json());
+}
+
+export type QuoteLifecycleAction = 'send' | 'approve' | 'reject' | 'cancel';
+
+export async function transitionQuote(
+  quoteId: string,
+  action: QuoteLifecycleAction,
+): Promise<Quote> {
+  const response = await apiRequest(`/quotes/${encodeURIComponent(quoteId)}/${action}`, {
+    method: 'POST',
+  });
+
+  return quoteSchema.parse(await response.json());
+}

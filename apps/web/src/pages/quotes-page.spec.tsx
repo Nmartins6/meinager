@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import { QuotesPage } from './quotes-page';
 
@@ -70,7 +70,13 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/app/financeiro/orcamentos']}>
-        <QuotesPage />
+        <Routes>
+          <Route path="/app/financeiro/orcamentos" element={<QuotesPage />} />
+          <Route
+            path="/app/financeiro/orcamentos/:quoteId"
+            element={<h1>Detalhe do orçamento</h1>}
+          />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -151,5 +157,33 @@ describe('QuotesPage', () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it('should navigate to the selected quote', async () => {
+    const user = userEvent.setup();
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
+
+      if (url.includes('/quotes?')) {
+        return jsonResponse(quotesResponse());
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Orçamento #12' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Detalhe do orçamento' }),
+    ).toBeInTheDocument();
   });
 });

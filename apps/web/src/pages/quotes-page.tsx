@@ -33,10 +33,10 @@ function formatDate(value: string | null): string {
 }
 
 function formatCurrency(value: string): string {
-  const [integerPart, decimalPart = '00'] = value.split('.');
+  const [integerPart, decimalPart = ''] = value.split('.');
   const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-  return `R$ ${formattedInteger},${decimalPart}`;
+  return `R$ ${formattedInteger},${decimalPart.padEnd(2, '0').slice(0, 2)}`;
 }
 
 export function QuotesPage() {
@@ -179,7 +179,15 @@ export function QuotesPage() {
                   <tbody>
                     {response.data.map((quote) => (
                       <tr key={quote.id} className="border-t bg-background">
-                        <td className="px-4 py-3 font-medium">Orçamento #{quote.number}</td>
+                        <td className="px-4 py-3 font-medium">
+                          <button
+                            type="button"
+                            className="text-left text-primary hover:underline"
+                            onClick={() => navigate(`/app/financeiro/orcamentos/${quote.id}`)}
+                          >
+                            Orçamento #{quote.number}
+                          </button>
+                        </td>
                         <td className="px-4 py-3 text-muted-foreground">{quote.client.name}</td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {formatDate(quote.validUntil)}
