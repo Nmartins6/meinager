@@ -27,6 +27,7 @@ const createdProduct = {
   barcode: null,
   unit: 'UN',
   directCost: '12.500000',
+  salePrice: '29.90',
   trackInventory: true,
   minimumStock: '5.000000',
   notes: null,
@@ -97,6 +98,7 @@ describe('NewProductPage', () => {
     await user.type(screen.getByLabelText('Nome'), 'Caneca branca');
     await user.type(screen.getByLabelText('SKU opcional'), 'can-001');
     await user.type(screen.getByLabelText('Custo direto opcional'), '12.500000');
+    await user.type(screen.getByLabelText('Preço de venda opcional'), '29.90');
     await user.click(screen.getByLabelText(/Controlar estoque deste produto/));
     await user.type(screen.getByLabelText('Estoque mínimo opcional'), '5');
 
@@ -117,6 +119,7 @@ describe('NewProductPage', () => {
           sku: 'can-001',
           unit: 'UN',
           directCost: '12.500000',
+          salePrice: '29.90',
           trackInventory: true,
           minimumStock: '5',
         }),
@@ -143,6 +146,7 @@ describe('NewProductPage', () => {
               name: 'Arte para caneca',
               sku: null,
               directCost: null,
+              salePrice: null,
               trackInventory: false,
               minimumStock: null,
             },

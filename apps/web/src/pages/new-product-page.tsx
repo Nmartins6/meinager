@@ -25,6 +25,7 @@ export function NewProductPage() {
         barcode: data.barcode.trim() || undefined,
         unit: data.unit.trim().toUpperCase(),
         directCost: data.directCost.trim() || undefined,
+        salePrice: data.salePrice.trim() || undefined,
         trackInventory,
         minimumStock: trackInventory ? data.minimumStock.trim() || undefined : undefined,
         notes: data.notes.trim() || undefined,

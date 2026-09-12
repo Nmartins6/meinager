@@ -27,6 +27,7 @@ const product = {
   barcode: null,
   unit: 'UN',
   directCost: '12.500000',
+  salePrice: '29.90',
   trackInventory: true,
   minimumStock: '5.000000',
   notes: null,
@@ -98,6 +99,7 @@ describe('ProductsPage', () => {
     expect(await screen.findByText('Caneca branca')).toBeInTheDocument();
     expect(screen.getByText('R$ 12,50')).toBeInTheDocument();
     expect(screen.getByText('Com controle')).toBeInTheDocument();
+    expect(screen.getByText('R$ 29,90')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Novo produto ou serviço' })).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Buscar produtos e serviços'), 'Caneca');

@@ -12,6 +12,7 @@ const productSchema = z.object({
   barcode: z.string().nullable(),
   unit: z.string(),
   directCost: z.string().nullable(),
+  salePrice: z.string().nullable(),
   trackInventory: z.boolean(),
   minimumStock: z.string().nullable(),
   notes: z.string().nullable(),
@@ -50,6 +51,7 @@ export interface CreateProductInput {
   barcode?: string;
   unit: string;
   directCost?: string;
+  salePrice?: string;
   trackInventory?: boolean;
   minimumStock?: string;
   notes?: string;
@@ -62,6 +64,7 @@ export interface UpdateProductInput {
   barcode?: string | null;
   unit?: string;
   directCost?: string | null;
+  salePrice?: string | null;
   trackInventory?: boolean;
   minimumStock?: string | null;
   notes?: string | null;

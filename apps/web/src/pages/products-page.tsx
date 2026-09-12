@@ -18,7 +18,7 @@ type InventoryFilter = 'tracked' | 'untracked' | 'all';
 const selectClassName =
   'h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
 
-function formatDirectCost(value: string | null): string {
+function formatCurrency(value: string | null): string {
   if (value === null) {
     return 'Não informado';
   }
@@ -204,7 +204,7 @@ export function ProductsPage() {
               className="mt-6 overflow-x-auto rounded-lg border"
               aria-busy={productsQuery.isFetching}
             >
-              <table className="w-full min-w-[900px] text-left text-sm">
+              <table className="w-full min-w-[1050px] text-left text-sm">
                 <caption className="sr-only">Produtos e serviços do catálogo</caption>
                 <thead className="bg-muted/60 text-muted-foreground">
                   <tr>
@@ -222,6 +222,9 @@ export function ProductsPage() {
                     </th>
                     <th scope="col" className="px-4 py-3 font-medium">
                       Custo direto
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Preço de venda
                     </th>
                     <th scope="col" className="px-4 py-3 font-medium">
                       Controle de estoque
@@ -251,7 +254,10 @@ export function ProductsPage() {
                       </td>
                       <td className="px-4 py-3">{product.unit}</td>
                       <td className="whitespace-nowrap px-4 py-3 tabular-nums">
-                        {formatDirectCost(product.directCost)}
+                        {formatCurrency(product.directCost)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                        {formatCurrency(product.salePrice)}
                       </td>
                       <td className="px-4 py-3">{product.trackInventory ? 'Sim' : 'Não'}</td>
                       <td className="px-4 py-3">

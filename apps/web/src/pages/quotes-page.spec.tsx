@@ -25,6 +25,20 @@ const quote = {
   },
 };
 
+const authenticatedUser = {
+  user: {
+    id: '53a6ba71-77b9-4aca-9493-e08e7dd11b83',
+    name: 'Nicolas Martins',
+    email: 'nicolas@meinager.local',
+  },
+  organization: {
+    id: '9173bea8-0d7d-45ec-a08d-d1cbac34ceaf',
+    name: 'Meinager Desenvolvimento',
+    slug: 'meinager-desenvolvimento',
+    role: 'OWNER',
+  },
+};
+
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
     headers: {
@@ -71,6 +85,10 @@ describe('QuotesPage', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = String(input);
 
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
+
       if (url.includes('/quotes?')) {
         return jsonResponse(quotesResponse());
       }
@@ -95,6 +113,10 @@ describe('QuotesPage', () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
 
       if (url.includes('/quotes?')) {
         const status = url.includes('status=SENT') ? 'SENT' : 'DRAFT';

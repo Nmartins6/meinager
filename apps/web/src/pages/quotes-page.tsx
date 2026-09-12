@@ -1,12 +1,14 @@
-import { FileText } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { useNavigate } from 'react-router-dom';
 import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { type QuoteStatus } from '@/features/quotes/quotes-api';
 import { useQuotesQuery } from '@/features/quotes/use-quotes-query';
+import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
 import { cn } from '@/lib/utils';
 
 const quoteStatusLabels: Record<QuoteStatus, string> = {
@@ -40,6 +42,10 @@ function formatCurrency(value: string): string {
 export function QuotesPage() {
   const [status, setStatus] = useState<QuoteStatusFilter>('ALL');
   const [page, setPage] = useState(1);
+  const navigate = useNavigate();
+  const currentUserQuery = useCurrentUserQuery();
+  const role = currentUserQuery.data?.organization.role;
+  const canManage = role === 'OWNER' || role === 'ADMIN' || role === 'OPERATIONS';
 
   const quotesQuery = useQuotesQuery({
     status: status === 'ALL' ? undefined : status,
@@ -51,11 +57,20 @@ export function QuotesPage() {
 
   return (
     <section className="mx-auto max-w-7xl px-6 py-10">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Orçamentos</h1>
-        <p className="mt-2 text-muted-foreground">
-          Consulte as propostas comerciais emitidas para seus clientes.
-        </p>
+      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Orçamentos</h1>
+          <p className="mt-2 text-muted-foreground">
+            Consulte as propostas comerciais emitidas para seus clientes.
+          </p>
+        </div>
+
+        {canManage && (
+          <Button type="button" onClick={() => navigate('/app/financeiro/orcamentos/novo')}>
+            <Plus data-icon="inline-start" />
+            Novo orçamento
+          </Button>
+        )}
       </div>
 
       <FinancialNavigation />

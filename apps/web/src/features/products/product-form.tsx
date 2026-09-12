@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 const decimalPattern = /^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/;
+const moneyPattern = /^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/;
 
 const optionalDecimal = z
   .string()
@@ -14,6 +15,14 @@ const optionalDecimal = z
   .refine(
     (value) => value === '' || decimalPattern.test(value),
     'Informe um valor não negativo com até 6 casas decimais.',
+  );
+
+const optionalMoney = z
+  .string()
+  .trim()
+  .refine(
+    (value) => value === '' || moneyPattern.test(value),
+    'Informe um preço de venda não negativo com até 2 casas decimais.',
   );
 
 const productFormSchema = z
@@ -32,6 +41,7 @@ const productFormSchema = z
       .min(1, 'Informe a unidade.')
       .max(20, 'A unidade deve ter no máximo 20 caracteres.'),
     directCost: optionalDecimal,
+    salePrice: optionalMoney,
     trackInventory: z.boolean(),
     minimumStock: optionalDecimal,
     notes: z.string().trim().max(2000, 'As observações devem ter no máximo 2000 caracteres.'),
@@ -63,6 +73,7 @@ const defaultValues: ProductFormData = {
   barcode: '',
   unit: 'UN',
   directCost: '',
+  salePrice: '',
   trackInventory: false,
   minimumStock: '',
   notes: '',
@@ -187,7 +198,7 @@ export function ProductForm({
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="product-direct-cost">Custo direto opcional</Label>
           <Input
@@ -201,6 +212,24 @@ export function ProductForm({
           <p className="text-xs text-muted-foreground">Use ponto como separador decimal.</p>
           {errors.directCost && (
             <p className="text-sm text-destructive">{errors.directCost.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="product-sale-price">Preço de venda opcional</Label>
+          <Input
+            id="product-sale-price"
+            type="text"
+            inputMode="decimal"
+            placeholder="0.00"
+            aria-invalid={Boolean(errors.salePrice)}
+            {...register('salePrice')}
+          />
+          <p className="text-xs text-muted-foreground">
+            Valor sugerido ao adicionar este item em um orçamento.
+          </p>
+          {errors.salePrice && (
+            <p className="text-sm text-destructive">{errors.salePrice.message}</p>
           )}
         </div>
 

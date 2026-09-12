@@ -10,6 +10,20 @@ const quoteClientSchema = z.object({
   type: z.enum(['INDIVIDUAL', 'COMPANY']),
 });
 
+const quoteItemSchema = z.object({
+  id: z.string().uuid(),
+  productId: z.string().uuid().nullable(),
+  position: z.number().int().positive(),
+  description: z.string(),
+  unit: z.string(),
+  quantity: z.string(),
+  unitPrice: z.string(),
+  total: z.string(),
+  notes: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
 const quoteSummarySchema = z.object({
   id: z.string().uuid(),
   number: z.number().int().positive(),
@@ -26,6 +40,25 @@ const quoteSummarySchema = z.object({
   }),
 });
 
+const quoteSchema = z.object({
+  id: z.string().uuid(),
+  number: z.number().int().positive(),
+  status: quoteStatusSchema,
+  validUntil: z.string().datetime().nullable(),
+  subtotal: z.string(),
+  discount: z.string(),
+  total: z.string(),
+  notes: z.string().nullable(),
+  sentAt: z.string().datetime().nullable(),
+  approvedAt: z.string().datetime().nullable(),
+  rejectedAt: z.string().datetime().nullable(),
+  cancelledAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  client: quoteClientSchema,
+  items: z.array(quoteItemSchema),
+});
+
 const quotesResponseSchema = z.object({
   data: z.array(quoteSummarySchema),
   pagination: z.object({
@@ -37,6 +70,7 @@ const quotesResponseSchema = z.object({
 });
 
 export type QuoteStatus = z.infer<typeof quoteStatusSchema>;
+export type Quote = z.infer<typeof quoteSchema>;
 export type QuoteSummary = z.infer<typeof quoteSummarySchema>;
 export type QuotesResponse = z.infer<typeof quotesResponseSchema>;
 
@@ -45,6 +79,21 @@ export interface ListQuotesInput {
   clientId?: string;
   page?: number;
   pageSize?: number;
+}
+
+export interface CreateQuoteInput {
+  clientId: string;
+  validUntil?: string;
+  discount?: string;
+  notes?: string;
+  items: Array<{
+    productId?: string;
+    description: string;
+    unit: string;
+    quantity: string;
+    unitPrice: string;
+    notes?: string;
+  }>;
 }
 
 export async function getQuotes(input: ListQuotesInput = {}): Promise<QuotesResponse> {
@@ -64,4 +113,16 @@ export async function getQuotes(input: ListQuotesInput = {}): Promise<QuotesResp
   const response = await apiRequest(`/quotes?${parameters.toString()}`);
 
   return quotesResponseSchema.parse(await response.json());
+}
+
+export async function createQuote(input: CreateQuoteInput): Promise<Quote> {
+  const response = await apiRequest('/quotes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  return quoteSchema.parse(await response.json());
 }
