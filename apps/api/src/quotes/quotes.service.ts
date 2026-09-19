@@ -26,6 +26,12 @@ const quoteItemSelect = {
   updatedAt: true,
 } satisfies Prisma.FinancialQuoteItemSelect;
 
+const quoteOrderSelect = {
+  id: true,
+  number: true,
+  status: true,
+} satisfies Prisma.SalesOrderSelect;
+
 const quoteSelect = {
   id: true,
   number: true,
@@ -54,6 +60,9 @@ const quoteSelect = {
     },
     select: quoteItemSelect,
   },
+  order: {
+    select: quoteOrderSelect,
+  },
 } satisfies Prisma.FinancialQuoteSelect;
 
 const quoteSummarySelect = {
@@ -77,6 +86,9 @@ const quoteSummarySelect = {
     select: {
       items: true,
     },
+  },
+  order: {
+    select: quoteOrderSelect,
   },
 } satisfies Prisma.FinancialQuoteSelect;
 

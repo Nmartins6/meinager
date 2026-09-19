@@ -1,7 +1,10 @@
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { hash, verify } from 'argon2';
-import { OrganizationRole } from '../generated/prisma/enums.js';
+import {
+  OrganizationRole,
+  OrderStageCategory,
+} from '../generated/prisma/enums.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -37,6 +40,9 @@ describe('AuthService', () => {
       create: vi.fn().mockResolvedValue({}),
     },
     session: {
+      create: vi.fn().mockResolvedValue({}),
+    },
+    orderWorkflow: {
       create: vi.fn().mockResolvedValue({}),
     },
   };
@@ -141,6 +147,34 @@ describe('AuthService', () => {
         userId: user.id,
         organizationId: organization.id,
         role: OrganizationRole.OWNER,
+      },
+    });
+
+    expect(transactionMock.orderWorkflow.create).toHaveBeenCalledWith({
+      data: {
+        organizationId: organization.id,
+        name: 'Fluxo padrão',
+        normalizedName: 'fluxo padrao',
+        isDefault: true,
+        stages: {
+          create: [
+            {
+              name: 'Pendente',
+              position: 1,
+              category: OrderStageCategory.PENDING,
+            },
+            {
+              name: 'Em andamento',
+              position: 2,
+              category: OrderStageCategory.IN_PROGRESS,
+            },
+            {
+              name: 'Concluído',
+              position: 3,
+              category: OrderStageCategory.COMPLETED,
+            },
+          ],
+        },
       },
     });
 

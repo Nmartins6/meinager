@@ -4,6 +4,14 @@ import { apiRequest } from '@/lib/api';
 
 const quoteStatusSchema = z.enum(['DRAFT', 'SENT', 'APPROVED', 'REJECTED', 'EXPIRED', 'CANCELLED']);
 
+const quoteOrderStatusSchema = z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
+
+const quoteOrderSchema = z.object({
+  id: z.string().uuid(),
+  number: z.number().int().positive(),
+  status: quoteOrderStatusSchema,
+});
+
 const quoteClientSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -33,6 +41,7 @@ const quoteSummarySchema = z.object({
   discount: z.string(),
   total: z.string(),
   createdAt: z.string().datetime(),
+  order: quoteOrderSchema.nullable(),
   updatedAt: z.string().datetime(),
   client: quoteClientSchema,
   _count: z.object({
@@ -54,6 +63,7 @@ const quoteSchema = z.object({
   rejectedAt: z.string().datetime().nullable(),
   cancelledAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
+  order: quoteOrderSchema.nullable(),
   updatedAt: z.string().datetime(),
   client: quoteClientSchema,
   items: z.array(quoteItemSchema),

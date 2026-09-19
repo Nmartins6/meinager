@@ -28,6 +28,11 @@ const items = [
     label: 'Orçamentos',
     end: false,
   },
+  {
+    to: '/app/financeiro/pedidos',
+    label: 'Pedidos',
+    end: false,
+  },
 ];
 
 export function FinancialNavigation() {

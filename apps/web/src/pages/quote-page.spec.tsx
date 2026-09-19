@@ -34,6 +34,7 @@ const quote = {
   cancelledAt: null,
   createdAt: '2026-09-10T12:00:00.000Z',
   updatedAt: '2026-09-10T12:00:00.000Z',
+  order: null,
   client: {
     id: '6a259098-33ef-4464-b9e1-c0fa6bbb082d',
     name: 'Cliente do orçamento',
@@ -69,6 +70,50 @@ const quote = {
   ],
 };
 
+const createdOrderStage = {
+  id: 'b24913f1-bd0c-4086-88f6-6fa45c79c021',
+  name: 'Pendente',
+  position: 1,
+  category: 'PENDING',
+};
+
+const createdOrder = {
+  id: 'b24913f3-bd0c-4086-88f6-6fa45c79c021',
+  number: 1,
+  status: 'PENDING',
+  subtotal: quote.subtotal,
+  discount: quote.discount,
+  total: quote.total,
+  notes: quote.notes,
+  cancelledAt: null,
+  createdAt: '2026-09-19T12:00:00.000Z',
+  updatedAt: '2026-09-19T12:00:00.000Z',
+  workflow: {
+    id: 'b24913f2-bd0c-4086-88f6-6fa45c79c021',
+    name: 'Fluxo padrão',
+  },
+  currentStage: createdOrderStage,
+  stageTransitions: [
+    {
+      id: 'b24913f3-bd0c-4086-88f6-6fa45c79c021',
+      type: 'CREATED',
+      createdAt: '2026-09-19T12:00:00.000Z',
+      previousStage: null,
+      nextStage: createdOrderStage,
+      actor: {
+        id: authenticatedUser.user.id,
+        name: authenticatedUser.user.name,
+      },
+    },
+  ],
+  quote: {
+    id: quote.id,
+    number: quote.number,
+  },
+  client: quote.client,
+  items: quote.items,
+};
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -92,6 +137,7 @@ function renderPage() {
         <Routes>
           <Route path="/app/financeiro/orcamentos/:quoteId" element={<QuotePage />} />
           <Route path="/app/financeiro/orcamentos" element={<h1>Orçamentos</h1>} />
+          <Route path="/app/financeiro/pedidos/:orderId" element={<h1>Detalhe do pedido</h1>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -209,7 +255,11 @@ describe('QuotePage', () => {
       }
 
       if (url.endsWith(`/quotes/${quote.id}`)) {
-        return jsonResponse(quote);
+        return jsonResponse({
+          ...quote,
+          status: 'APPROVED',
+          approvedAt: '2026-09-19T12:00:00.000Z',
+        });
       }
 
       throw new Error(`Unexpected request: ${url}`);
@@ -226,5 +276,92 @@ describe('QuotePage', () => {
     expect(screen.queryByRole('button', { name: 'Enviar orçamento' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancelar orçamento' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar pedido' })).not.toBeInTheDocument();
+  });
+
+  it('should convert an approved quote into an order and navigate to it', async () => {
+    const user = userEvent.setup();
+
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+
+        if (url.endsWith('/auth/me')) {
+          return jsonResponse(authenticatedUser);
+        }
+
+        if (url.endsWith('/orders') && init?.method === 'POST') {
+          return jsonResponse(createdOrder, 201);
+        }
+
+        if (url.endsWith(`/quotes/${quote.id}`)) {
+          return jsonResponse({
+            ...quote,
+            status: 'APPROVED',
+            approvedAt: '2026-09-19T12:00:00.000Z',
+          });
+        }
+
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    );
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Criar pedido' }));
+
+    expect(await screen.findByRole('heading', { name: 'Detalhe do pedido' })).toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3000/api/orders',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        body: JSON.stringify({
+          quoteId: quote.id,
+        }),
+      }),
+    );
+  });
+
+  it('should open a linked order instead of offering another creation', async () => {
+    const user = userEvent.setup();
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
+
+      if (url.endsWith(`/quotes/${quote.id}`)) {
+        return jsonResponse({
+          ...quote,
+          status: 'APPROVED',
+          approvedAt: '2026-09-19T12:00:00.000Z',
+          order: {
+            id: createdOrder.id,
+            number: createdOrder.number,
+            status: 'IN_PROGRESS',
+          },
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    expect(await screen.findByText('Pedido #1')).toBeInTheDocument();
+    expect(screen.getByText(/Situação geral: Em andamento\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar pedido' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Abrir pedido #1' }));
+
+    expect(await screen.findByRole('heading', { name: 'Detalhe do pedido' })).toBeInTheDocument();
   });
 });

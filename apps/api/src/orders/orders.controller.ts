@@ -41,72 +41,18 @@ export class OrdersController {
     return this.ordersService.findOne(request.auth.organization.id, orderId);
   }
 
-  @Post(':orderId/approve-art')
+  @Post(':orderId/advance')
   @OrganizationRoles(
     OrganizationRole.OWNER,
     OrganizationRole.ADMIN,
     OrganizationRole.OPERATIONS,
   )
-  approveArt(
+  advance(
     @Param('orderId', new ParseUUIDPipe({ version: '4' }))
     orderId: string,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.ordersService.approveArt(
-      request.auth.organization.id,
-      request.auth.user.id,
-      orderId,
-    );
-  }
-
-  @Post(':orderId/release')
-  @OrganizationRoles(
-    OrganizationRole.OWNER,
-    OrganizationRole.ADMIN,
-    OrganizationRole.OPERATIONS,
-  )
-  release(
-    @Param('orderId', new ParseUUIDPipe({ version: '4' }))
-    orderId: string,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    return this.ordersService.release(
-      request.auth.organization.id,
-      request.auth.user.id,
-      orderId,
-    );
-  }
-
-  @Post(':orderId/ready')
-  @OrganizationRoles(
-    OrganizationRole.OWNER,
-    OrganizationRole.ADMIN,
-    OrganizationRole.OPERATIONS,
-  )
-  markReady(
-    @Param('orderId', new ParseUUIDPipe({ version: '4' }))
-    orderId: string,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    return this.ordersService.markReady(
-      request.auth.organization.id,
-      request.auth.user.id,
-      orderId,
-    );
-  }
-
-  @Post(':orderId/deliver')
-  @OrganizationRoles(
-    OrganizationRole.OWNER,
-    OrganizationRole.ADMIN,
-    OrganizationRole.OPERATIONS,
-  )
-  deliver(
-    @Param('orderId', new ParseUUIDPipe({ version: '4' }))
-    orderId: string,
-    @Req() request: AuthenticatedRequest,
-  ) {
-    return this.ordersService.deliver(
+    return this.ordersService.advance(
       request.auth.organization.id,
       request.auth.user.id,
       orderId,

@@ -9,6 +9,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import {
   OrganizationRole,
   OrganizationStatus,
+  OrderStageCategory,
 } from '../generated/prisma/enums.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -65,6 +66,34 @@ export class AuthService {
             id: true,
             name: true,
             slug: true,
+          },
+        });
+
+        await transaction.orderWorkflow.create({
+          data: {
+            organizationId: organization.id,
+            name: 'Fluxo padrão',
+            normalizedName: 'fluxo padrao',
+            isDefault: true,
+            stages: {
+              create: [
+                {
+                  name: 'Pendente',
+                  position: 1,
+                  category: OrderStageCategory.PENDING,
+                },
+                {
+                  name: 'Em andamento',
+                  position: 2,
+                  category: OrderStageCategory.IN_PROGRESS,
+                },
+                {
+                  name: 'Concluído',
+                  position: 3,
+                  category: OrderStageCategory.COMPLETED,
+                },
+              ],
+            },
           },
         });
 

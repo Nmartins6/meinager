@@ -9,6 +9,7 @@ import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { type QuoteStatus } from '@/features/quotes/quotes-api';
 import { useQuotesQuery } from '@/features/quotes/use-quotes-query';
 import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
+import { orderStatusLabels } from '@/features/orders/order-presentation';
 import { cn } from '@/lib/utils';
 
 const quoteStatusLabels: Record<QuoteStatus, string> = {
@@ -171,6 +172,9 @@ export function QuotesPage() {
                         Total
                       </th>
                       <th scope="col" className="px-4 py-3 font-medium">
+                        Pedido
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-medium">
                         Status
                       </th>
                     </tr>
@@ -195,6 +199,23 @@ export function QuotesPage() {
                         <td className="px-4 py-3 text-right tabular-nums">{quote._count.items}</td>
                         <td className="px-4 py-3 text-right font-medium tabular-nums">
                           {formatCurrency(quote.total)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {quote.order ? (
+                            <button
+                              type="button"
+                              aria-label={`Abrir pedido #${quote.order.number}`}
+                              className="text-left text-primary hover:underline"
+                              onClick={() => navigate(`/app/financeiro/pedidos/${quote.order?.id}`)}
+                            >
+                              <span className="font-medium">Pedido #{quote.order.number}</span>
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {orderStatusLabels[quote.order.status]}
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span

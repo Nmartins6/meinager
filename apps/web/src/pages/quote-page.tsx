@@ -8,6 +8,8 @@ import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { type QuoteLifecycleAction, type QuoteStatus } from '@/features/quotes/quotes-api';
 import { useQuoteLifecycleMutation } from '@/features/quotes/use-quote-lifecycle-mutation';
 import { useQuoteQuery } from '@/features/quotes/use-quote-query';
+import { useCreateOrderFromQuoteMutation } from '@/features/orders/use-create-order-from-quote-mutation';
+import { orderStatusLabels } from '@/features/orders/order-presentation';
 import { cn } from '@/lib/utils';
 
 const quoteStatusLabels: Record<QuoteStatus, string> = {
@@ -61,10 +63,13 @@ export function QuotePage() {
 
   const lifecycleMutation = useQuoteLifecycleMutation();
 
+  const createOrderMutation = useCreateOrderFromQuoteMutation();
+
   const role = currentUserQuery.data?.organization.role;
   const canManage = role === 'OWNER' || role === 'ADMIN' || role === 'OPERATIONS';
 
   const quote = quoteQuery.data;
+  const linkedOrder = quote?.order;
   const error = currentUserQuery.error ?? quoteQuery.error;
 
   const availableActions = quote ? lifecycleActionsByStatus[quote.status] : [];
@@ -78,6 +83,23 @@ export function QuotePage() {
       quoteId: quote.id,
       action,
     });
+  }
+
+  function handleCreateOrder() {
+    if (!quote) {
+      return;
+    }
+
+    createOrderMutation.mutate(
+      {
+        quoteId: quote.id,
+      },
+      {
+        onSuccess: (order) => {
+          navigate(`/app/financeiro/pedidos/${order.id}`);
+        },
+      },
+    );
   }
 
   return (
@@ -182,6 +204,58 @@ export function QuotePage() {
                 )}
               </CardContent>
             </Card>
+          )}
+
+          {linkedOrder ? (
+            <Card className="mt-8">
+              <CardHeader>
+                <CardTitle>Pedido #{linkedOrder.number}</CardTitle>
+                <CardDescription>
+                  Situação geral: {orderStatusLabels[linkedOrder.status]}.
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate(`/app/financeiro/pedidos/${linkedOrder.id}`)}
+                >
+                  Abrir pedido #{linkedOrder.number}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            canManage &&
+            quote.status === 'APPROVED' && (
+              <Card className="mt-8">
+                <CardHeader>
+                  <CardTitle>Criar pedido</CardTitle>
+                  <CardDescription>
+                    Converta este orçamento aprovado em um pedido para acompanhar suas etapas.
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent>
+                  <Button
+                    type="button"
+                    onClick={handleCreateOrder}
+                    disabled={createOrderMutation.isPending}
+                  >
+                    {createOrderMutation.isPending ? 'Criando pedido...' : 'Criar pedido'}
+                  </Button>
+
+                  {createOrderMutation.error && (
+                    <p
+                      role="alert"
+                      className="mt-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+                    >
+                      {createOrderMutation.error.message}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )
           )}
 
           {!currentUserQuery.isPending && !canManage && (

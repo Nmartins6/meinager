@@ -57,11 +57,21 @@ enum QuoteStatus {
 }
 
 enum OrderStatus {
-  AWAITING_ART_APPROVAL
-  AWAITING_RELEASE
-  IN_PRODUCTION
-  READY
-  DELIVERED
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderStageCategory {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum OrderStageTransitionType {
+  CREATED
+  ADVANCED
   CANCELLED
 }
 
@@ -114,10 +124,11 @@ model User {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships OrganizationMember[]
-  sessions    Session[]
-  authTokens  AuthToken[]
-  auditLogs   AuditLog[]           @relation("AuditActor")
+  memberships           OrganizationMember[]
+  sessions              Session[]
+  authTokens            AuthToken[]
+  auditLogs             AuditLog[]                  @relation("AuditActor")
+  orderStageTransitions SalesOrderStageTransition[] @relation("OrderStageTransitionActor")
 
   @@map("users")
 }
@@ -134,18 +145,21 @@ model Organization {
   createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  members              OrganizationMember[]
-  auditLogs            AuditLog[]
-  clients              Client[]
-  products             Product[]
-  stockMovements       StockMovement[]
-  financialPeriods     FinancialPeriod[]
-  financialCategories  FinancialCategory[]
-  financialAccounts    FinancialAccount[]
-  financialEntries     FinancialEntry[]
-  financialSettlements FinancialSettlement[]
-  quotes               FinancialQuote[]
-  orders               SalesOrder[]
+  members               OrganizationMember[]
+  auditLogs             AuditLog[]
+  clients               Client[]
+  products              Product[]
+  stockMovements        StockMovement[]
+  financialPeriods      FinancialPeriod[]
+  financialCategories   FinancialCategory[]
+  financialAccounts     FinancialAccount[]
+  financialEntries      FinancialEntry[]
+  financialSettlements  FinancialSettlement[]
+  quotes                FinancialQuote[]
+  orders                SalesOrder[]
+  orderWorkflows        OrderWorkflow[]
+  orderWorkflowStages   OrderWorkflowStage[]
+  orderStageTransitions SalesOrderStageTransition[]
 
   @@map("organizations")
 }
@@ -336,29 +350,31 @@ model SalesOrder {
   organizationId String      @map("organization_id") @db.Uuid
   quoteId        String      @map("quote_id") @db.Uuid
   clientId       String      @map("client_id") @db.Uuid
+  workflowId     String      @map("workflow_id") @db.Uuid
+  currentStageId String      @map("current_stage_id") @db.Uuid
   number         Int
-  status         OrderStatus @default(AWAITING_ART_APPROVAL)
+  status         OrderStatus @default(PENDING)
   subtotal       Decimal     @default(0) @db.Decimal(14, 2)
   discount       Decimal     @default(0) @db.Decimal(14, 2)
   total          Decimal     @default(0) @db.Decimal(14, 2)
   notes          String?     @db.Text
-  artApprovedAt  DateTime?   @map("art_approved_at") @db.Timestamptz(3)
-  releasedAt     DateTime?   @map("released_at") @db.Timestamptz(3)
-  readyAt        DateTime?   @map("ready_at") @db.Timestamptz(3)
-  deliveredAt    DateTime?   @map("delivered_at") @db.Timestamptz(3)
   cancelledAt    DateTime?   @map("cancelled_at") @db.Timestamptz(3)
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  quote        FinancialQuote   @relation("OrderSourceQuote", fields: [organizationId, quoteId], references: [organizationId, id], onDelete: Restrict)
-  client       Client           @relation(fields: [organizationId, clientId], references: [organizationId, id], onDelete: Restrict)
-  items        SalesOrderItem[]
+  organization     Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote            FinancialQuote              @relation("OrderSourceQuote", fields: [organizationId, quoteId], references: [organizationId, id], onDelete: Restrict)
+  client           Client                      @relation(fields: [organizationId, clientId], references: [organizationId, id], onDelete: Restrict)
+  workflow         OrderWorkflow               @relation(fields: [organizationId, workflowId], references: [organizationId, id], onDelete: Restrict)
+  currentStage     OrderWorkflowStage          @relation("SalesOrderCurrentStage", fields: [organizationId, currentStageId], references: [organizationId, id], onDelete: Restrict)
+  items            SalesOrderItem[]
+  stageTransitions SalesOrderStageTransition[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, number])
   @@unique([organizationId, quoteId])
   @@index([organizationId, status])
+  @@index([organizationId, currentStageId])
   @@index([organizationId, clientId, createdAt])
   @@map("orders")
 }
@@ -385,6 +401,69 @@ model SalesOrderItem {
   @@index([organizationId, orderId])
   @@index([organizationId, productId])
   @@map("order_items")
+}
+
+model OrderWorkflow {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  normalizedName String   @map("normalized_name") @db.VarChar(100)
+  isDefault      Boolean  @default(false) @map("is_default")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages       OrderWorkflowStage[]
+  orders       SalesOrder[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, normalizedName])
+  @@index([organizationId, isDefault, isActive])
+  @@map("order_workflows")
+}
+
+model OrderWorkflowStage {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  workflowId     String             @map("workflow_id") @db.Uuid
+  name           String             @db.VarChar(100)
+  position       Int
+  category       OrderStageCategory
+  isActive       Boolean            @default(true) @map("is_active")
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization        Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workflow            OrderWorkflow               @relation(fields: [organizationId, workflowId], references: [organizationId, id], onDelete: Cascade)
+  currentOrders       SalesOrder[]                @relation("SalesOrderCurrentStage")
+  previousTransitions SalesOrderStageTransition[] @relation("OrderStageTransitionPreviousStage")
+  nextTransitions     SalesOrderStageTransition[] @relation("OrderStageTransitionNextStage")
+
+  @@unique([organizationId, id])
+  @@unique([workflowId, position])
+  @@index([organizationId, workflowId, isActive])
+  @@map("order_workflow_stages")
+}
+
+model SalesOrderStageTransition {
+  id              String                   @id @default(uuid()) @db.Uuid
+  organizationId  String                   @map("organization_id") @db.Uuid
+  orderId         String                   @map("order_id") @db.Uuid
+  type            OrderStageTransitionType
+  previousStageId String?                  @map("previous_stage_id") @db.Uuid
+  nextStageId     String?                  @map("next_stage_id") @db.Uuid
+  actorUserId     String?                  @map("actor_user_id") @db.Uuid
+  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order         SalesOrder          @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Cascade)
+  previousStage OrderWorkflowStage? @relation("OrderStageTransitionPreviousStage", fields: [organizationId, previousStageId], references: [organizationId, id], onDelete: Restrict)
+  nextStage     OrderWorkflowStage? @relation("OrderStageTransitionNextStage", fields: [organizationId, nextStageId], references: [organizationId, id], onDelete: Restrict)
+  actor         User?               @relation("OrderStageTransitionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, orderId, createdAt])
+  @@map("order_stage_transitions")
 }
 
 model StockMovement {

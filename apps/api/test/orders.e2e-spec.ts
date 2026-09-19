@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { PrismaService } from '../src/database/prisma.service.js';
 import {
+  OrderStageCategory,
   OrderStatus,
   OrganizationRole,
   QuoteStatus,
@@ -33,6 +34,43 @@ describe('Orders (e2e)', () => {
     }
 
     return organizationId;
+  }
+
+  async function createDefaultWorkflow(targetOrganizationId: string) {
+    return prisma.orderWorkflow.create({
+      data: {
+        organizationId: targetOrganizationId,
+        name: 'Fluxo padrão',
+        normalizedName: 'fluxo padrao',
+        isDefault: true,
+        stages: {
+          create: [
+            {
+              name: 'Pendente',
+              position: 1,
+              category: OrderStageCategory.PENDING,
+            },
+            {
+              name: 'Em andamento',
+              position: 2,
+              category: OrderStageCategory.IN_PROGRESS,
+            },
+            {
+              name: 'Concluído',
+              position: 3,
+              category: OrderStageCategory.COMPLETED,
+            },
+          ],
+        },
+      },
+      include: {
+        stages: {
+          orderBy: {
+            position: 'asc',
+          },
+        },
+      },
+    });
   }
 
   async function createClient(isActive = true) {
@@ -199,7 +237,15 @@ describe('Orders (e2e)', () => {
 
     expect(response.body).toMatchObject({
       number: 1,
-      status: 'AWAITING_ART_APPROVAL',
+      status: 'PENDING',
+      workflow: {
+        name: 'Fluxo padrão',
+      },
+      currentStage: {
+        name: 'Pendente',
+        position: 1,
+        category: 'PENDING',
+      },
       subtotal: '23.33',
       discount: '0.33',
       total: '23',
@@ -269,6 +315,44 @@ describe('Orders (e2e)', () => {
     });
 
     expect(auditLog.entityType).toBe('sales_order');
+  });
+
+  it('GET should expose the linked order in quote detail and listing', async () => {
+    const { quote } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id);
+
+    const detailResponse = await request(httpServer())
+      .get(`/api/quotes/${quote.id}`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(detailResponse.body).toMatchObject({
+      id: quote.id,
+      status: 'APPROVED',
+      order: {
+        id: order.id,
+        number: order.number,
+        status: 'PENDING',
+      },
+    });
+
+    const listResponse = await request(httpServer())
+      .get('/api/quotes?status=APPROVED')
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(listResponse.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: quote.id,
+          order: {
+            id: order.id,
+            number: order.number,
+            status: 'PENDING',
+          },
+        }),
+      ]),
+    );
   });
 
   it('POST should reject converting a quote that is not approved', async () => {
@@ -396,29 +480,27 @@ describe('Orders (e2e)', () => {
     await createOrderFromQuote(secondQuote.quote.id);
 
     const thirdQuote = await createApprovedQuote(client);
-    const readyOrder = await createOrderFromQuote(thirdQuote.quote.id);
+    const inProgressOrder = await createOrderFromQuote(thirdQuote.quote.id);
 
-    await prisma.salesOrder.update({
-      where: {
-        id: readyOrder.id,
-      },
-      data: {
-        status: OrderStatus.READY,
-        readyAt: new Date(),
+    const advancement = await request(httpServer())
+      .post(`/api/orders/${inProgressOrder.id}/advance`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(advancement.body).toMatchObject({
+      id: inProgressOrder.id,
+      status: 'IN_PROGRESS',
+      currentStage: {
+        name: 'Em andamento',
+        position: 2,
+        category: 'IN_PROGRESS',
       },
     });
 
     const page = await request(httpServer())
-      .get(`/api/orders?clientId=${client.id}&page=2&pageSize=1`)
+      .get(`/api/orders?clientId=${client.id}&status=IN_PROGRESS`)
       .set('Cookie', sessionCookie)
       .expect(200);
-
-    expect(page.body.pagination).toEqual({
-      page: 2,
-      pageSize: 1,
-      total: 3,
-      totalPages: 3,
-    });
 
     expect(page.body.data).toHaveLength(1);
     expect(page.body.data[0]).toMatchObject({
@@ -432,14 +514,14 @@ describe('Orders (e2e)', () => {
     });
 
     const filtered = await request(httpServer())
-      .get(`/api/orders?clientId=${client.id}&status=READY`)
+      .get(`/api/orders?clientId=${client.id}&status=IN_PROGRESS`)
       .set('Cookie', sessionCookie)
       .expect(200);
 
     expect(filtered.body.data).toHaveLength(1);
     expect(filtered.body.data[0]).toMatchObject({
-      id: readyOrder.id,
-      status: 'READY',
+      id: inProgressOrder.id,
+      status: 'IN_PROGRESS',
     });
   });
 
@@ -454,7 +536,15 @@ describe('Orders (e2e)', () => {
 
     expect(response.body).toMatchObject({
       id: order.id,
-      status: 'AWAITING_ART_APPROVAL',
+      status: 'PENDING',
+      workflow: {
+        name: 'Fluxo padrão',
+      },
+      currentStage: {
+        name: 'Pendente',
+        position: 1,
+        category: 'PENDING',
+      },
       quote: {
         id: quote.id,
         number: quote.number,
@@ -511,6 +601,13 @@ describe('Orders (e2e)', () => {
       },
     });
 
+    const otherWorkflow = await createDefaultWorkflow(otherOrganization.id);
+    const otherInitialStage = otherWorkflow.stages[0];
+
+    if (!otherInitialStage) {
+      throw new Error('Default workflow was created without an initial stage');
+    }
+
     const foreignOrder = await prisma.salesOrder.create({
       data: {
         organizationId: otherOrganization.id,
@@ -520,6 +617,9 @@ describe('Orders (e2e)', () => {
         subtotal: '10',
         discount: '0',
         total: '10',
+        workflowId: otherWorkflow.id,
+        currentStageId: otherInitialStage.id,
+        status: OrderStatus.PENDING,
         items: {
           create: {
             position: 1,
@@ -583,49 +683,42 @@ describe('Orders (e2e)', () => {
     }
   });
 
-  it('POST should progress an order through the operational lifecycle with audit records', async () => {
+  it('POST should advance an order through the default workflow with history and audit records', async () => {
     const { quote } = await createApprovedQuote();
     const order = await createOrderFromQuote(quote.id);
 
-    const artApproval = await request(httpServer())
-      .post(`/api/orders/${order.id}/approve-art`)
+    const inProgress = await request(httpServer())
+      .post(`/api/orders/${order.id}/advance`)
       .set('Cookie', sessionCookie)
       .expect(201);
 
-    expect(artApproval.body).toMatchObject({
-      status: 'AWAITING_RELEASE',
-      artApprovedAt: expect.any(String),
+    expect(inProgress.body).toMatchObject({
+      status: 'IN_PROGRESS',
+      currentStage: {
+        name: 'Em andamento',
+        position: 2,
+        category: 'IN_PROGRESS',
+      },
     });
 
-    const release = await request(httpServer())
-      .post(`/api/orders/${order.id}/release`)
+    const completion = await request(httpServer())
+      .post(`/api/orders/${order.id}/advance`)
       .set('Cookie', sessionCookie)
       .expect(201);
 
-    expect(release.body).toMatchObject({
-      status: 'IN_PRODUCTION',
-      releasedAt: expect.any(String),
+    expect(completion.body).toMatchObject({
+      status: 'COMPLETED',
+      currentStage: {
+        name: 'Concluído',
+        position: 3,
+        category: 'COMPLETED',
+      },
     });
 
-    const ready = await request(httpServer())
-      .post(`/api/orders/${order.id}/ready`)
+    await request(httpServer())
+      .post(`/api/orders/${order.id}/advance`)
       .set('Cookie', sessionCookie)
-      .expect(201);
-
-    expect(ready.body).toMatchObject({
-      status: 'READY',
-      readyAt: expect.any(String),
-    });
-
-    const delivery = await request(httpServer())
-      .post(`/api/orders/${order.id}/deliver`)
-      .set('Cookie', sessionCookie)
-      .expect(201);
-
-    expect(delivery.body).toMatchObject({
-      status: 'DELIVERED',
-      deliveredAt: expect.any(String),
-    });
+      .expect(409);
 
     await request(httpServer())
       .post(`/api/orders/${order.id}/cancel`)
@@ -636,38 +729,31 @@ describe('Orders (e2e)', () => {
       where: {
         id: order.id,
       },
+      include: {
+        currentStage: true,
+        stageTransitions: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
     });
 
-    expect(persisted.status).toBe(OrderStatus.DELIVERED);
-    expect(persisted.artApprovedAt).not.toBeNull();
-    expect(persisted.releasedAt).not.toBeNull();
-    expect(persisted.readyAt).not.toBeNull();
-    expect(persisted.deliveredAt).not.toBeNull();
+    expect(persisted.status).toBe(OrderStatus.COMPLETED);
+    expect(persisted.currentStage.name).toBe('Concluído');
+    expect(
+      persisted.stageTransitions.map((transition) => transition.type),
+    ).toEqual(['CREATED', 'ADVANCED', 'ADVANCED']);
 
     const audits = await prisma.auditLog.findMany({
       where: {
         organizationId,
         entityId: order.id,
-        action: {
-          in: [
-            'order.art_approved',
-            'order.released',
-            'order.ready',
-            'order.delivered',
-          ],
-        },
+        action: 'order.stage_advanced',
       },
     });
 
-    expect(audits).toHaveLength(4);
-    expect(audits.map((audit) => audit.action)).toEqual(
-      expect.arrayContaining([
-        'order.art_approved',
-        'order.released',
-        'order.ready',
-        'order.delivered',
-      ]),
-    );
+    expect(audits).toHaveLength(2);
   });
 
   it('POST should cancel an order before delivery and reject further transitions', async () => {
@@ -685,7 +771,7 @@ describe('Orders (e2e)', () => {
     });
 
     await request(httpServer())
-      .post(`/api/orders/${order.id}/approve-art`)
+      .post(`/api/orders/${order.id}/advance`)
       .set('Cookie', sessionCookie)
       .expect(409);
 
@@ -695,34 +781,14 @@ describe('Orders (e2e)', () => {
       .expect(409);
   });
 
-  it('POST should reject invalid order lifecycle transitions', async () => {
-    const { quote } = await createApprovedQuote();
-    const order = await createOrderFromQuote(quote.id);
-
-    await request(httpServer())
-      .post(`/api/orders/${order.id}/release`)
-      .set('Cookie', sessionCookie)
-      .expect(409);
-
-    await request(httpServer())
-      .post(`/api/orders/${order.id}/ready`)
-      .set('Cookie', sessionCookie)
-      .expect(409);
-
-    await request(httpServer())
-      .post(`/api/orders/${order.id}/deliver`)
-      .set('Cookie', sessionCookie)
-      .expect(409);
-  });
-
-  it('POST should serialize concurrent art approvals and preserve one audit record', async () => {
+  it('POST should serialize concurrent stage advances and preserve one audit record', async () => {
     const { quote } = await createApprovedQuote();
     const order = await createOrderFromQuote(quote.id);
 
     const responses = await Promise.all(
       Array.from({ length: 2 }, () =>
         request(httpServer())
-          .post(`/api/orders/${order.id}/approve-art`)
+          .post(`/api/orders/${order.id}/advance`)
           .set('Cookie', sessionCookie),
       ),
     );
@@ -737,13 +803,13 @@ describe('Orders (e2e)', () => {
       },
     });
 
-    expect(persisted.status).toBe(OrderStatus.AWAITING_RELEASE);
+    expect(persisted.status).toBe(OrderStatus.IN_PROGRESS);
 
     const auditCount = await prisma.auditLog.count({
       where: {
         organizationId,
         entityId: order.id,
-        action: 'order.art_approved',
+        action: 'order.stage_advanced',
       },
     });
 
@@ -864,7 +930,7 @@ describe('Orders (e2e)', () => {
         });
 
         await request(httpServer())
-          .post(`/api/orders/${order.id}/approve-art`)
+          .post(`/api/orders/${order.id}/advance`)
           .set('Cookie', sessionCookie)
           .expect(201);
       }
@@ -888,7 +954,7 @@ describe('Orders (e2e)', () => {
         });
 
         await request(httpServer())
-          .post(`/api/orders/${order.id}/approve-art`)
+          .post(`/api/orders/${order.id}/advance`)
           .set('Cookie', sessionCookie)
           .expect(403);
       }
@@ -915,7 +981,7 @@ describe('Orders (e2e)', () => {
     await request(httpServer()).get(`/api/orders/${randomUUID()}`).expect(401);
 
     await request(httpServer())
-      .post(`/api/orders/${randomUUID()}/approve-art`)
+      .post(`/api/orders/${randomUUID()}/advance`)
       .expect(401);
   });
 });

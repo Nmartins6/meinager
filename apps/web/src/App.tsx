@@ -104,6 +104,16 @@ const EditQuotePage = lazy(async () => {
   return { default: module.EditQuotePage };
 });
 
+const OrdersPage = lazy(async () => {
+  const module = await import('@/pages/orders-page');
+  return { default: module.OrdersPage };
+});
+
+const OrderPage = lazy(async () => {
+  const module = await import('@/pages/order-page');
+  return { default: module.OrderPage };
+});
+
 interface LazyRouteProps {
   children: ReactNode;
 }
@@ -312,6 +322,24 @@ export function App() {
             element={
               <LazyRoute>
                 <EditQuotePage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/pedidos"
+            element={
+              <LazyRoute>
+                <OrdersPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/pedidos/:orderId"
+            element={
+              <LazyRoute>
+                <OrderPage />
               </LazyRoute>
             }
           />

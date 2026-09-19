@@ -6,9 +6,21 @@ import {
 
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import {
+  OrderStageCategory,
+  OrderStageTransitionType,
+  OrderStatus,
+  QuoteStatus,
+} from '../generated/prisma/enums.js';
 import type { CreateOrderFromQuoteDto } from './dto/create-order-from-quote.dto.js';
 import type { ListOrdersQueryDto } from './dto/list-orders-query.dto.js';
-import { OrderStatus, QuoteStatus } from '../generated/prisma/enums.js';
+
+const orderStageSelect = {
+  id: true,
+  name: true,
+  position: true,
+  category: true,
+} satisfies Prisma.OrderWorkflowStageSelect;
 
 const orderItemSelect = {
   id: true,
@@ -32,13 +44,18 @@ const orderSelect = {
   discount: true,
   total: true,
   notes: true,
-  artApprovedAt: true,
-  releasedAt: true,
-  readyAt: true,
-  deliveredAt: true,
   cancelledAt: true,
   createdAt: true,
   updatedAt: true,
+  workflow: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  currentStage: {
+    select: orderStageSelect,
+  },
   quote: {
     select: {
       id: true,
@@ -58,6 +75,26 @@ const orderSelect = {
     },
     select: orderItemSelect,
   },
+  stageTransitions: {
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true,
+      type: true,
+      createdAt: true,
+      previousStage: {
+        select: orderStageSelect,
+      },
+      nextStage: {
+        select: orderStageSelect,
+      },
+      actor: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
 } satisfies Prisma.SalesOrderSelect;
 
 const orderSummarySelect = {
@@ -69,6 +106,15 @@ const orderSummarySelect = {
   total: true,
   createdAt: true,
   updatedAt: true,
+  workflow: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  currentStage: {
+    select: orderStageSelect,
+  },
   quote: {
     select: {
       id: true,
@@ -133,11 +179,15 @@ export interface PaginatedOrdersResponse {
   };
 }
 
-interface OrderTransition {
-  allowedStatuses: OrderStatus[];
-  data: Prisma.SalesOrderUpdateManyMutationInput;
-  auditAction: string;
-  invalidStatusMessage: string;
+function statusForStageCategory(category: OrderStageCategory): OrderStatus {
+  switch (category) {
+    case OrderStageCategory.PENDING:
+      return OrderStatus.PENDING;
+    case OrderStageCategory.IN_PROGRESS:
+      return OrderStatus.IN_PROGRESS;
+    case OrderStageCategory.COMPLETED:
+      return OrderStatus.COMPLETED;
+  }
 }
 
 @Injectable()
@@ -148,19 +198,7 @@ export class OrdersService {
     organizationId: string,
     orderId: string,
   ): Promise<OrderResponse> {
-    const order = await this.prisma.salesOrder.findFirst({
-      where: {
-        id: orderId,
-        organizationId,
-      },
-      select: orderSelect,
-    });
-
-    if (!order) {
-      throw new NotFoundException('Pedido não encontrado.');
-    }
-
-    return order;
+    return this.findOrderOrThrow(this.prisma, organizationId, orderId);
   }
 
   async findAll(
@@ -184,9 +222,7 @@ export class OrdersService {
         take: pageSize,
         select: orderSummarySelect,
       }),
-      this.prisma.salesOrder.count({
-        where,
-      }),
+      this.prisma.salesOrder.count({ where }),
     ]);
 
     return {
@@ -243,6 +279,36 @@ export class OrdersService {
         );
       }
 
+      const workflow = await transaction.orderWorkflow.findFirst({
+        where: {
+          organizationId,
+          isDefault: true,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          stages: {
+            where: {
+              isActive: true,
+            },
+            orderBy: {
+              position: 'asc',
+            },
+            take: 1,
+            select: orderStageSelect,
+          },
+        },
+      });
+
+      const initialStage = workflow?.stages[0];
+
+      if (!workflow || !initialStage) {
+        throw new ConflictException(
+          'A organização não possui um fluxo padrão com ao menos uma etapa ativa.',
+        );
+      }
+
       const lastOrder = await transaction.salesOrder.aggregate({
         where: {
           organizationId,
@@ -252,14 +318,15 @@ export class OrdersService {
         },
       });
 
-      const number = (lastOrder._max.number ?? 0) + 1;
-
-      const order = await transaction.salesOrder.create({
+      const createdOrder = await transaction.salesOrder.create({
         data: {
           organizationId,
           quoteId: quote.id,
           clientId: quote.clientId,
-          number,
+          workflowId: workflow.id,
+          currentStageId: initialStage.id,
+          status: statusForStageCategory(initialStage.category),
+          number: (lastOrder._max.number ?? 0) + 1,
           subtotal: quote.subtotal,
           discount: quote.discount,
           total: quote.total,
@@ -277,8 +344,26 @@ export class OrdersService {
             })),
           },
         },
-        select: orderSelect,
+        select: {
+          id: true,
+        },
       });
+
+      await transaction.salesOrderStageTransition.create({
+        data: {
+          organizationId,
+          orderId: createdOrder.id,
+          type: OrderStageTransitionType.CREATED,
+          nextStageId: initialStage.id,
+          actorUserId,
+        },
+      });
+
+      const order = await this.findOrderOrThrow(
+        transaction,
+        organizationId,
+        createdOrder.id,
+      );
 
       await transaction.auditLog.create({
         data: {
@@ -292,6 +377,10 @@ export class OrdersService {
             quoteId: quote.id,
             quoteNumber: quote.number,
             clientId: quote.clientId,
+            workflowId: workflow.id,
+            workflowName: workflow.name,
+            initialStageId: initialStage.id,
+            initialStageName: initialStage.name,
             itemCount: order.items.length,
             total: order.total.toString(),
           },
@@ -302,101 +391,10 @@ export class OrdersService {
     });
   }
 
-  async approveArt(
+  async advance(
     organizationId: string,
     actorUserId: string,
     orderId: string,
-  ): Promise<OrderResponse> {
-    return this.transition(organizationId, actorUserId, orderId, {
-      allowedStatuses: [OrderStatus.AWAITING_ART_APPROVAL],
-      data: {
-        status: OrderStatus.AWAITING_RELEASE,
-        artApprovedAt: new Date(),
-      },
-      auditAction: 'order.art_approved',
-      invalidStatusMessage:
-        'A arte só pode ser aprovada para pedidos aguardando aprovação de arte.',
-    });
-  }
-
-  async release(
-    organizationId: string,
-    actorUserId: string,
-    orderId: string,
-  ): Promise<OrderResponse> {
-    return this.transition(organizationId, actorUserId, orderId, {
-      allowedStatuses: [OrderStatus.AWAITING_RELEASE],
-      data: {
-        status: OrderStatus.IN_PRODUCTION,
-        releasedAt: new Date(),
-      },
-      auditAction: 'order.released',
-      invalidStatusMessage:
-        'O pedido só pode ser liberado para produção quando estiver aguardando liberação.',
-    });
-  }
-
-  async markReady(
-    organizationId: string,
-    actorUserId: string,
-    orderId: string,
-  ): Promise<OrderResponse> {
-    return this.transition(organizationId, actorUserId, orderId, {
-      allowedStatuses: [OrderStatus.IN_PRODUCTION],
-      data: {
-        status: OrderStatus.READY,
-        readyAt: new Date(),
-      },
-      auditAction: 'order.ready',
-      invalidStatusMessage:
-        'O pedido só pode ser marcado como pronto quando estiver em produção.',
-    });
-  }
-
-  async deliver(
-    organizationId: string,
-    actorUserId: string,
-    orderId: string,
-  ): Promise<OrderResponse> {
-    return this.transition(organizationId, actorUserId, orderId, {
-      allowedStatuses: [OrderStatus.READY],
-      data: {
-        status: OrderStatus.DELIVERED,
-        deliveredAt: new Date(),
-      },
-      auditAction: 'order.delivered',
-      invalidStatusMessage:
-        'O pedido só pode ser entregue quando estiver pronto.',
-    });
-  }
-
-  async cancel(
-    organizationId: string,
-    actorUserId: string,
-    orderId: string,
-  ): Promise<OrderResponse> {
-    return this.transition(organizationId, actorUserId, orderId, {
-      allowedStatuses: [
-        OrderStatus.AWAITING_ART_APPROVAL,
-        OrderStatus.AWAITING_RELEASE,
-        OrderStatus.IN_PRODUCTION,
-        OrderStatus.READY,
-      ],
-      data: {
-        status: OrderStatus.CANCELLED,
-        cancelledAt: new Date(),
-      },
-      auditAction: 'order.cancelled',
-      invalidStatusMessage:
-        'Pedidos entregues ou já cancelados não podem ser cancelados.',
-    });
-  }
-
-  private async transition(
-    organizationId: string,
-    actorUserId: string,
-    orderId: string,
-    transition: OrderTransition,
   ): Promise<OrderResponse> {
     return this.prisma.$transaction(async (transaction) => {
       const currentOrder = await transaction.salesOrder.findFirst({
@@ -407,6 +405,22 @@ export class OrdersService {
         select: {
           id: true,
           status: true,
+          currentStage: {
+            select: orderStageSelect,
+          },
+          workflow: {
+            select: {
+              stages: {
+                where: {
+                  isActive: true,
+                },
+                orderBy: {
+                  position: 'asc',
+                },
+                select: orderStageSelect,
+              },
+            },
+          },
         },
       });
 
@@ -414,8 +428,116 @@ export class OrdersService {
         throw new NotFoundException('Pedido não encontrado.');
       }
 
-      if (!transition.allowedStatuses.includes(currentOrder.status)) {
-        throw new ConflictException(transition.invalidStatusMessage);
+      if (
+        currentOrder.status === OrderStatus.COMPLETED ||
+        currentOrder.status === OrderStatus.CANCELLED
+      ) {
+        throw new ConflictException(
+          'Pedidos concluídos ou cancelados não podem avançar de etapa.',
+        );
+      }
+
+      const nextStage = currentOrder.workflow.stages.find(
+        (stage) => stage.position > currentOrder.currentStage.position,
+      );
+
+      if (!nextStage) {
+        throw new ConflictException(
+          'Não há uma próxima etapa ativa configurada para este pedido.',
+        );
+      }
+
+      const nextStatus = statusForStageCategory(nextStage.category);
+
+      const updateResult = await transaction.salesOrder.updateMany({
+        where: {
+          id: currentOrder.id,
+          organizationId,
+          status: currentOrder.status,
+          currentStageId: currentOrder.currentStage.id,
+        },
+        data: {
+          currentStageId: nextStage.id,
+          status: nextStatus,
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new ConflictException(
+          'O pedido foi alterado por outra operação. Atualize a página e tente novamente.',
+        );
+      }
+
+      await transaction.salesOrderStageTransition.create({
+        data: {
+          organizationId,
+          orderId: currentOrder.id,
+          type: OrderStageTransitionType.ADVANCED,
+          previousStageId: currentOrder.currentStage.id,
+          nextStageId: nextStage.id,
+          actorUserId,
+        },
+      });
+
+      const order = await this.findOrderOrThrow(
+        transaction,
+        organizationId,
+        currentOrder.id,
+      );
+
+      await transaction.auditLog.create({
+        data: {
+          organizationId,
+          actorUserId,
+          action: 'order.stage_advanced',
+          entityType: 'sales_order',
+          entityId: order.id,
+          metadata: {
+            previousStatus: currentOrder.status,
+            status: order.status,
+            previousStageId: currentOrder.currentStage.id,
+            previousStageName: currentOrder.currentStage.name,
+            nextStageId: nextStage.id,
+            nextStageName: nextStage.name,
+          },
+        },
+      });
+
+      return order;
+    });
+  }
+
+  async cancel(
+    organizationId: string,
+    actorUserId: string,
+    orderId: string,
+  ): Promise<OrderResponse> {
+    return this.prisma.$transaction(async (transaction) => {
+      const currentOrder = await transaction.salesOrder.findFirst({
+        where: {
+          id: orderId,
+          organizationId,
+        },
+        select: {
+          id: true,
+          status: true,
+          currentStage: {
+            select: orderStageSelect,
+          },
+        },
+      });
+
+      if (!currentOrder) {
+        throw new NotFoundException('Pedido não encontrado.');
+      }
+
+      if (
+        currentOrder.status === OrderStatus.COMPLETED ||
+        currentOrder.status === OrderStatus.CANCELLED
+      ) {
+        throw new ConflictException(
+          'Pedidos concluídos ou já cancelados não podem ser cancelados.',
+        );
       }
 
       const updateResult = await transaction.salesOrder.updateMany({
@@ -423,41 +545,72 @@ export class OrdersService {
           id: currentOrder.id,
           organizationId,
           status: currentOrder.status,
+          currentStageId: currentOrder.currentStage.id,
         },
-        data: transition.data,
+        data: {
+          status: OrderStatus.CANCELLED,
+          cancelledAt: new Date(),
+        },
       });
 
       if (updateResult.count === 0) {
-        throw new ConflictException(transition.invalidStatusMessage);
+        throw new ConflictException(
+          'O pedido foi alterado por outra operação. Atualize a página e tente novamente.',
+        );
       }
 
-      const order = await transaction.salesOrder.findFirst({
-        where: {
-          id: currentOrder.id,
+      await transaction.salesOrderStageTransition.create({
+        data: {
           organizationId,
+          orderId: currentOrder.id,
+          type: OrderStageTransitionType.CANCELLED,
+          previousStageId: currentOrder.currentStage.id,
+          actorUserId,
         },
-        select: orderSelect,
       });
 
-      if (!order) {
-        throw new NotFoundException('Pedido não encontrado.');
-      }
+      const order = await this.findOrderOrThrow(
+        transaction,
+        organizationId,
+        currentOrder.id,
+      );
 
       await transaction.auditLog.create({
         data: {
           organizationId,
           actorUserId,
-          action: transition.auditAction,
+          action: 'order.cancelled',
           entityType: 'sales_order',
           entityId: order.id,
           metadata: {
             previousStatus: currentOrder.status,
-            status: order.status,
+            previousStageId: currentOrder.currentStage.id,
+            previousStageName: currentOrder.currentStage.name,
           },
         },
       });
 
       return order;
     });
+  }
+
+  private async findOrderOrThrow(
+    client: PrismaService | Prisma.TransactionClient,
+    organizationId: string,
+    orderId: string,
+  ): Promise<OrderResponse> {
+    const order = await client.salesOrder.findFirst({
+      where: {
+        id: orderId,
+        organizationId,
+      },
+      select: orderSelect,
+    });
+
+    if (!order) {
+      throw new NotFoundException('Pedido não encontrado.');
+    }
+
+    return order;
   }
 }

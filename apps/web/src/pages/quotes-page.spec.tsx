@@ -15,6 +15,7 @@ const quote = {
   total: '1234.50',
   createdAt: '2026-09-10T12:00:00.000Z',
   updatedAt: '2026-09-10T12:00:00.000Z',
+  order: null,
   client: {
     id: '6a259098-33ef-4464-b9e1-c0fa6bbb082d',
     name: 'Cliente do orçamento',
@@ -47,7 +48,7 @@ function jsonResponse(body: unknown) {
   });
 }
 
-function quotesResponse(data = [quote]) {
+function quotesResponse(data: unknown[] = [quote]) {
   return {
     data,
     pagination: {
@@ -76,6 +77,7 @@ function renderPage() {
             path="/app/financeiro/orcamentos/:quoteId"
             element={<h1>Detalhe do orçamento</h1>}
           />
+          <Route path="/app/financeiro/pedidos/:orderId" element={<h1>Detalhe do pedido</h1>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -185,5 +187,46 @@ describe('QuotesPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Detalhe do orçamento' }),
     ).toBeInTheDocument();
+  });
+
+  it('should show and open the linked order with its current status', async () => {
+    const user = userEvent.setup();
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
+
+      if (url.includes('/quotes?')) {
+        return jsonResponse(
+          quotesResponse([
+            {
+              ...quote,
+              status: 'APPROVED',
+              order: {
+                id: 'b24913f3-bd0c-4086-88f6-6fa45c79c021',
+                number: 1,
+                status: 'IN_PROGRESS',
+              },
+            },
+          ]),
+        );
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    expect(await screen.findByText('Pedido #1')).toBeInTheDocument();
+    expect(screen.getByText('Em andamento')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Abrir pedido #1' }));
+
+    expect(await screen.findByRole('heading', { name: 'Detalhe do pedido' })).toBeInTheDocument();
   });
 });
