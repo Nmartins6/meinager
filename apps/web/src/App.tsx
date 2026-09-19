@@ -99,6 +99,11 @@ const QuotePage = lazy(async () => {
   return { default: module.QuotePage };
 });
 
+const EditQuotePage = lazy(async () => {
+  const module = await import('@/pages/edit-quote-page');
+  return { default: module.EditQuotePage };
+});
+
 interface LazyRouteProps {
   children: ReactNode;
 }
@@ -298,6 +303,15 @@ export function App() {
             element={
               <LazyRoute>
                 <QuotePage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/orcamentos/:quoteId/editar"
+            element={
+              <LazyRoute>
+                <EditQuotePage />
               </LazyRoute>
             }
           />

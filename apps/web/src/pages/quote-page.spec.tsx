@@ -126,6 +126,8 @@ describe('QuotePage', () => {
 
     expect(screen.getByText('Cliente do orçamento')).toBeInTheDocument();
     expect(screen.getByText('Rascunho')).toBeInTheDocument();
+    expect(screen.getByText('Rascunho')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument();
     expect(screen.getByText('12/10/2026')).toBeInTheDocument();
 
     expect(screen.getByText('Caneca branca personalizada')).toBeInTheDocument();
@@ -178,6 +180,7 @@ describe('QuotePage', () => {
     await user.click(await screen.findByRole('button', { name: 'Enviar orçamento' }));
 
     expect(await screen.findByText('Enviado')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aprovar orçamento' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Recusar orçamento' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancelar orçamento' })).toBeInTheDocument();
@@ -222,5 +225,6 @@ describe('QuotePage', () => {
 
     expect(screen.queryByRole('button', { name: 'Enviar orçamento' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancelar orçamento' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Pencil } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
@@ -116,19 +116,34 @@ export function QuotePage() {
               <p className="mt-2 text-muted-foreground">Proposta para {quote.client.name}.</p>
             </div>
 
-            <span
-              className={cn(
-                'w-fit rounded-full px-2.5 py-1 text-xs font-medium',
-                quote.status === 'DRAFT' && 'bg-blue-100 text-blue-800',
-                quote.status === 'SENT' && 'bg-amber-100 text-amber-800',
-                quote.status === 'APPROVED' && 'bg-emerald-100 text-emerald-800',
-                quote.status === 'REJECTED' && 'bg-red-100 text-red-800',
-                (quote.status === 'EXPIRED' || quote.status === 'CANCELLED') &&
-                  'bg-zinc-200 text-zinc-700',
+            <div className="flex items-center gap-3">
+              {canManage && quote.status === 'DRAFT' && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate(`/app/financeiro/orcamentos/${quote.id}/editar`)}
+                >
+                  <Pencil data-icon="inline-start" />
+                  Editar
+                </Button>
               )}
-            >
-              {quoteStatusLabels[quote.status]}
-            </span>
+
+              {
+                <span
+                  className={cn(
+                    'w-fit rounded-full px-2.5 py-1 text-xs font-medium',
+                    quote.status === 'DRAFT' && 'bg-blue-100 text-blue-800',
+                    quote.status === 'SENT' && 'bg-amber-100 text-amber-800',
+                    quote.status === 'APPROVED' && 'bg-emerald-100 text-emerald-800',
+                    quote.status === 'REJECTED' && 'bg-red-100 text-red-800',
+                    (quote.status === 'EXPIRED' || quote.status === 'CANCELLED') &&
+                      'bg-zinc-200 text-zinc-700',
+                  )}
+                >
+                  {quoteStatusLabels[quote.status]}
+                </span>
+              }
+            </div>
           </div>
 
           {canManage && availableActions.length > 0 && (

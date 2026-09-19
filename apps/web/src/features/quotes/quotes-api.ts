@@ -81,19 +81,29 @@ export interface ListQuotesInput {
   pageSize?: number;
 }
 
+export interface QuoteItemInput {
+  productId?: string;
+  description: string;
+  unit: string;
+  quantity: string;
+  unitPrice: string;
+  notes?: string;
+}
+
 export interface CreateQuoteInput {
   clientId: string;
   validUntil?: string;
   discount?: string;
   notes?: string;
-  items: Array<{
-    productId?: string;
-    description: string;
-    unit: string;
-    quantity: string;
-    unitPrice: string;
-    notes?: string;
-  }>;
+  items: QuoteItemInput[];
+}
+
+export interface UpdateQuoteInput {
+  clientId?: string;
+  validUntil?: string | null;
+  discount?: string | null;
+  notes?: string | null;
+  items?: QuoteItemInput[];
 }
 
 export async function getQuotes(input: ListQuotesInput = {}): Promise<QuotesResponse> {
@@ -118,6 +128,18 @@ export async function getQuotes(input: ListQuotesInput = {}): Promise<QuotesResp
 export async function createQuote(input: CreateQuoteInput): Promise<Quote> {
   const response = await apiRequest('/quotes', {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  return quoteSchema.parse(await response.json());
+}
+
+export async function updateQuote(quoteId: string, input: UpdateQuoteInput): Promise<Quote> {
+  const response = await apiRequest(`/quotes/${encodeURIComponent(quoteId)}`, {
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
     },

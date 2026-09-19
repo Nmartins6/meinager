@@ -160,6 +160,8 @@ interface QuoteFormProps {
   errorMessage?: string;
   onSubmit: (data: QuoteFormData) => void;
   onCancel: () => void;
+  initialValues?: QuoteFormData;
+  submitLabel?: string;
 }
 
 export function QuoteForm({
@@ -167,6 +169,8 @@ export function QuoteForm({
   products,
   isPending,
   errorMessage,
+  initialValues,
+  submitLabel = 'Salvar orçamento',
   onSubmit,
   onCancel,
 }: QuoteFormProps) {
@@ -179,7 +183,7 @@ export function QuoteForm({
     formState: { errors },
   } = useForm<QuoteFormData>({
     resolver: zodResolver(quoteFormSchema),
-    defaultValues: {
+    defaultValues: initialValues ?? {
       clientId: '',
       validUntil: '',
       discount: '',
@@ -511,7 +515,7 @@ export function QuoteForm({
         </Button>
 
         <Button type="submit" disabled={isPending}>
-          {isPending ? 'Salvando...' : 'Salvar orçamento'}
+          {isPending ? 'Salvando...' : submitLabel}
         </Button>
       </div>
     </form>
