@@ -56,6 +56,15 @@ enum QuoteStatus {
   CANCELLED
 }
 
+enum OrderStatus {
+  AWAITING_ART_APPROVAL
+  AWAITING_RELEASE
+  IN_PRODUCTION
+  READY
+  DELIVERED
+  CANCELLED
+}
+
 enum FinancialPeriodStatus {
   OPEN
   CLOSED
@@ -136,6 +145,7 @@ model Organization {
   financialEntries     FinancialEntry[]
   financialSettlements FinancialSettlement[]
   quotes               FinancialQuote[]
+  orders               SalesOrder[]
 
   @@map("organizations")
 }
@@ -227,6 +237,7 @@ model Client {
   organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   financialEntries FinancialEntry[]
   quotes           FinancialQuote[]
+  orders           SalesOrder[]
 
   @@unique([organizationId, document])
   @@unique([organizationId, id])
@@ -256,6 +267,7 @@ model Product {
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
   quoteItems     FinancialQuoteItem[]
+  orderItems     SalesOrderItem[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, sku])
@@ -286,6 +298,7 @@ model FinancialQuote {
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client               @relation(fields: [organizationId, clientId], references: [organizationId, id], onDelete: Restrict)
   items        FinancialQuoteItem[]
+  order        SalesOrder?          @relation("OrderSourceQuote")
 
   @@unique([organizationId, id])
   @@unique([organizationId, number])
@@ -316,6 +329,62 @@ model FinancialQuoteItem {
   @@index([organizationId, quoteId])
   @@index([organizationId, productId])
   @@map("financial_quote_items")
+}
+
+model SalesOrder {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  quoteId        String      @map("quote_id") @db.Uuid
+  clientId       String      @map("client_id") @db.Uuid
+  number         Int
+  status         OrderStatus @default(AWAITING_ART_APPROVAL)
+  subtotal       Decimal     @default(0) @db.Decimal(14, 2)
+  discount       Decimal     @default(0) @db.Decimal(14, 2)
+  total          Decimal     @default(0) @db.Decimal(14, 2)
+  notes          String?     @db.Text
+  artApprovedAt  DateTime?   @map("art_approved_at") @db.Timestamptz(3)
+  releasedAt     DateTime?   @map("released_at") @db.Timestamptz(3)
+  readyAt        DateTime?   @map("ready_at") @db.Timestamptz(3)
+  deliveredAt    DateTime?   @map("delivered_at") @db.Timestamptz(3)
+  cancelledAt    DateTime?   @map("cancelled_at") @db.Timestamptz(3)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote        FinancialQuote   @relation("OrderSourceQuote", fields: [organizationId, quoteId], references: [organizationId, id], onDelete: Restrict)
+  client       Client           @relation(fields: [organizationId, clientId], references: [organizationId, id], onDelete: Restrict)
+  items        SalesOrderItem[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, number])
+  @@unique([organizationId, quoteId])
+  @@index([organizationId, status])
+  @@index([organizationId, clientId, createdAt])
+  @@map("orders")
+}
+
+model SalesOrderItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  orderId        String   @map("order_id") @db.Uuid
+  productId      String?  @map("product_id") @db.Uuid
+  position       Int
+  description    String   @db.VarChar(160)
+  unit           String   @db.VarChar(20)
+  quantity       Decimal  @db.Decimal(18, 6)
+  unitPrice      Decimal  @map("unit_price") @db.Decimal(14, 2)
+  total          Decimal  @db.Decimal(14, 2)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  order   SalesOrder @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Cascade)
+  product Product?   @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([orderId, position])
+  @@index([organizationId, orderId])
+  @@index([organizationId, productId])
+  @@map("order_items")
 }
 
 model StockMovement {
