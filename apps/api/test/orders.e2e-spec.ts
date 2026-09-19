@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { PrismaService } from '../src/database/prisma.service.js';
 import {
+  OrderStatus,
   OrganizationRole,
   QuoteStatus,
 } from '../src/generated/prisma/enums.js';
@@ -60,14 +61,15 @@ describe('Orders (e2e)', () => {
     });
   }
 
-  async function createApprovedQuote() {
-    const client = await createClient();
-
+  async function createApprovedQuote(
+    client?: Awaited<ReturnType<typeof createClient>>,
+  ) {
+    const quoteClient = client ?? (await createClient());
     const creation = await request(httpServer())
       .post('/api/quotes')
       .set('Cookie', sessionCookie)
       .send({
-        clientId: client.id,
+        clientId: quoteClient.id,
         discount: '2',
         notes: 'Orçamento convertido em pedido.',
         items: [
@@ -92,9 +94,21 @@ describe('Orders (e2e)', () => {
       .expect(201);
 
     return {
-      client,
+      client: quoteClient,
       quote: approval.body,
     };
+  }
+
+  async function createOrderFromQuote(quoteId: string) {
+    const response = await request(httpServer())
+      .post('/api/orders')
+      .set('Cookie', sessionCookie)
+      .send({
+        quoteId,
+      })
+      .expect(201);
+
+    return response.body;
   }
 
   beforeAll(async () => {
@@ -372,6 +386,370 @@ describe('Orders (e2e)', () => {
     expect(auditCount).toBe(1);
   });
 
+  it('GET should list, filter and paginate orders from the organization', async () => {
+    const client = await createClient();
+
+    const firstQuote = await createApprovedQuote(client);
+    await createOrderFromQuote(firstQuote.quote.id);
+
+    const secondQuote = await createApprovedQuote(client);
+    await createOrderFromQuote(secondQuote.quote.id);
+
+    const thirdQuote = await createApprovedQuote(client);
+    const readyOrder = await createOrderFromQuote(thirdQuote.quote.id);
+
+    await prisma.salesOrder.update({
+      where: {
+        id: readyOrder.id,
+      },
+      data: {
+        status: OrderStatus.READY,
+        readyAt: new Date(),
+      },
+    });
+
+    const page = await request(httpServer())
+      .get(`/api/orders?clientId=${client.id}&page=2&pageSize=1`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(page.body.pagination).toEqual({
+      page: 2,
+      pageSize: 1,
+      total: 3,
+      totalPages: 3,
+    });
+
+    expect(page.body.data).toHaveLength(1);
+    expect(page.body.data[0]).toMatchObject({
+      client: {
+        id: client.id,
+        name: client.name,
+      },
+      _count: {
+        items: 1,
+      },
+    });
+
+    const filtered = await request(httpServer())
+      .get(`/api/orders?clientId=${client.id}&status=READY`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(filtered.body.data).toHaveLength(1);
+    expect(filtered.body.data[0]).toMatchObject({
+      id: readyOrder.id,
+      status: 'READY',
+    });
+  });
+
+  it('GET should return an order and isolate an order from another organization', async () => {
+    const { quote, client } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id);
+
+    const response = await request(httpServer())
+      .get(`/api/orders/${order.id}`)
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      id: order.id,
+      status: 'AWAITING_ART_APPROVAL',
+      quote: {
+        id: quote.id,
+        number: quote.number,
+      },
+      client: {
+        id: client.id,
+        name: client.name,
+      },
+    });
+
+    expect(response.body.items).toEqual([
+      expect.objectContaining({
+        position: 1,
+        description: 'Item do pedido',
+        quantity: '2',
+        unitPrice: '10',
+        total: '20',
+      }),
+    ]);
+
+    const otherOrganization = await prisma.organization.create({
+      data: {
+        name: 'Outra Empresa Consulta Pedidos E2E',
+        slug: `other-order-lookup-${randomUUID()}`,
+      },
+    });
+
+    const otherClient = await prisma.client.create({
+      data: {
+        organizationId: otherOrganization.id,
+        name: 'Cliente de outra organização',
+      },
+    });
+
+    const otherQuote = await prisma.financialQuote.create({
+      data: {
+        organizationId: otherOrganization.id,
+        clientId: otherClient.id,
+        number: 1,
+        status: QuoteStatus.APPROVED,
+        subtotal: '10',
+        discount: '0',
+        total: '10',
+        items: {
+          create: {
+            position: 1,
+            description: 'Item de outro orçamento',
+            unit: 'UN',
+            quantity: '1',
+            unitPrice: '10',
+            total: '10',
+          },
+        },
+      },
+    });
+
+    const foreignOrder = await prisma.salesOrder.create({
+      data: {
+        organizationId: otherOrganization.id,
+        quoteId: otherQuote.id,
+        clientId: otherClient.id,
+        number: 1,
+        subtotal: '10',
+        discount: '0',
+        total: '10',
+        items: {
+          create: {
+            position: 1,
+            description: 'Item de outro pedido',
+            unit: 'UN',
+            quantity: '1',
+            unitPrice: '10',
+            total: '10',
+          },
+        },
+      },
+    });
+
+    await request(httpServer())
+      .get(`/api/orders/${foreignOrder.id}`)
+      .set('Cookie', sessionCookie)
+      .expect(404);
+  });
+
+  it('should allow finance and viewer roles to read orders', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test membership was not initialized');
+    }
+
+    const membershipWhere = {
+      organizationId_userId: {
+        organizationId,
+        userId,
+      },
+    };
+
+    const { quote } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id);
+
+    try {
+      for (const role of [OrganizationRole.FINANCE, OrganizationRole.VIEWER]) {
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: {
+            role,
+          },
+        });
+
+        await request(httpServer())
+          .get('/api/orders')
+          .set('Cookie', sessionCookie)
+          .expect(200);
+
+        await request(httpServer())
+          .get(`/api/orders/${order.id}`)
+          .set('Cookie', sessionCookie)
+          .expect(200);
+      }
+    } finally {
+      await prisma.organizationMember.update({
+        where: membershipWhere,
+        data: {
+          role: OrganizationRole.OWNER,
+        },
+      });
+    }
+  });
+
+  it('POST should progress an order through the operational lifecycle with audit records', async () => {
+    const { quote } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id);
+
+    const artApproval = await request(httpServer())
+      .post(`/api/orders/${order.id}/approve-art`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(artApproval.body).toMatchObject({
+      status: 'AWAITING_RELEASE',
+      artApprovedAt: expect.any(String),
+    });
+
+    const release = await request(httpServer())
+      .post(`/api/orders/${order.id}/release`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(release.body).toMatchObject({
+      status: 'IN_PRODUCTION',
+      releasedAt: expect.any(String),
+    });
+
+    const ready = await request(httpServer())
+      .post(`/api/orders/${order.id}/ready`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(ready.body).toMatchObject({
+      status: 'READY',
+      readyAt: expect.any(String),
+    });
+
+    const delivery = await request(httpServer())
+      .post(`/api/orders/${order.id}/deliver`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(delivery.body).toMatchObject({
+      status: 'DELIVERED',
+      deliveredAt: expect.any(String),
+    });
+
+    await request(httpServer())
+      .post(`/api/orders/${order.id}/cancel`)
+      .set('Cookie', sessionCookie)
+      .expect(409);
+
+    const persisted = await prisma.salesOrder.findUniqueOrThrow({
+      where: {
+        id: order.id,
+      },
+    });
+
+    expect(persisted.status).toBe(OrderStatus.DELIVERED);
+    expect(persisted.artApprovedAt).not.toBeNull();
+    expect(persisted.releasedAt).not.toBeNull();
+    expect(persisted.readyAt).not.toBeNull();
+    expect(persisted.deliveredAt).not.toBeNull();
+
+    const audits = await prisma.auditLog.findMany({
+      where: {
+        organizationId,
+        entityId: order.id,
+        action: {
+          in: [
+            'order.art_approved',
+            'order.released',
+            'order.ready',
+            'order.delivered',
+          ],
+        },
+      },
+    });
+
+    expect(audits).toHaveLength(4);
+    expect(audits.map((audit) => audit.action)).toEqual(
+      expect.arrayContaining([
+        'order.art_approved',
+        'order.released',
+        'order.ready',
+        'order.delivered',
+      ]),
+    );
+  });
+
+  it('POST should cancel an order before delivery and reject further transitions', async () => {
+    const { quote } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id);
+
+    const cancellation = await request(httpServer())
+      .post(`/api/orders/${order.id}/cancel`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(cancellation.body).toMatchObject({
+      status: 'CANCELLED',
+      cancelledAt: expect.any(String),
+    });
+
+    await request(httpServer())
+      .post(`/api/orders/${order.id}/approve-art`)
+      .set('Cookie', sessionCookie)
+      .expect(409);
+
+    await request(httpServer())
+      .post(`/api/orders/${order.id}/cancel`)
+      .set('Cookie', sessionCookie)
+      .expect(409);
+  });
+
+  it('POST should reject invalid order lifecycle transitions', async () => {
+    const { quote } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id);
+
+    await request(httpServer())
+      .post(`/api/orders/${order.id}/release`)
+      .set('Cookie', sessionCookie)
+      .expect(409);
+
+    await request(httpServer())
+      .post(`/api/orders/${order.id}/ready`)
+      .set('Cookie', sessionCookie)
+      .expect(409);
+
+    await request(httpServer())
+      .post(`/api/orders/${order.id}/deliver`)
+      .set('Cookie', sessionCookie)
+      .expect(409);
+  });
+
+  it('POST should serialize concurrent art approvals and preserve one audit record', async () => {
+    const { quote } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id);
+
+    const responses = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        request(httpServer())
+          .post(`/api/orders/${order.id}/approve-art`)
+          .set('Cookie', sessionCookie),
+      ),
+    );
+
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      201, 409,
+    ]);
+
+    const persisted = await prisma.salesOrder.findUniqueOrThrow({
+      where: {
+        id: order.id,
+      },
+    });
+
+    expect(persisted.status).toBe(OrderStatus.AWAITING_RELEASE);
+
+    const auditCount = await prisma.auditLog.count({
+      where: {
+        organizationId,
+        entityId: order.id,
+        action: 'order.art_approved',
+      },
+    });
+
+    expect(auditCount).toBe(1);
+  });
+
   it('should enforce order creation permissions for every organization role', async () => {
     if (!organizationId || !userId) {
       throw new Error('Test membership was not initialized');
@@ -450,12 +828,94 @@ describe('Orders (e2e)', () => {
     }
   });
 
+  it('should enforce order lifecycle permissions for every organization role', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test membership was not initialized');
+    }
+
+    const membershipWhere = {
+      organizationId_userId: {
+        organizationId,
+        userId,
+      },
+    };
+
+    try {
+      for (const role of [
+        OrganizationRole.OWNER,
+        OrganizationRole.ADMIN,
+        OrganizationRole.OPERATIONS,
+      ]) {
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: {
+            role: OrganizationRole.OWNER,
+          },
+        });
+
+        const { quote } = await createApprovedQuote();
+        const order = await createOrderFromQuote(quote.id);
+
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: {
+            role,
+          },
+        });
+
+        await request(httpServer())
+          .post(`/api/orders/${order.id}/approve-art`)
+          .set('Cookie', sessionCookie)
+          .expect(201);
+      }
+
+      for (const role of [OrganizationRole.FINANCE, OrganizationRole.VIEWER]) {
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: {
+            role: OrganizationRole.OWNER,
+          },
+        });
+
+        const { quote } = await createApprovedQuote();
+        const order = await createOrderFromQuote(quote.id);
+
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: {
+            role,
+          },
+        });
+
+        await request(httpServer())
+          .post(`/api/orders/${order.id}/approve-art`)
+          .set('Cookie', sessionCookie)
+          .expect(403);
+      }
+    } finally {
+      await prisma.organizationMember.update({
+        where: membershipWhere,
+        data: {
+          role: OrganizationRole.OWNER,
+        },
+      });
+    }
+  });
+
   it('should reject unauthenticated order creation', async () => {
     await request(httpServer())
       .post('/api/orders')
       .send({
         quoteId: randomUUID(),
       })
+      .expect(401);
+
+    await request(httpServer()).get('/api/orders').expect(401);
+
+    await request(httpServer()).get(`/api/orders/${randomUUID()}`).expect(401);
+
+    await request(httpServer())
+      .post(`/api/orders/${randomUUID()}/approve-art`)
       .expect(401);
   });
 });
