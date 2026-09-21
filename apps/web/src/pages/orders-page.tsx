@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { type OrderStatus } from '@/features/orders/orders-api';
 import { useOrdersQuery } from '@/features/orders/use-orders-query';
-import { orderStatusClassNames, orderStatusLabels } from '@/features/orders/order-presentation';
+import { orderStatusClassNames } from '@/features/orders/order-presentation';
 import { cn } from '@/lib/utils';
 
 type OrderStatusFilter = OrderStatus | 'ALL';
@@ -181,9 +181,6 @@ export function OrdersPage() {
                           >
                             {order.currentStage.name}
                           </span>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {order.workflow.name} · {orderStatusLabels[order.status]}
-                          </p>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {formatDate(order.createdAt)}

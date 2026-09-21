@@ -115,7 +115,6 @@ describe('OrdersPage', () => {
     expect(screen.getByText('19/09/2026')).toBeInTheDocument();
     expect(screen.getByText('R$ 1.234,50')).toBeInTheDocument();
     expect(screen.getByText('Pendente', { selector: 'span' })).toBeInTheDocument();
-    expect(screen.getByText('Fluxo padrão · Pendente')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Pedido #8' }));

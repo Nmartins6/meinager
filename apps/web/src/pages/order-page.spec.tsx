@@ -157,10 +157,7 @@ describe('OrderPage', () => {
     expect(await screen.findByRole('heading', { name: 'Pedido #8' })).toBeInTheDocument();
 
     expect(screen.getByText('Cliente do pedido')).toBeInTheDocument();
-    expect(
-      screen.getByText('Pendente', { selector: 'span' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Fluxo padrão')).toBeInTheDocument();
+    expect(screen.getByText('Pendente', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText('Pedido criado na etapa Pendente.')).toBeInTheDocument();
     expect(screen.getByText('19/09/2026')).toBeInTheDocument();
 
@@ -227,9 +224,7 @@ describe('OrderPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Avançar etapa' }));
 
-    expect(
-      await screen.findByText('Em andamento', { selector: 'span' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Em andamento', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText('Etapa alterada de Pendente para Em andamento.')).toBeInTheDocument();
 
     expect(fetchMock).toHaveBeenCalledWith(

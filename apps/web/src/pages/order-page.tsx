@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
 import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { type Order, type OrderLifecycleAction } from '@/features/orders/orders-api';
-import { orderStatusClassNames, orderStatusLabels } from '@/features/orders/order-presentation';
+import { orderStatusClassNames } from '@/features/orders/order-presentation';
 import { useOrderLifecycleMutation } from '@/features/orders/use-order-lifecycle-mutation';
 import { useOrderQuery } from '@/features/orders/use-order-query';
 import { cn } from '@/lib/utils';
@@ -110,9 +110,6 @@ export function OrderPage() {
               >
                 {order.currentStage.name}
               </span>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {order.workflow.name} · {orderStatusLabels[order.status]}
-              </p>
             </div>
           </div>
 
@@ -281,11 +278,6 @@ export function OrderPage() {
 
                 <CardContent className="space-y-5 text-sm">
                   <div className="space-y-3">
-                    <p>
-                      <span className="text-muted-foreground">Fluxo: </span>
-                      {order.workflow.name}
-                    </p>
-
                     <p>
                       <span className="text-muted-foreground">Etapa atual: </span>
                       {order.currentStage.name}
