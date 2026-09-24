@@ -149,6 +149,26 @@ describe('Orders (e2e)', () => {
     return response.body;
   }
 
+  async function createOrderWorkflow(input?: {
+    name?: string;
+    stages?: string[];
+  }) {
+    const response = await request(httpServer())
+      .post('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .send({
+        name: input?.name ?? `Fluxo ${randomUUID()}`,
+        stages: (
+          input?.stages ?? ['Recebido', 'Em execução', 'Finalizado']
+        ).map((name) => ({
+          name,
+        })),
+      })
+      .expect(201);
+
+    return response.body;
+  }
+
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
@@ -968,7 +988,7 @@ describe('Orders (e2e)', () => {
     }
   });
 
-  it('should reject unauthenticated order creation', async () => {
+  it('should reject unauthenticated access to orders and workflow configuration', async () => {
     await request(httpServer())
       .post('/api/orders')
       .send({
@@ -983,5 +1003,557 @@ describe('Orders (e2e)', () => {
     await request(httpServer())
       .post(`/api/orders/${randomUUID()}/advance`)
       .expect(401);
+
+    await request(httpServer()).get('/api/order-workflows').expect(401);
+
+    await request(httpServer())
+      .post('/api/order-workflows')
+      .send({
+        name: 'Fluxo sem autenticação',
+        stages: [{ name: 'Início' }, { name: 'Fim' }],
+      })
+      .expect(401);
+
+    await request(httpServer())
+      .post(`/api/order-workflows/${randomUUID()}/default`)
+      .expect(401);
+
+    await request(httpServer())
+      .post(`/api/order-workflows/${randomUUID()}/deactivate`)
+      .expect(401);
+  });
+
+  it('POST and GET should create and list organization workflows with derived stages', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test organization was not initialized');
+    }
+
+    const workflow = await createOrderWorkflow({
+      name: 'Prestação de serviços',
+      stages: [
+        'Solicitação recebida',
+        'Executando serviço',
+        'Serviço finalizado',
+      ],
+    });
+
+    expect(workflow).toMatchObject({
+      name: 'Prestação de serviços',
+      isDefault: false,
+      isActive: true,
+      _count: {
+        orders: 0,
+      },
+    });
+
+    expect(workflow.stages).toEqual([
+      expect.objectContaining({
+        name: 'Solicitação recebida',
+        position: 1,
+        category: 'PENDING',
+        isActive: true,
+      }),
+      expect.objectContaining({
+        name: 'Executando serviço',
+        position: 2,
+        category: 'IN_PROGRESS',
+        isActive: true,
+      }),
+      expect.objectContaining({
+        name: 'Serviço finalizado',
+        position: 3,
+        category: 'COMPLETED',
+        isActive: true,
+      }),
+    ]);
+
+    const listResponse = await request(httpServer())
+      .get('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(listResponse.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Fluxo padrão',
+          isDefault: true,
+        }),
+        expect.objectContaining({
+          id: workflow.id,
+          name: 'Prestação de serviços',
+          isDefault: false,
+        }),
+      ]),
+    );
+
+    const auditLog = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        action: 'order_workflow.created',
+        entityId: workflow.id,
+      },
+    });
+
+    expect(auditLog.entityType).toBe('order_workflow');
+  });
+
+  it('POST should set a workflow as default and assign it to new orders', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test organization was not initialized');
+    }
+
+    const workflow = await createOrderWorkflow({
+      name: 'Serviços em campo',
+      stages: ['Agendado', 'Em atendimento', 'Atendimento concluído'],
+    });
+
+    const beforeResponse = await request(httpServer())
+      .get('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    const previousDefault = beforeResponse.body.find(
+      (item: { isDefault: boolean }) => item.isDefault,
+    );
+
+    expect(previousDefault).toBeDefined();
+
+    const defaultResponse = await request(httpServer())
+      .post(`/api/order-workflows/${workflow.id}/default`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(defaultResponse.body).toMatchObject({
+      id: workflow.id,
+      name: 'Serviços em campo',
+      isDefault: true,
+      isActive: true,
+    });
+
+    const afterResponse = await request(httpServer())
+      .get('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(
+      afterResponse.body.filter(
+        (item: { isDefault: boolean }) => item.isDefault,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: workflow.id,
+      }),
+    ]);
+
+    expect(
+      afterResponse.body.find(
+        (item: { id: string }) => item.id === previousDefault.id,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        isDefault: false,
+      }),
+    );
+
+    const { quote } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id);
+
+    const persistedOrder = await prisma.salesOrder.findUniqueOrThrow({
+      where: {
+        id: order.id,
+      },
+      include: {
+        workflow: true,
+        currentStage: true,
+      },
+    });
+
+    expect(persistedOrder.workflow).toMatchObject({
+      id: workflow.id,
+      name: 'Serviços em campo',
+    });
+
+    expect(persistedOrder.currentStage).toMatchObject({
+      name: 'Agendado',
+      position: 1,
+      category: OrderStageCategory.PENDING,
+    });
+
+    const auditLog = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        action: 'order_workflow.default_changed',
+        entityId: workflow.id,
+      },
+    });
+
+    expect(auditLog.entityType).toBe('order_workflow');
+  });
+
+  it('POST should protect the default workflow and deactivate only non-default workflows', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test organization was not initialized');
+    }
+
+    const workflowToDeactivate = await createOrderWorkflow({
+      name: 'Fluxo temporário',
+      stages: ['Entrada', 'Processamento', 'Saída'],
+    });
+
+    await request(httpServer())
+      .post(`/api/order-workflows/${workflowToDeactivate.id}/default`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    const blockedDeactivation = await request(httpServer())
+      .post(`/api/order-workflows/${workflowToDeactivate.id}/deactivate`)
+      .set('Cookie', sessionCookie)
+      .expect(409);
+
+    expect(blockedDeactivation.body.message).toBe(
+      'Defina outro fluxo como padrão antes de desativar este.',
+    );
+
+    const replacementWorkflow = await createOrderWorkflow({
+      name: 'Fluxo substituto',
+      stages: ['Recebido', 'Em execução', 'Concluído'],
+    });
+
+    await request(httpServer())
+      .post(`/api/order-workflows/${replacementWorkflow.id}/default`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    const deactivationResponse = await request(httpServer())
+      .post(`/api/order-workflows/${workflowToDeactivate.id}/deactivate`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(deactivationResponse.body).toMatchObject({
+      id: workflowToDeactivate.id,
+      isDefault: false,
+      isActive: false,
+    });
+
+    const blockedDefaultChange = await request(httpServer())
+      .post(`/api/order-workflows/${workflowToDeactivate.id}/default`)
+      .set('Cookie', sessionCookie)
+      .expect(409);
+
+    expect(blockedDefaultChange.body.message).toBe(
+      'Não é possível definir um fluxo desativado como padrão.',
+    );
+
+    const auditLog = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        action: 'order_workflow.deactivated',
+        entityId: workflowToDeactivate.id,
+      },
+    });
+
+    expect(auditLog.entityType).toBe('order_workflow');
+  });
+
+  it('should enforce order workflow configuration permissions', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test membership was not initialized');
+    }
+
+    const membershipWhere = {
+      organizationId_userId: {
+        organizationId,
+        userId,
+      },
+    };
+
+    await prisma.organizationMember.update({
+      where: membershipWhere,
+      data: {
+        role: OrganizationRole.OWNER,
+      },
+    });
+
+    const protectedWorkflow = await createOrderWorkflow({
+      name: `Fluxo protegido ${randomUUID()}`,
+      stages: ['Entrada', 'Execução', 'Conclusão'],
+    });
+
+    try {
+      for (const role of [OrganizationRole.OWNER, OrganizationRole.ADMIN]) {
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: {
+            role,
+          },
+        });
+
+        await request(httpServer())
+          .get('/api/order-workflows')
+          .set('Cookie', sessionCookie)
+          .expect(200);
+
+        const configurableWorkflow = await request(httpServer())
+          .post('/api/order-workflows')
+          .set('Cookie', sessionCookie)
+          .send({
+            name: `Fluxo padrão ${role} ${randomUUID()}`,
+            stages: [
+              { name: 'Recebido' },
+              { name: 'Em andamento' },
+              { name: 'Finalizado' },
+            ],
+          })
+          .expect(201);
+
+        await request(httpServer())
+          .post(`/api/order-workflows/${configurableWorkflow.body.id}/default`)
+          .set('Cookie', sessionCookie)
+          .expect(201);
+
+        const disposableWorkflow = await request(httpServer())
+          .post('/api/order-workflows')
+          .set('Cookie', sessionCookie)
+          .send({
+            name: `Fluxo descartável ${role} ${randomUUID()}`,
+            stages: [{ name: 'Início' }, { name: 'Execução' }, { name: 'Fim' }],
+          })
+          .expect(201);
+
+        await request(httpServer())
+          .post(`/api/order-workflows/${disposableWorkflow.body.id}/deactivate`)
+          .set('Cookie', sessionCookie)
+          .expect(201);
+      }
+
+      for (const role of [
+        OrganizationRole.OPERATIONS,
+        OrganizationRole.FINANCE,
+        OrganizationRole.VIEWER,
+      ]) {
+        await prisma.organizationMember.update({
+          where: membershipWhere,
+          data: {
+            role,
+          },
+        });
+
+        await request(httpServer())
+          .get('/api/order-workflows')
+          .set('Cookie', sessionCookie)
+          .expect(403);
+
+        await request(httpServer())
+          .post('/api/order-workflows')
+          .set('Cookie', sessionCookie)
+          .send({
+            name: `Fluxo proibido ${role} ${randomUUID()}`,
+            stages: [{ name: 'Início' }, { name: 'Fim' }],
+          })
+          .expect(403);
+
+        await request(httpServer())
+          .post(`/api/order-workflows/${protectedWorkflow.id}/default`)
+          .set('Cookie', sessionCookie)
+          .expect(403);
+
+        await request(httpServer())
+          .post(`/api/order-workflows/${protectedWorkflow.id}/deactivate`)
+          .set('Cookie', sessionCookie)
+          .expect(403);
+      }
+    } finally {
+      await prisma.organizationMember.update({
+        where: membershipWhere,
+        data: {
+          role: OrganizationRole.OWNER,
+        },
+      });
+    }
+  });
+
+  it('POST should validate workflow names and stages', async () => {
+    const workflowName = `Fluxo validação ${randomUUID()}`;
+
+    await createOrderWorkflow({
+      name: workflowName,
+      stages: ['Recebido', 'Em execução', 'Concluído'],
+    });
+
+    const duplicatedName = await request(httpServer())
+      .post('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .send({
+        name: workflowName.toUpperCase(),
+        stages: [
+          { name: 'Entrada' },
+          { name: 'Processamento' },
+          { name: 'Saída' },
+        ],
+      })
+      .expect(409);
+
+    expect(duplicatedName.body.message).toBe(
+      'Já existe um fluxo com este nome na organização.',
+    );
+
+    const duplicatedStages = await request(httpServer())
+      .post('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .send({
+        name: `Fluxo etapas repetidas ${randomUUID()}`,
+        stages: [
+          { name: 'Produção' },
+          { name: ' produção ' },
+          { name: 'Concluído' },
+        ],
+      })
+      .expect(409);
+
+    expect(duplicatedStages.body.message).toBe(
+      'As etapas de um fluxo devem possuir nomes diferentes.',
+    );
+
+    await request(httpServer())
+      .post('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .send({
+        name: `Fluxo incompleto ${randomUUID()}`,
+        stages: [{ name: 'Etapa única' }],
+      })
+      .expect(400);
+
+    await request(httpServer())
+      .post('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .send({
+        name: `Fluxo excessivo ${randomUUID()}`,
+        stages: Array.from({ length: 21 }, (_, index) => ({
+          name: `Etapa ${index + 1}`,
+        })),
+      })
+      .expect(400);
+
+    await request(httpServer())
+      .post('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .send({
+        name: '   ',
+        stages: [{ name: 'Início' }, { name: 'Fim' }],
+      })
+      .expect(400);
+
+    await request(httpServer())
+      .post('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .send({
+        name: `Fluxo etapa vazia ${randomUUID()}`,
+        stages: [{ name: 'Início' }, { name: '   ' }],
+      })
+      .expect(400);
+  });
+  it('should isolate order workflow configuration between organizations', async () => {
+    const otherOrganization = await prisma.organization.create({
+      data: {
+        name: 'Outra Empresa Fluxos E2E',
+        slug: `other-workflows-${randomUUID()}`,
+      },
+    });
+
+    const foreignWorkflow = await createDefaultWorkflow(otherOrganization.id);
+
+    const listResponse = await request(httpServer())
+      .get('/api/order-workflows')
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(
+      listResponse.body.some(
+        (workflow: { id: string }) => workflow.id === foreignWorkflow.id,
+      ),
+    ).toBe(false);
+
+    const defaultResponse = await request(httpServer())
+      .post(`/api/order-workflows/${foreignWorkflow.id}/default`)
+      .set('Cookie', sessionCookie)
+      .expect(404);
+
+    expect(defaultResponse.body.message).toBe(
+      'Fluxo de pedidos não encontrado.',
+    );
+
+    const deactivationResponse = await request(httpServer())
+      .post(`/api/order-workflows/${foreignWorkflow.id}/deactivate`)
+      .set('Cookie', sessionCookie)
+      .expect(404);
+
+    expect(deactivationResponse.body.message).toBe(
+      'Fluxo de pedidos não encontrado.',
+    );
+
+    const persistedWorkflow = await prisma.orderWorkflow.findUniqueOrThrow({
+      where: {
+        id: foreignWorkflow.id,
+      },
+    });
+
+    expect(persistedWorkflow).toMatchObject({
+      organizationId: otherOrganization.id,
+      isDefault: true,
+      isActive: true,
+    });
+  });
+
+  it('should serialize concurrent default workflow changes', async () => {
+    if (!organizationId) {
+      throw new Error('Test organization was not initialized');
+    }
+
+    const firstWorkflow = await createOrderWorkflow({
+      name: `Fluxo concorrente A ${randomUUID()}`,
+      stages: ['Entrada', 'Execução', 'Conclusão'],
+    });
+
+    const secondWorkflow = await createOrderWorkflow({
+      name: `Fluxo concorrente B ${randomUUID()}`,
+      stages: ['Recebido', 'Processando', 'Finalizado'],
+    });
+
+    const responses = await Promise.all([
+      request(httpServer())
+        .post(`/api/order-workflows/${firstWorkflow.id}/default`)
+        .set('Cookie', sessionCookie),
+      request(httpServer())
+        .post(`/api/order-workflows/${secondWorkflow.id}/default`)
+        .set('Cookie', sessionCookie),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      201, 201,
+    ]);
+
+    const defaultWorkflows = await prisma.orderWorkflow.findMany({
+      where: {
+        organizationId,
+        isDefault: true,
+      },
+    });
+
+    expect(defaultWorkflows).toHaveLength(1);
+    expect([firstWorkflow.id, secondWorkflow.id]).toContain(
+      defaultWorkflows[0]?.id,
+    );
+
+    const defaultWorkflowCount = await prisma.orderWorkflow.count({
+      where: {
+        organizationId,
+        isDefault: true,
+      },
+    });
+
+    expect(defaultWorkflowCount).toBe(1);
   });
 });
