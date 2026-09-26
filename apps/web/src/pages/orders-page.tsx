@@ -1,4 +1,4 @@
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Settings2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -9,6 +9,7 @@ import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { type OrderStatus } from '@/features/orders/orders-api';
 import { useOrdersQuery } from '@/features/orders/use-orders-query';
 import { orderStatusClassNames } from '@/features/orders/order-presentation';
+import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
 import { cn } from '@/lib/utils';
 
 type OrderStatusFilter = OrderStatus | 'ALL';
@@ -31,6 +32,10 @@ export function OrdersPage() {
   const [page, setPage] = useState(1);
   const navigate = useNavigate();
 
+  const currentUserQuery = useCurrentUserQuery();
+  const role = currentUserQuery.data?.organization.role;
+  const canConfigureWorkflows = role === 'OWNER' || role === 'ADMIN';
+
   const ordersQuery = useOrdersQuery({
     status: status === 'ALL' ? undefined : status,
     page,
@@ -41,11 +46,24 @@ export function OrdersPage() {
 
   return (
     <section className="mx-auto max-w-7xl px-6 py-10">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Pedidos</h1>
-        <p className="mt-2 text-muted-foreground">
-          Acompanhe as etapas dos pedidos da sua organização.
-        </p>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Pedidos</h1>
+          <p className="mt-2 text-muted-foreground">
+            Acompanhe as etapas dos pedidos da sua organização.
+          </p>
+        </div>
+
+        {canConfigureWorkflows && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate('/app/financeiro/pedidos/fluxos')}
+          >
+            <Settings2 data-icon="inline-start" />
+            Configurar fluxos
+          </Button>
+        )}
       </div>
 
       <FinancialNavigation />

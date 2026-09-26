@@ -47,6 +47,20 @@ const order = {
   },
 };
 
+const authenticatedUser = {
+  user: {
+    id: '53a6ba71-77b9-4aca-9493-e08e7dd11b83',
+    name: 'Nicolas Martins',
+    email: 'nicolas@meinager.local',
+  },
+  organization: {
+    id: '9173bea8-0d7d-45ec-a08d-d1cbac34ceaf',
+    name: 'Meinager Desenvolvimento',
+    slug: 'meinager-desenvolvimento',
+    role: 'OWNER',
+  },
+};
+
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
     headers: {
@@ -79,6 +93,8 @@ function renderPage() {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/app/financeiro/pedidos']}>
         <Routes>
+          <Route path="/app/financeiro/pedidos/fluxos" element={<h1>Configuração de fluxos</h1>} />
+          <Route path="/app/financeiro/pedidos/:orderId" element={<h1>Detalhe do pedido</h1>} />
           <Route path="/app/financeiro/pedidos" element={<OrdersPage />} />
           <Route path="/app/financeiro/pedidos/:orderId" element={<h1>Detalhe do pedido</h1>} />
         </Routes>
@@ -97,6 +113,10 @@ describe('OrdersPage', () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
 
       if (url.includes('/orders?')) {
         return jsonResponse(ordersResponse());
@@ -127,6 +147,10 @@ describe('OrdersPage', () => {
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
 
       if (url.includes('/orders?')) {
         const isCompleted = url.includes('status=COMPLETED');
@@ -162,5 +186,73 @@ describe('OrdersPage', () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it('should allow an owner to open workflow configuration', async () => {
+    const user = userEvent.setup();
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
+
+      if (url.includes('/orders?')) {
+        return jsonResponse(ordersResponse());
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Configurar fluxos',
+      }),
+    );
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Configuração de fluxos',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('should hide workflow configuration from a viewer', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({
+          ...authenticatedUser,
+          organization: {
+            ...authenticatedUser.organization,
+            role: 'VIEWER',
+          },
+        });
+      }
+
+      if (url.includes('/orders?')) {
+        return jsonResponse(ordersResponse());
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    expect(await screen.findByText('Pedido #8')).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole('button', {
+        name: 'Configurar fluxos',
+      }),
+    ).not.toBeInTheDocument();
   });
 });

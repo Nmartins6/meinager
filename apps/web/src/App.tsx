@@ -114,6 +114,11 @@ const OrderPage = lazy(async () => {
   return { default: module.OrderPage };
 });
 
+const OrderWorkflowsPage = lazy(async () => {
+  const module = await import('@/pages/order-workflows-page');
+  return { default: module.OrderWorkflowsPage };
+});
+
 interface LazyRouteProps {
   children: ReactNode;
 }
@@ -331,6 +336,15 @@ export function App() {
             element={
               <LazyRoute>
                 <OrdersPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="financeiro/pedidos/fluxos"
+            element={
+              <LazyRoute>
+                <OrderWorkflowsPage />
               </LazyRoute>
             }
           />
