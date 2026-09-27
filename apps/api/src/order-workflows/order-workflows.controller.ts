@@ -20,12 +20,24 @@ import { OrderWorkflowsService } from './order-workflows.service.js';
 @Controller('order-workflows')
 @UseGuards(SessionAuthGuard, OrganizationRolesGuard)
 export class OrderWorkflowsController {
-  constructor(private readonly orderWorkflowsService: OrderWorkflowsService) {}
+  constructor(private readonly orderWorkflowsService: OrderWorkflowsService) { }
 
   @Get()
   @OrganizationRoles(OrganizationRole.OWNER, OrganizationRole.ADMIN)
   findAll(@Req() request: AuthenticatedRequest) {
     return this.orderWorkflowsService.findAll(request.auth.organization.id);
+  }
+
+  @Get('active')
+  @OrganizationRoles(
+    OrganizationRole.OWNER,
+    OrganizationRole.ADMIN,
+    OrganizationRole.OPERATIONS,
+  )
+  findActive(@Req() request: AuthenticatedRequest) {
+    return this.orderWorkflowsService.findActive(
+      request.auth.organization.id,
+    );
   }
 
   @Post()

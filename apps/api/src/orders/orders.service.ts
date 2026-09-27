@@ -192,7 +192,7 @@ function statusForStageCategory(category: OrderStageCategory): OrderStatus {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async findOne(
     organizationId: string,
@@ -282,8 +282,14 @@ export class OrdersService {
       const workflow = await transaction.orderWorkflow.findFirst({
         where: {
           organizationId,
-          isDefault: true,
           isActive: true,
+          ...(dto.workflowId
+            ? {
+              id: dto.workflowId,
+            }
+            : {
+              isDefault: true,
+            }),
         },
         select: {
           id: true,
@@ -301,11 +307,25 @@ export class OrdersService {
         },
       });
 
-      const initialStage = workflow?.stages[0];
+      if (!workflow) {
+        if (dto.workflowId) {
+          throw new NotFoundException(
+            'Fluxo de pedidos não encontrado ou inativo.',
+          );
+        }
 
-      if (!workflow || !initialStage) {
         throw new ConflictException(
-          'A organização não possui um fluxo padrão com ao menos uma etapa ativa.',
+          'A organização não possui um fluxo padrão ativo.',
+        );
+      }
+
+      const initialStage = workflow.stages[0];
+
+      if (!initialStage) {
+        throw new ConflictException(
+          dto.workflowId
+            ? 'O fluxo selecionado não possui uma etapa inicial ativa.'
+            : 'O fluxo padrão não possui uma etapa inicial ativa.',
         );
       }
 

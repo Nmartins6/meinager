@@ -9,7 +9,7 @@ export function useCreateOrderWorkflowMutation() {
     mutationFn: (input: CreateOrderWorkflowInput) => createOrderWorkflow(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['order-workflows', 'list'],
+        queryKey: ['order-workflows'],
       });
     },
   });

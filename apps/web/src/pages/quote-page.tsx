@@ -1,5 +1,6 @@
 import { ArrowLeft, Pencil } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,8 @@ import { useQuoteLifecycleMutation } from '@/features/quotes/use-quote-lifecycle
 import { useQuoteQuery } from '@/features/quotes/use-quote-query';
 import { useCreateOrderFromQuoteMutation } from '@/features/orders/use-create-order-from-quote-mutation';
 import { orderStatusLabels } from '@/features/orders/order-presentation';
+import { Label } from '@/components/ui/label';
+import { useActiveOrderWorkflowsQuery } from '@/features/order-workflows/use-active-order-workflows-query';
 import { cn } from '@/lib/utils';
 
 const quoteStatusLabels: Record<QuoteStatus, string> = {
@@ -58,6 +61,8 @@ export function QuotePage() {
   const navigate = useNavigate();
   const { quoteId } = useParams();
 
+  const [workflowId, setWorkflowId] = useState('');
+
   const currentUserQuery = useCurrentUserQuery();
   const quoteQuery = useQuoteQuery(quoteId);
 
@@ -70,6 +75,21 @@ export function QuotePage() {
 
   const quote = quoteQuery.data;
   const linkedOrder = quote?.order;
+
+  const canCreateOrder = canManage && quote?.status === 'APPROVED' && !linkedOrder;
+
+  const activeWorkflowsQuery = useActiveOrderWorkflowsQuery(canCreateOrder);
+
+  const activeWorkflows = activeWorkflowsQuery.data ?? [];
+
+  const selectedWorkflowId =
+    activeWorkflows.find((workflow) => workflow.id === workflowId)?.id ??
+    activeWorkflows.find((workflow) => workflow.isDefault)?.id ??
+    activeWorkflows[0]?.id ??
+    '';
+
+  const selectedWorkflow = activeWorkflows.find((workflow) => workflow.id === selectedWorkflowId);
+
   const error = currentUserQuery.error ?? quoteQuery.error;
 
   const availableActions = quote ? lifecycleActionsByStatus[quote.status] : [];
@@ -86,13 +106,14 @@ export function QuotePage() {
   }
 
   function handleCreateOrder() {
-    if (!quote) {
+    if (!quote || !selectedWorkflowId) {
       return;
     }
 
     createOrderMutation.mutate(
       {
         quoteId: quote.id,
+        workflowId: selectedWorkflowId,
       },
       {
         onSuccess: (order) => {
@@ -236,11 +257,72 @@ export function QuotePage() {
                   </CardDescription>
                 </CardHeader>
 
-                <CardContent>
+                <CardContent className="space-y-4">
+                  {activeWorkflowsQuery.isPending && (
+                    <p role="status" className="text-sm text-muted-foreground">
+                      Carregando fluxos disponíveis...
+                    </p>
+                  )}
+
+                  {activeWorkflowsQuery.isError && (
+                    <p
+                      role="alert"
+                      className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+                    >
+                      {activeWorkflowsQuery.error.message}
+                    </p>
+                  )}
+
+                  {activeWorkflows.length > 0 && (
+                    <div className="max-w-lg space-y-2">
+                      <Label htmlFor="order-workflow">Fluxo do pedido</Label>
+
+                      <select
+                        id="order-workflow"
+                        value={selectedWorkflowId}
+                        onChange={(event) => setWorkflowId(event.target.value)}
+                        disabled={createOrderMutation.isPending}
+                        className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      >
+                        {activeWorkflows.map((workflow) => (
+                          <option key={workflow.id} value={workflow.id}>
+                            {workflow.name}
+                            {workflow.isDefault ? ' (padrão)' : ''}
+                          </option>
+                        ))}
+                      </select>
+
+                      {selectedWorkflow && (
+                        <p className="text-sm text-muted-foreground">
+                          Etapas:{' '}
+                          {selectedWorkflow.stages
+                            .filter((stage) => stage.isActive)
+                            .map((stage) => stage.name)
+                            .join(' → ')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {!activeWorkflowsQuery.isPending &&
+                    !activeWorkflowsQuery.isError &&
+                    activeWorkflows.length === 0 && (
+                      <p
+                        role="alert"
+                        className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+                      >
+                        Nenhum fluxo ativo está disponível para criar o pedido.
+                      </p>
+                    )}
+
                   <Button
                     type="button"
                     onClick={handleCreateOrder}
-                    disabled={createOrderMutation.isPending}
+                    disabled={
+                      createOrderMutation.isPending ||
+                      activeWorkflowsQuery.isPending ||
+                      !selectedWorkflowId
+                    }
                   >
                     {createOrderMutation.isPending ? 'Criando pedido...' : 'Criar pedido'}
                   </Button>
@@ -248,7 +330,7 @@ export function QuotePage() {
                   {createOrderMutation.error && (
                     <p
                       role="alert"
-                      className="mt-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+                      className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
                     >
                       {createOrderMutation.error.message}
                     </p>

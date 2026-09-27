@@ -15,7 +15,7 @@ export function useOrderWorkflowActionMutation() {
       runOrderWorkflowAction(workflowId, action),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['order-workflows', 'list'],
+        queryKey: ['order-workflows'],
       });
     },
   });

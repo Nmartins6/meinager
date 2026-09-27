@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -112,6 +112,76 @@ const createdOrder = {
   },
   client: quote.client,
   items: quote.items,
+};
+
+const defaultOrderWorkflow = {
+  id: '4f6f5b6a-8f7a-4d62-9b87-21b6bf8be001',
+  name: 'Fluxo padrão',
+  isDefault: true,
+  isActive: true,
+  createdAt: '2026-09-19T12:00:00.000Z',
+  updatedAt: '2026-09-19T12:00:00.000Z',
+  stages: [
+    {
+      id: '4f6f5b6a-8f7a-4d62-9b87-21b6bf8be011',
+      name: 'Pendente',
+      position: 1,
+      category: 'PENDING',
+      isActive: true,
+    },
+    {
+      id: '4f6f5b6a-8f7a-4d62-9b87-21b6bf8be012',
+      name: 'Em andamento',
+      position: 2,
+      category: 'IN_PROGRESS',
+      isActive: true,
+    },
+    {
+      id: '4f6f5b6a-8f7a-4d62-9b87-21b6bf8be013',
+      name: 'Concluído',
+      position: 3,
+      category: 'COMPLETED',
+      isActive: true,
+    },
+  ],
+  _count: {
+    orders: 3,
+  },
+};
+
+const serviceOrderWorkflow = {
+  id: '5a7e3c21-62df-47d8-a93e-1ed4c0ad1001',
+  name: 'Prestação de serviços',
+  isDefault: false,
+  isActive: true,
+  createdAt: '2026-09-20T12:00:00.000Z',
+  updatedAt: '2026-09-20T12:00:00.000Z',
+  stages: [
+    {
+      id: '5a7e3c21-62df-47d8-a93e-1ed4c0ad1011',
+      name: 'Solicitação recebida',
+      position: 1,
+      category: 'PENDING',
+      isActive: true,
+    },
+    {
+      id: '5a7e3c21-62df-47d8-a93e-1ed4c0ad1012',
+      name: 'Executando serviço',
+      position: 2,
+      category: 'IN_PROGRESS',
+      isActive: true,
+    },
+    {
+      id: '5a7e3c21-62df-47d8-a93e-1ed4c0ad1013',
+      name: 'Serviço finalizado',
+      position: 3,
+      category: 'COMPLETED',
+      isActive: true,
+    },
+  ],
+  _count: {
+    orders: 0,
+  },
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -279,7 +349,7 @@ describe('QuotePage', () => {
     expect(screen.queryByRole('button', { name: 'Criar pedido' })).not.toBeInTheDocument();
   });
 
-  it('should convert an approved quote into an order and navigate to it', async () => {
+  it('should convert an approved quote using the selected workflow', async () => {
     const user = userEvent.setup();
 
     const fetchMock = vi.fn(
@@ -288,6 +358,10 @@ describe('QuotePage', () => {
 
         if (url.endsWith('/auth/me')) {
           return jsonResponse(authenticatedUser);
+        }
+
+        if (url.endsWith('/order-workflows/active')) {
+          return jsonResponse([defaultOrderWorkflow, serviceOrderWorkflow]);
         }
 
         if (url.endsWith('/orders') && init?.method === 'POST') {
@@ -310,9 +384,34 @@ describe('QuotePage', () => {
 
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Criar pedido' }));
+    const workflowSelect = await screen.findByRole('combobox', {
+      name: 'Fluxo do pedido',
+    });
 
-    expect(await screen.findByRole('heading', { name: 'Detalhe do pedido' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(workflowSelect).toHaveValue(defaultOrderWorkflow.id);
+    });
+
+    expect(screen.getByText(/Pendente → Em andamento → Concluído/)).toBeInTheDocument();
+
+    await user.selectOptions(workflowSelect, serviceOrderWorkflow.id);
+
+    expect(workflowSelect).toHaveValue(serviceOrderWorkflow.id);
+    expect(
+      screen.getByText(/Solicitação recebida → Executando serviço → Serviço finalizado/),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Criar pedido',
+      }),
+    );
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Detalhe do pedido',
+      }),
+    ).toBeInTheDocument();
 
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3000/api/orders',
@@ -321,9 +420,50 @@ describe('QuotePage', () => {
         credentials: 'include',
         body: JSON.stringify({
           quoteId: quote.id,
+          workflowId: serviceOrderWorkflow.id,
         }),
       }),
     );
+  });
+
+  it('should disable order creation when no active workflow is available', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse(authenticatedUser);
+      }
+
+      if (url.endsWith('/order-workflows/active')) {
+        return jsonResponse([]);
+      }
+
+      if (url.endsWith(`/quotes/${quote.id}`)) {
+        return jsonResponse({
+          ...quote,
+          status: 'APPROVED',
+          approvedAt: '2026-09-19T12:00:00.000Z',
+        });
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    expect(
+      await screen.findByText('Nenhum fluxo ativo está disponível para criar o pedido.'),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Criar pedido',
+      }),
+    ).toBeDisabled();
+
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/orders'))).toBe(false);
   });
 
   it('should open a linked order instead of offering another creation', async () => {

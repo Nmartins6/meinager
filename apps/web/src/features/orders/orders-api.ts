@@ -169,3 +169,8 @@ export async function transitionOrder(
 
   return orderSchema.parse(await response.json());
 }
+
+export interface CreateOrderFromQuoteInput {
+  quoteId: string;
+  workflowId?: string;
+}

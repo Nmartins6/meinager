@@ -137,12 +137,13 @@ describe('Orders (e2e)', () => {
     };
   }
 
-  async function createOrderFromQuote(quoteId: string) {
+  async function createOrderFromQuote(quoteId: string, workflowId?: string) {
     const response = await request(httpServer())
       .post('/api/orders')
       .set('Cookie', sessionCookie)
       .send({
         quoteId,
+        ...(workflowId ? { workflowId } : {}),
       })
       .expect(201);
 
@@ -1006,6 +1007,8 @@ describe('Orders (e2e)', () => {
 
     await request(httpServer()).get('/api/order-workflows').expect(401);
 
+    await request(httpServer()).get('/api/order-workflows/active').expect(401);
+
     await request(httpServer())
       .post('/api/order-workflows')
       .send({
@@ -1296,6 +1299,11 @@ describe('Orders (e2e)', () => {
           .set('Cookie', sessionCookie)
           .expect(200);
 
+        await request(httpServer())
+          .get('/api/order-workflows/active')
+          .set('Cookie', sessionCookie)
+          .expect(200);
+
         const configurableWorkflow = await request(httpServer())
           .post('/api/order-workflows')
           .set('Cookie', sessionCookie)
@@ -1345,6 +1353,11 @@ describe('Orders (e2e)', () => {
           .get('/api/order-workflows')
           .set('Cookie', sessionCookie)
           .expect(403);
+
+        await request(httpServer())
+          .get('/api/order-workflows/active')
+          .set('Cookie', sessionCookie)
+          .expect(role === OrganizationRole.OPERATIONS ? 200 : 403);
 
         await request(httpServer())
           .post('/api/order-workflows')
@@ -1455,6 +1468,7 @@ describe('Orders (e2e)', () => {
       })
       .expect(400);
   });
+
   it('should isolate order workflow configuration between organizations', async () => {
     const otherOrganization = await prisma.organization.create({
       data: {
@@ -1555,5 +1569,142 @@ describe('Orders (e2e)', () => {
     });
 
     expect(defaultWorkflowCount).toBe(1);
+  });
+
+  it('POST should assign an explicitly selected active workflow to a new order', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test organization was not initialized');
+    }
+
+    const workflow = await createOrderWorkflow({
+      name: `Fluxo selecionado ${randomUUID()}`,
+      stages: ['Triagem', 'Execução', 'Finalização'],
+    });
+
+    const { quote } = await createApprovedQuote();
+    const order = await createOrderFromQuote(quote.id, workflow.id);
+
+    expect(order).toMatchObject({
+      status: OrderStatus.PENDING,
+      workflow: {
+        id: workflow.id,
+        name: workflow.name,
+      },
+      currentStage: {
+        name: 'Triagem',
+        position: 1,
+        category: OrderStageCategory.PENDING,
+      },
+    });
+
+    const auditLog = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        action: 'order.created',
+        entityId: order.id,
+      },
+    });
+
+    expect(auditLog.metadata).toEqual(
+      expect.objectContaining({
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        initialStageName: 'Triagem',
+      }),
+    );
+  });
+
+  it('POST should reject inactive and foreign selected workflows', async () => {
+    const inactiveWorkflow = await createOrderWorkflow({
+      name: `Fluxo inativo ${randomUUID()}`,
+      stages: ['Entrada', 'Execução', 'Saída'],
+    });
+
+    await request(httpServer())
+      .post(`/api/order-workflows/${inactiveWorkflow.id}/deactivate`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    const inactiveQuote = await createApprovedQuote();
+
+    const inactiveResponse = await request(httpServer())
+      .post('/api/orders')
+      .set('Cookie', sessionCookie)
+      .send({
+        quoteId: inactiveQuote.quote.id,
+        workflowId: inactiveWorkflow.id,
+      })
+      .expect(404);
+
+    expect(inactiveResponse.body.message).toBe(
+      'Fluxo de pedidos não encontrado ou inativo.',
+    );
+
+    const otherOrganization = await prisma.organization.create({
+      data: {
+        name: 'Outra Empresa Fluxos Selecionados E2E',
+        slug: `other-selected-workflow-${randomUUID()}`,
+      },
+    });
+
+    const foreignWorkflow = await createDefaultWorkflow(otherOrganization.id);
+    const foreignQuote = await createApprovedQuote();
+
+    const foreignResponse = await request(httpServer())
+      .post('/api/orders')
+      .set('Cookie', sessionCookie)
+      .send({
+        quoteId: foreignQuote.quote.id,
+        workflowId: foreignWorkflow.id,
+      })
+      .expect(404);
+
+    expect(foreignResponse.body.message).toBe(
+      'Fluxo de pedidos não encontrado ou inativo.',
+    );
+  });
+
+  it('GET should list only active workflows available for new orders', async () => {
+    const activeWorkflow = await createOrderWorkflow({
+      name: `Fluxo ativo ${randomUUID()}`,
+      stages: ['Recebido', 'Executando', 'Concluído'],
+    });
+
+    const inactiveWorkflow = await createOrderWorkflow({
+      name: `Fluxo indisponível ${randomUUID()}`,
+      stages: ['Início', 'Processamento', 'Fim'],
+    });
+
+    await request(httpServer())
+      .post(`/api/order-workflows/${inactiveWorkflow.id}/deactivate`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    const response = await request(httpServer())
+      .get('/api/order-workflows/active')
+      .set('Cookie', sessionCookie)
+      .expect(200);
+
+    expect(response.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: activeWorkflow.id,
+          isActive: true,
+        }),
+      ]),
+    );
+
+    expect(
+      response.body.some(
+        (workflow: { id: string }) => workflow.id === inactiveWorkflow.id,
+      ),
+    ).toBe(false);
+
+    expect(
+      response.body.every(
+        (workflow: { isActive: boolean }) => workflow.isActive,
+      ),
+    ).toBe(true);
   });
 });

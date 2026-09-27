@@ -45,6 +45,12 @@ export async function getOrderWorkflows(): Promise<OrderWorkflow[]> {
   return orderWorkflowsSchema.parse(await response.json());
 }
 
+export async function getActiveOrderWorkflows(): Promise<OrderWorkflow[]> {
+  const response = await apiRequest('/order-workflows/active');
+
+  return orderWorkflowsSchema.parse(await response.json());
+}
+
 export async function createOrderWorkflow(input: CreateOrderWorkflowInput): Promise<OrderWorkflow> {
   const response = await apiRequest('/order-workflows', {
     method: 'POST',

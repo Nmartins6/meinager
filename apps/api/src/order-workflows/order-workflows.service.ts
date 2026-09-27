@@ -71,7 +71,7 @@ function isUniqueConstraintError(error: unknown): boolean {
 
 @Injectable()
 export class OrderWorkflowsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   findAll(organizationId: string): Promise<OrderWorkflowResponse[]> {
     return this.prisma.orderWorkflow.findMany({
@@ -84,6 +84,24 @@ export class OrderWorkflowsService {
         },
         {
           isActive: 'desc',
+        },
+        {
+          name: 'asc',
+        },
+      ],
+      select: workflowSelect,
+    });
+  }
+
+  findActive(organizationId: string): Promise<OrderWorkflowResponse[]> {
+    return this.prisma.orderWorkflow.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+      },
+      orderBy: [
+        {
+          isDefault: 'desc',
         },
         {
           name: 'asc',
