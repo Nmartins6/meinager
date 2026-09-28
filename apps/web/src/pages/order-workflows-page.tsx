@@ -50,6 +50,14 @@ export function OrderWorkflowsPage() {
     });
   }
 
+  function handleActivate(workflowId: string) {
+    actionMutation.reset();
+    actionMutation.mutate({
+      workflowId,
+      action: 'activate',
+    });
+  }
+
   function handleDeactivate(workflowId: string, workflowName: string) {
     const confirmed = window.confirm(
       `Deseja desativar o fluxo "${getWorkflowDisplayName(workflowName)}"? Os pedidos existentes continuarão preservados.`,
@@ -66,7 +74,10 @@ export function OrderWorkflowsPage() {
     });
   }
 
-  function isActionPending(workflowId: string, action: 'default' | 'deactivate'): boolean {
+  function isActionPending(
+    workflowId: string,
+    action: 'default' | 'activate' | 'deactivate',
+  ): boolean {
     return (
       actionMutation.isPending &&
       actionMutation.variables?.workflowId === workflowId &&
@@ -251,27 +262,42 @@ export function OrderWorkflowsPage() {
                   ))}
                 </ol>
 
-                {workflow.isActive && !workflow.isDefault && (
+                {!workflow.isDefault && (
                   <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleSetDefault(workflow.id)}
-                      disabled={actionMutation.isPending}
-                    >
-                      {isActionPending(workflow.id, 'default')
-                        ? 'Definindo...'
-                        : 'Definir como padrão'}
-                    </Button>
+                    {workflow.isActive ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleSetDefault(workflow.id)}
+                          disabled={actionMutation.isPending}
+                        >
+                          {isActionPending(workflow.id, 'default')
+                            ? 'Definindo...'
+                            : 'Definir como padrão'}
+                        </Button>
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleDeactivate(workflow.id, workflow.name)}
-                      disabled={actionMutation.isPending}
-                    >
-                      {isActionPending(workflow.id, 'deactivate') ? 'Desativando...' : 'Desativar'}
-                    </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleDeactivate(workflow.id, workflow.name)}
+                          disabled={actionMutation.isPending}
+                        >
+                          {isActionPending(workflow.id, 'deactivate')
+                            ? 'Desativando...'
+                            : 'Desativar'}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleActivate(workflow.id)}
+                        disabled={actionMutation.isPending}
+                      >
+                        {isActionPending(workflow.id, 'activate') ? 'Reativando...' : 'Reativar'}
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>

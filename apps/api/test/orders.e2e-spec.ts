@@ -40,8 +40,8 @@ describe('Orders (e2e)', () => {
     return prisma.orderWorkflow.create({
       data: {
         organizationId: targetOrganizationId,
-        name: 'Fluxo padrão',
-        normalizedName: 'fluxo padrao',
+        name: 'Fluxo geral',
+        normalizedName: 'fluxo geral',
         isDefault: true,
         stages: {
           create: [
@@ -260,7 +260,7 @@ describe('Orders (e2e)', () => {
       number: 1,
       status: 'PENDING',
       workflow: {
-        name: 'Fluxo padrão',
+        name: 'Fluxo geral',
       },
       currentStage: {
         name: 'Pendente',
@@ -559,7 +559,7 @@ describe('Orders (e2e)', () => {
       id: order.id,
       status: 'PENDING',
       workflow: {
-        name: 'Fluxo padrão',
+        name: 'Fluxo geral',
       },
       currentStage: {
         name: 'Pendente',
@@ -997,6 +997,10 @@ describe('Orders (e2e)', () => {
       })
       .expect(401);
 
+    await request(httpServer())
+      .post(`/api/order-workflows/${randomUUID()}/activate`)
+      .expect(401);
+
     await request(httpServer()).get('/api/orders').expect(401);
 
     await request(httpServer()).get(`/api/orders/${randomUUID()}`).expect(401);
@@ -1078,7 +1082,7 @@ describe('Orders (e2e)', () => {
     expect(listResponse.body).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: 'Fluxo padrão',
+          name: 'Fluxo geral',
           isDefault: true,
         }),
         expect.objectContaining({
@@ -1261,6 +1265,55 @@ describe('Orders (e2e)', () => {
     expect(auditLog.entityType).toBe('order_workflow');
   });
 
+  it('POST should reactivate an inactive workflow without duplicate audit records', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test organization was not initialized');
+    }
+
+    const workflow = await createOrderWorkflow({
+      name: `Fluxo reativável ${randomUUID()}`,
+      stages: ['Entrada', 'Execução', 'Conclusão'],
+    });
+
+    await request(httpServer())
+      .post(`/api/order-workflows/${workflow.id}/deactivate`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    const activationResponse = await request(httpServer())
+      .post(`/api/order-workflows/${workflow.id}/activate`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(activationResponse.body).toMatchObject({
+      id: workflow.id,
+      isDefault: false,
+      isActive: true,
+    });
+
+    const repeatedActivation = await request(httpServer())
+      .post(`/api/order-workflows/${workflow.id}/activate`)
+      .set('Cookie', sessionCookie)
+      .expect(201);
+
+    expect(repeatedActivation.body).toMatchObject({
+      id: workflow.id,
+      isDefault: false,
+      isActive: true,
+    });
+
+    const activationAuditCount = await prisma.auditLog.count({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        action: 'order_workflow.activated',
+        entityId: workflow.id,
+      },
+    });
+
+    expect(activationAuditCount).toBe(1);
+  });
+
   it('should enforce order workflow configuration permissions', async () => {
     if (!organizationId || !userId) {
       throw new Error('Test membership was not initialized');
@@ -1308,7 +1361,7 @@ describe('Orders (e2e)', () => {
           .post('/api/order-workflows')
           .set('Cookie', sessionCookie)
           .send({
-            name: `Fluxo padrão ${role} ${randomUUID()}`,
+            name: `Fluxo configurável ${role} ${randomUUID()}`,
             stages: [
               { name: 'Recebido' },
               { name: 'Em andamento' },
@@ -1333,6 +1386,11 @@ describe('Orders (e2e)', () => {
 
         await request(httpServer())
           .post(`/api/order-workflows/${disposableWorkflow.body.id}/deactivate`)
+          .set('Cookie', sessionCookie)
+          .expect(201);
+
+        await request(httpServer())
+          .post(`/api/order-workflows/${disposableWorkflow.body.id}/activate`)
           .set('Cookie', sessionCookie)
           .expect(201);
       }
@@ -1375,6 +1433,11 @@ describe('Orders (e2e)', () => {
 
         await request(httpServer())
           .post(`/api/order-workflows/${protectedWorkflow.id}/deactivate`)
+          .set('Cookie', sessionCookie)
+          .expect(403);
+
+        await request(httpServer())
+          .post(`/api/order-workflows/${protectedWorkflow.id}/activate`)
           .set('Cookie', sessionCookie)
           .expect(403);
       }
@@ -1505,6 +1568,15 @@ describe('Orders (e2e)', () => {
       .expect(404);
 
     expect(deactivationResponse.body.message).toBe(
+      'Fluxo de pedidos não encontrado.',
+    );
+
+    const activationResponse = await request(httpServer())
+      .post(`/api/order-workflows/${foreignWorkflow.id}/activate`)
+      .set('Cookie', sessionCookie)
+      .expect(404);
+
+    expect(activationResponse.body.message).toBe(
       'Fluxo de pedidos não encontrado.',
     );
 

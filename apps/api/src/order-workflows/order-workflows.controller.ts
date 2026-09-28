@@ -20,7 +20,7 @@ import { OrderWorkflowsService } from './order-workflows.service.js';
 @Controller('order-workflows')
 @UseGuards(SessionAuthGuard, OrganizationRolesGuard)
 export class OrderWorkflowsController {
-  constructor(private readonly orderWorkflowsService: OrderWorkflowsService) { }
+  constructor(private readonly orderWorkflowsService: OrderWorkflowsService) {}
 
   @Get()
   @OrganizationRoles(OrganizationRole.OWNER, OrganizationRole.ADMIN)
@@ -35,9 +35,7 @@ export class OrderWorkflowsController {
     OrganizationRole.OPERATIONS,
   )
   findActive(@Req() request: AuthenticatedRequest) {
-    return this.orderWorkflowsService.findActive(
-      request.auth.organization.id,
-    );
+    return this.orderWorkflowsService.findActive(request.auth.organization.id);
   }
 
   @Post()
@@ -61,6 +59,20 @@ export class OrderWorkflowsController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.orderWorkflowsService.setDefault(
+      request.auth.organization.id,
+      request.auth.user.id,
+      workflowId,
+    );
+  }
+
+  @Post(':workflowId/activate')
+  @OrganizationRoles(OrganizationRole.OWNER, OrganizationRole.ADMIN)
+  activate(
+    @Param('workflowId', new ParseUUIDPipe({ version: '4' }))
+    workflowId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.orderWorkflowsService.activate(
       request.auth.organization.id,
       request.auth.user.id,
       workflowId,

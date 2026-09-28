@@ -90,7 +90,7 @@ const createdOrder = {
   updatedAt: '2026-09-19T12:00:00.000Z',
   workflow: {
     id: 'b24913f2-bd0c-4086-88f6-6fa45c79c021',
-    name: 'Fluxo padrão',
+    name: 'Fluxo geral',
   },
   currentStage: createdOrderStage,
   stageTransitions: [
@@ -116,7 +116,7 @@ const createdOrder = {
 
 const defaultOrderWorkflow = {
   id: '4f6f5b6a-8f7a-4d62-9b87-21b6bf8be001',
-  name: 'Fluxo padrão',
+  name: 'Fluxo geral',
   isDefault: true,
   isActive: true,
   createdAt: '2026-09-19T12:00:00.000Z',

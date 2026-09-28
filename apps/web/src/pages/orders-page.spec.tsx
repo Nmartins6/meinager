@@ -30,7 +30,7 @@ const order = {
   updatedAt: '2026-09-19T12:00:00.000Z',
   workflow: {
     id: 'fd2a51d3-744d-465c-8b48-afd8ec2561d0',
-    name: 'Fluxo padrão',
+    name: 'Fluxo Geral',
   },
   currentStage: pendingStage,
   quote: {

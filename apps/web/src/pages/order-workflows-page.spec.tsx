@@ -21,7 +21,7 @@ const authenticatedUser = {
 
 const defaultWorkflow = {
   id: 'f25c7c1a-bd29-438f-a940-77d89a93ec50',
-  name: 'Fluxo padrão',
+  name: 'Fluxo geral',
   isDefault: true,
   isActive: true,
   createdAt: '2026-09-23T12:00:00.000Z',
@@ -126,7 +126,7 @@ describe('OrderWorkflowsPage', () => {
       }),
     ).toBeInTheDocument();
 
-    expect(await screen.findByText('Fluxo padrão')).toBeInTheDocument();
+    expect(await screen.findByText('Fluxo geral')).toBeInTheDocument();
     expect(screen.getByText('Pendente')).toBeInTheDocument();
     expect(screen.getByText('Em andamento')).toBeInTheDocument();
     expect(screen.getByText('Concluído')).toBeInTheDocument();
@@ -374,6 +374,77 @@ describe('OrderWorkflowsPage', () => {
       expect(workflowCard).toHaveTextContent('Inativo');
       expect(workflowCard).not.toHaveTextContent('Desativar');
     });
+  });
+
+  it('should reactivate an inactive workflow', async () => {
+    const user = userEvent.setup();
+
+    const inactiveWorkflow = {
+      ...configurableWorkflow,
+      isActive: false,
+    };
+
+    const activatedWorkflow = {
+      ...configurableWorkflow,
+      isActive: true,
+    };
+
+    let workflows = [defaultWorkflow, inactiveWorkflow];
+
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+
+        if (url.endsWith('/auth/me')) {
+          return jsonResponse(authenticatedUser);
+        }
+
+        if (
+          url.endsWith(`/order-workflows/${configurableWorkflow.id}/activate`) &&
+          init?.method === 'POST'
+        ) {
+          workflows = [defaultWorkflow, activatedWorkflow];
+
+          return jsonResponse(activatedWorkflow, 201);
+        }
+
+        if (url.endsWith('/order-workflows')) {
+          return jsonResponse(workflows);
+        }
+
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    );
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    expect(await screen.findByText('Inativo')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Reativar',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `http://localhost:3000/api/order-workflows/${configurableWorkflow.id}/activate`,
+        expect.objectContaining({
+          method: 'POST',
+          credentials: 'include',
+        }),
+      );
+    });
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Definir como padrão',
+      }),
+    ).toBeInTheDocument();
+
+    expect(screen.queryByText('Inativo')).not.toBeInTheDocument();
   });
 
   it('should deny direct workflow configuration access to a viewer', async () => {

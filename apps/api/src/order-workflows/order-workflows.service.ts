@@ -71,7 +71,7 @@ function isUniqueConstraintError(error: unknown): boolean {
 
 @Injectable()
 export class OrderWorkflowsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   findAll(organizationId: string): Promise<OrderWorkflowResponse[]> {
     return this.prisma.orderWorkflow.findMany({
@@ -237,6 +237,68 @@ export class OrderWorkflowsService {
           organizationId,
           actorUserId,
           action: 'order_workflow.default_changed',
+          entityType: 'order_workflow',
+          entityId: updatedWorkflow.id,
+          metadata: {
+            name: updatedWorkflow.name,
+          },
+        },
+      });
+
+      return updatedWorkflow;
+    });
+  }
+
+  async activate(
+    organizationId: string,
+    actorUserId: string,
+    workflowId: string,
+  ): Promise<OrderWorkflowResponse> {
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`
+      SELECT "id"
+      FROM "organizations"
+      WHERE "id" = ${organizationId}
+      FOR UPDATE
+    `;
+
+      const workflow = await transaction.orderWorkflow.findFirst({
+        where: {
+          id: workflowId,
+          organizationId,
+        },
+        select: workflowSelect,
+      });
+
+      if (!workflow) {
+        throw new NotFoundException('Fluxo de pedidos não encontrado.');
+      }
+
+      if (workflow.isActive) {
+        return workflow;
+      }
+
+      if (!workflow.stages.some((stage) => stage.isActive)) {
+        throw new ConflictException(
+          'O fluxo precisa possuir ao menos uma etapa ativa.',
+        );
+      }
+
+      const updatedWorkflow = await transaction.orderWorkflow.update({
+        where: {
+          id: workflow.id,
+        },
+        data: {
+          isActive: true,
+        },
+        select: workflowSelect,
+      });
+
+      await transaction.auditLog.create({
+        data: {
+          organizationId,
+          actorUserId,
+          action: 'order_workflow.activated',
           entityType: 'order_workflow',
           entityId: updatedWorkflow.id,
           metadata: {

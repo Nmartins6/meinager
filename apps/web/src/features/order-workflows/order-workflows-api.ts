@@ -37,7 +37,7 @@ export interface CreateOrderWorkflowInput {
   }>;
 }
 
-export type OrderWorkflowAction = 'default' | 'deactivate';
+export type OrderWorkflowAction = 'default' | 'activate' | 'deactivate';
 
 export async function getOrderWorkflows(): Promise<OrderWorkflow[]> {
   const response = await apiRequest('/order-workflows');

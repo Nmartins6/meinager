@@ -72,8 +72,8 @@ export class AuthService {
         await transaction.orderWorkflow.create({
           data: {
             organizationId: organization.id,
-            name: 'Fluxo padrão',
-            normalizedName: 'fluxo padrao',
+            name: 'Fluxo geral',
+            normalizedName: 'fluxo geral',
             isDefault: true,
             stages: {
               create: [

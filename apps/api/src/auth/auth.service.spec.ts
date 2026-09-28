@@ -153,8 +153,8 @@ describe('AuthService', () => {
     expect(transactionMock.orderWorkflow.create).toHaveBeenCalledWith({
       data: {
         organizationId: organization.id,
-        name: 'Fluxo padrão',
-        normalizedName: 'fluxo padrao',
+        name: 'Fluxo geral',
+        normalizedName: 'fluxo geral',
         isDefault: true,
         stages: {
           create: [
