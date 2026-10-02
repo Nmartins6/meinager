@@ -54,6 +54,9 @@ const orderWorkflowFormSchema = z
 export type OrderWorkflowFormData = z.infer<typeof orderWorkflowFormSchema>;
 
 interface OrderWorkflowFormProps {
+  initialValues?: OrderWorkflowFormData;
+  submitLabel?: string;
+  pendingLabel?: string;
   isPending: boolean;
   errorMessage?: string;
   onSubmit: (data: OrderWorkflowFormData) => void;
@@ -63,6 +66,22 @@ interface OrderWorkflowFormProps {
 function createEmptyStage(): OrderWorkflowFormData['stages'][number] {
   return {
     name: '',
+  };
+}
+
+function createDefaultValues(initialValues?: OrderWorkflowFormData): OrderWorkflowFormData {
+  if (initialValues) {
+    return {
+      name: initialValues.name,
+      stages: initialValues.stages.map((stage) => ({
+        name: stage.name,
+      })),
+    };
+  }
+
+  return {
+    name: '',
+    stages: [createEmptyStage(), createEmptyStage(), createEmptyStage()],
   };
 }
 
@@ -79,6 +98,9 @@ function getStageCategoryLabel(index: number, total: number): string {
 }
 
 export function OrderWorkflowForm({
+  initialValues,
+  submitLabel = 'Criar fluxo',
+  pendingLabel = 'Criando fluxo...',
   isPending,
   errorMessage,
   onSubmit,
@@ -91,10 +113,7 @@ export function OrderWorkflowForm({
     formState: { errors },
   } = useForm<OrderWorkflowFormData>({
     resolver: zodResolver(orderWorkflowFormSchema),
-    defaultValues: {
-      name: '',
-      stages: [createEmptyStage(), createEmptyStage(), createEmptyStage()],
-    },
+    defaultValues: createDefaultValues(initialValues),
   });
 
   const { fields, append, remove, move } = useFieldArray({
@@ -230,7 +249,7 @@ export function OrderWorkflowForm({
         </Button>
 
         <Button type="submit" disabled={isPending}>
-          {isPending ? 'Criando fluxo...' : 'Criar fluxo'}
+          {isPending ? pendingLabel : submitLabel}
         </Button>
       </div>
     </form>

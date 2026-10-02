@@ -546,6 +546,149 @@ describe('Orders (e2e)', () => {
     });
   });
 
+  it('PUT should update an unused workflow and replace its stages', async () => {
+    if (!organizationId || !userId) {
+      throw new Error('Test organization was not initialized');
+    }
+
+    const workflow = await createOrderWorkflow({
+      name: 'Atendimento inicial',
+      stages: ['Recebido', 'Executando', 'Finalizado'],
+    });
+
+    const previousStageIds = workflow.stages.map(
+      (stage: { id: string }) => stage.id,
+    );
+
+    const response = await request(httpServer())
+      .put(`/api/order-workflows/${workflow.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        name: 'Atendimento atualizado',
+        stages: [
+          { name: 'Triagem' },
+          { name: 'Execução' },
+          { name: 'Revisão' },
+          { name: 'Concluído' },
+        ],
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      id: workflow.id,
+      name: 'Atendimento atualizado',
+      isDefault: false,
+      isActive: true,
+      _count: {
+        orders: 0,
+      },
+    });
+
+    expect(response.body.stages).toEqual([
+      expect.objectContaining({
+        name: 'Triagem',
+        position: 1,
+        category: 'PENDING',
+        isActive: true,
+      }),
+      expect.objectContaining({
+        name: 'Execução',
+        position: 2,
+        category: 'IN_PROGRESS',
+        isActive: true,
+      }),
+      expect.objectContaining({
+        name: 'Revisão',
+        position: 3,
+        category: 'IN_PROGRESS',
+        isActive: true,
+      }),
+      expect.objectContaining({
+        name: 'Concluído',
+        position: 4,
+        category: 'COMPLETED',
+        isActive: true,
+      }),
+    ]);
+
+    const previousStageCount = await prisma.orderWorkflowStage.count({
+      where: {
+        id: {
+          in: previousStageIds,
+        },
+      },
+    });
+
+    expect(previousStageCount).toBe(0);
+
+    const auditLog = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        organizationId,
+        actorUserId: userId,
+        action: 'order_workflow.updated',
+        entityId: workflow.id,
+      },
+    });
+
+    expect(auditLog.entityType).toBe('order_workflow');
+  });
+
+  it('PUT should reject updating a workflow already used by an order', async () => {
+    const workflow = await createOrderWorkflow({
+      name: 'Fluxo utilizado',
+      stages: ['Entrada', 'Execução', 'Saída'],
+    });
+
+    const { quote } = await createApprovedQuote();
+    await createOrderFromQuote(quote.id, workflow.id);
+
+    const response = await request(httpServer())
+      .put(`/api/order-workflows/${workflow.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        name: 'Fluxo alterado indevidamente',
+        stages: [
+          { name: 'Nova entrada' },
+          { name: 'Nova execução' },
+          { name: 'Nova saída' },
+        ],
+      })
+      .expect(409);
+
+    expect(response.body.message).toBe(
+      'Fluxos utilizados por pedidos não podem ser editados. Duplique o fluxo para criar uma nova versão.',
+    );
+
+    const persistedWorkflow = await prisma.orderWorkflow.findUniqueOrThrow({
+      where: {
+        id: workflow.id,
+      },
+      include: {
+        stages: {
+          orderBy: {
+            position: 'asc',
+          },
+        },
+      },
+    });
+
+    expect(persistedWorkflow.name).toBe('Fluxo utilizado');
+    expect(persistedWorkflow.stages.map((stage) => stage.name)).toEqual([
+      'Entrada',
+      'Execução',
+      'Saída',
+    ]);
+
+    const updateAuditCount = await prisma.auditLog.count({
+      where: {
+        action: 'order_workflow.updated',
+        entityId: workflow.id,
+      },
+    });
+
+    expect(updateAuditCount).toBe(0);
+  });
+
   it('GET should return an order and isolate an order from another organization', async () => {
     const { quote, client } = await createApprovedQuote();
     const order = await createOrderFromQuote(quote.id);
@@ -1014,6 +1157,14 @@ describe('Orders (e2e)', () => {
     await request(httpServer()).get('/api/order-workflows/active').expect(401);
 
     await request(httpServer())
+      .put(`/api/order-workflows/${randomUUID()}`)
+      .send({
+        name: 'Fluxo editado sem autenticação',
+        stages: [{ name: 'Início' }, { name: 'Fim' }],
+      })
+      .expect(401);
+
+    await request(httpServer())
       .post('/api/order-workflows')
       .send({
         name: 'Fluxo sem autenticação',
@@ -1347,6 +1498,26 @@ describe('Orders (e2e)', () => {
           },
         });
 
+        const updatedWorkflowName = `Fluxo editado ${role} ${randomUUID()}`;
+
+        const updateResponse = await request(httpServer())
+          .put(`/api/order-workflows/${protectedWorkflow.id}`)
+          .set('Cookie', sessionCookie)
+          .send({
+            name: updatedWorkflowName,
+            stages: [
+              { name: 'Entrada atualizada' },
+              { name: 'Execução atualizada' },
+              { name: 'Conclusão atualizada' },
+            ],
+          })
+          .expect(200);
+
+        expect(updateResponse.body).toMatchObject({
+          id: protectedWorkflow.id,
+          name: updatedWorkflowName,
+        });
+
         await request(httpServer())
           .get('/api/order-workflows')
           .set('Cookie', sessionCookie)
@@ -1408,6 +1579,19 @@ describe('Orders (e2e)', () => {
         });
 
         await request(httpServer())
+          .put(`/api/order-workflows/${protectedWorkflow.id}`)
+          .set('Cookie', sessionCookie)
+          .send({
+            name: `Fluxo proibido ${role} ${randomUUID()}`,
+            stages: [
+              { name: 'Entrada' },
+              { name: 'Execução' },
+              { name: 'Conclusão' },
+            ],
+          })
+          .expect(403);
+
+        await request(httpServer())
           .get('/api/order-workflows')
           .set('Cookie', sessionCookie)
           .expect(403);
@@ -1451,12 +1635,17 @@ describe('Orders (e2e)', () => {
     }
   });
 
-  it('POST should validate workflow names and stages', async () => {
+  it('POST and PUT should validate workflow names and stages', async () => {
     const workflowName = `Fluxo validação ${randomUUID()}`;
 
     await createOrderWorkflow({
       name: workflowName,
       stages: ['Recebido', 'Em execução', 'Concluído'],
+    });
+
+    const workflowToUpdate = await createOrderWorkflow({
+      name: `Fluxo editável ${randomUUID()}`,
+      stages: ['Entrada', 'Execução', 'Conclusão'],
     });
 
     const duplicatedName = await request(httpServer())
@@ -1530,6 +1719,40 @@ describe('Orders (e2e)', () => {
         stages: [{ name: 'Início' }, { name: '   ' }],
       })
       .expect(400);
+
+    const duplicatedUpdateName = await request(httpServer())
+      .put(`/api/order-workflows/${workflowToUpdate.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        name: workflowName.toUpperCase(),
+        stages: [
+          { name: 'Entrada atualizada' },
+          { name: 'Processamento atualizado' },
+          { name: 'Saída atualizada' },
+        ],
+      })
+      .expect(409);
+
+    expect(duplicatedUpdateName.body.message).toBe(
+      'Já existe um fluxo com este nome na organização.',
+    );
+
+    const duplicatedUpdateStages = await request(httpServer())
+      .put(`/api/order-workflows/${workflowToUpdate.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        name: `Fluxo atualizado ${randomUUID()}`,
+        stages: [
+          { name: 'Produção' },
+          { name: ' produção ' },
+          { name: 'Concluído' },
+        ],
+      })
+      .expect(409);
+
+    expect(duplicatedUpdateStages.body.message).toBe(
+      'As etapas de um fluxo devem possuir nomes diferentes.',
+    );
   });
 
   it('should isolate order workflow configuration between organizations', async () => {
@@ -1552,6 +1775,23 @@ describe('Orders (e2e)', () => {
         (workflow: { id: string }) => workflow.id === foreignWorkflow.id,
       ),
     ).toBe(false);
+
+    const updateResponse = await request(httpServer())
+      .put(`/api/order-workflows/${foreignWorkflow.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        name: 'Fluxo estrangeiro alterado',
+        stages: [
+          { name: 'Entrada alterada' },
+          { name: 'Execução alterada' },
+          { name: 'Conclusão alterada' },
+        ],
+      })
+      .expect(404);
+
+    expect(updateResponse.body.message).toBe(
+      'Fluxo de pedidos não encontrado.',
+    );
 
     const defaultResponse = await request(httpServer())
       .post(`/api/order-workflows/${foreignWorkflow.id}/default`)
@@ -1584,6 +1824,13 @@ describe('Orders (e2e)', () => {
       where: {
         id: foreignWorkflow.id,
       },
+      include: {
+        stages: {
+          orderBy: {
+            position: 'asc',
+          },
+        },
+      },
     });
 
     expect(persistedWorkflow).toMatchObject({
@@ -1591,6 +1838,12 @@ describe('Orders (e2e)', () => {
       isDefault: true,
       isActive: true,
     });
+
+    expect(persistedWorkflow.name).toBe(foreignWorkflow.name);
+
+    expect(persistedWorkflow.stages.map((stage) => stage.name)).toEqual(
+      foreignWorkflow.stages.map((stage) => stage.name),
+    );
   });
 
   it('should serialize concurrent default workflow changes', async () => {

@@ -8,6 +8,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { OrderStageCategory } from '../generated/prisma/enums.js';
 import type { CreateOrderWorkflowDto } from './dto/create-order-workflow.dto.js';
+import type { UpdateOrderWorkflowDto } from './dto/update-order-workflow.dto.js';
 
 const workflowStageSelect = {
   id: true,
@@ -69,6 +70,26 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+function prepareWorkflowDefinition(dto: CreateOrderWorkflowDto): {
+  name: string;
+  stageNames: string[];
+} {
+  const name = dto.name.trim();
+  const stageNames = dto.stages.map((stage) => stage.name.trim());
+  const normalizedStageNames = stageNames.map(normalize);
+
+  if (new Set(normalizedStageNames).size !== normalizedStageNames.length) {
+    throw new ConflictException(
+      'As etapas de um fluxo devem possuir nomes diferentes.',
+    );
+  }
+
+  return {
+    name,
+    stageNames,
+  };
+}
+
 @Injectable()
 export class OrderWorkflowsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -116,15 +137,7 @@ export class OrderWorkflowsService {
     actorUserId: string,
     dto: CreateOrderWorkflowDto,
   ): Promise<OrderWorkflowResponse> {
-    const name = dto.name.trim();
-    const stageNames = dto.stages.map((stage) => stage.name.trim());
-    const normalizedStageNames = stageNames.map(normalize);
-
-    if (new Set(normalizedStageNames).size !== normalizedStageNames.length) {
-      throw new ConflictException(
-        'As etapas de um fluxo devem possuir nomes diferentes.',
-      );
-    }
+    const { name, stageNames } = prepareWorkflowDefinition(dto);
 
     try {
       return await this.prisma.$transaction(async (transaction) => {
@@ -159,6 +172,95 @@ export class OrderWorkflowsService {
         });
 
         return workflow;
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'Já existe um fluxo com este nome na organização.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async update(
+    organizationId: string,
+    actorUserId: string,
+    workflowId: string,
+    dto: UpdateOrderWorkflowDto,
+  ): Promise<OrderWorkflowResponse> {
+    const { name, stageNames } = prepareWorkflowDefinition(dto);
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await transaction.$queryRaw`
+        SELECT "id"
+        FROM "organizations"
+        WHERE "id" = ${organizationId}
+        FOR UPDATE
+      `;
+
+        const workflow = await transaction.orderWorkflow.findFirst({
+          where: {
+            id: workflowId,
+            organizationId,
+          },
+          select: workflowSelect,
+        });
+
+        if (!workflow) {
+          throw new NotFoundException('Fluxo de pedidos não encontrado.');
+        }
+
+        if (workflow._count.orders > 0) {
+          throw new ConflictException(
+            'Fluxos utilizados por pedidos não podem ser editados. Duplique o fluxo para criar uma nova versão.',
+          );
+        }
+
+        await transaction.orderWorkflowStage.deleteMany({
+          where: {
+            organizationId,
+            workflowId: workflow.id,
+          },
+        });
+
+        const updatedWorkflow = await transaction.orderWorkflow.update({
+          where: {
+            id: workflow.id,
+          },
+          data: {
+            name,
+            normalizedName: normalize(name),
+            stages: {
+              create: stageNames.map((stageName, index) => ({
+                name: stageName,
+                position: index + 1,
+                category: categoryForStage(index, stageNames.length),
+              })),
+            },
+          },
+          select: workflowSelect,
+        });
+
+        await transaction.auditLog.create({
+          data: {
+            organizationId,
+            actorUserId,
+            action: 'order_workflow.updated',
+            entityType: 'order_workflow',
+            entityId: updatedWorkflow.id,
+            metadata: {
+              previousName: workflow.name,
+              name: updatedWorkflow.name,
+              previousStageCount: workflow.stages.length,
+              stageCount: updatedWorkflow.stages.length,
+            },
+          },
+        });
+
+        return updatedWorkflow;
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {

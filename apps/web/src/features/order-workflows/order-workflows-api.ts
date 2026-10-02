@@ -37,6 +37,8 @@ export interface CreateOrderWorkflowInput {
   }>;
 }
 
+export type UpdateOrderWorkflowInput = CreateOrderWorkflowInput;
+
 export type OrderWorkflowAction = 'default' | 'activate' | 'deactivate';
 
 export async function getOrderWorkflows(): Promise<OrderWorkflow[]> {
@@ -54,6 +56,21 @@ export async function getActiveOrderWorkflows(): Promise<OrderWorkflow[]> {
 export async function createOrderWorkflow(input: CreateOrderWorkflowInput): Promise<OrderWorkflow> {
   const response = await apiRequest('/order-workflows', {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  return orderWorkflowSchema.parse(await response.json());
+}
+
+export async function updateOrderWorkflow(
+  workflowId: string,
+  input: UpdateOrderWorkflowInput,
+): Promise<OrderWorkflow> {
+  const response = await apiRequest(`/order-workflows/${encodeURIComponent(workflowId)}`, {
+    method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },

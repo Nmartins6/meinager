@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, GitBranch, Plus, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Check, Copy, GitBranch, Pencil, Plus, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -13,15 +13,69 @@ import {
 import { useCreateOrderWorkflowMutation } from '@/features/order-workflows/use-create-order-workflow-mutation';
 import { useOrderWorkflowActionMutation } from '@/features/order-workflows/use-order-workflow-action-mutation';
 import { useOrderWorkflowsQuery } from '@/features/order-workflows/use-order-workflows-query';
+import type { OrderWorkflow } from '@/features/order-workflows/order-workflows-api';
+import { useUpdateOrderWorkflowMutation } from '@/features/order-workflows/use-update-order-workflow-mutation';
 import { cn } from '@/lib/utils';
 
 function getWorkflowDisplayName(name: string): string {
   return name === 'Fluxo migrado' ? 'Fluxo anterior' : name;
 }
 
+type WorkflowFormState =
+  | {
+      mode: 'create';
+    }
+  | {
+      mode: 'edit' | 'duplicate';
+      workflow: OrderWorkflow;
+    };
+
+function getWorkflowFormInitialValues(state: WorkflowFormState): OrderWorkflowFormData | undefined {
+  if (state.mode === 'create') {
+    return undefined;
+  }
+
+  return {
+    name:
+      state.mode === 'duplicate'
+        ? `${getWorkflowDisplayName(state.workflow.name)} (cópia)`
+        : state.workflow.name,
+    stages: state.workflow.stages.map((stage) => ({
+      name: stage.name,
+    })),
+  };
+}
+
+function getWorkflowFormPresentation(state: WorkflowFormState) {
+  if (state.mode === 'edit') {
+    return {
+      title: 'Editar fluxo',
+      description: 'Altere o nome e a sequência de etapas deste fluxo.',
+      submitLabel: 'Salvar alterações',
+      pendingLabel: 'Salvando...',
+    };
+  }
+
+  if (state.mode === 'duplicate') {
+    return {
+      title: 'Duplicar fluxo',
+      description: 'Revise os dados da cópia antes de criar uma nova versão do fluxo.',
+      submitLabel: 'Criar cópia',
+      pendingLabel: 'Criando cópia...',
+    };
+  }
+
+  return {
+    title: 'Novo fluxo',
+    description: 'Defina o nome e a sequência de etapas do fluxo.',
+    submitLabel: 'Criar fluxo',
+    pendingLabel: 'Criando fluxo...',
+  };
+}
+
 export function OrderWorkflowsPage() {
   const navigate = useNavigate();
-  const [isCreating, setIsCreating] = useState(false);
+  const [workflowForm, setWorkflowForm] = useState<WorkflowFormState | null>(null);
 
   const currentUserQuery = useCurrentUserQuery();
   const role = currentUserQuery.data?.organization.role;
@@ -30,14 +84,64 @@ export function OrderWorkflowsPage() {
   const workflowsQuery = useOrderWorkflowsQuery(!currentUserQuery.isPending && canManage);
   const createMutation = useCreateOrderWorkflowMutation();
   const actionMutation = useOrderWorkflowActionMutation();
+  const updateMutation = useUpdateOrderWorkflowMutation();
 
   const workflows = workflowsQuery.data ?? [];
   const queryError = currentUserQuery.error ?? workflowsQuery.error;
 
-  function handleCreate(data: OrderWorkflowFormData) {
+  const formInitialValues = workflowForm ? getWorkflowFormInitialValues(workflowForm) : undefined;
+
+  const formPresentation = workflowForm ? getWorkflowFormPresentation(workflowForm) : undefined;
+
+  const isFormPending =
+    workflowForm?.mode === 'edit' ? updateMutation.isPending : createMutation.isPending;
+
+  const formErrorMessage =
+    workflowForm?.mode === 'edit' ? updateMutation.error?.message : createMutation.error?.message;
+
+  const areWorkflowActionsDisabled =
+    workflowForm !== null ||
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    actionMutation.isPending;
+
+  function openWorkflowForm(state: WorkflowFormState) {
+    createMutation.reset();
+    updateMutation.reset();
+    actionMutation.reset();
+    setWorkflowForm(state);
+  }
+
+  function closeWorkflowForm() {
+    createMutation.reset();
+    updateMutation.reset();
+    setWorkflowForm(null);
+  }
+
+  function handleWorkflowFormSubmit(data: OrderWorkflowFormData) {
+    if (!workflowForm) {
+      return;
+    }
+
+    if (workflowForm.mode === 'edit') {
+      updateMutation.mutate(
+        {
+          workflowId: workflowForm.workflow.id,
+          input: data,
+        },
+        {
+          onSuccess: () => {
+            setWorkflowForm(null);
+          },
+        },
+      );
+
+      return;
+    }
+
     createMutation.mutate(data, {
       onSuccess: () => {
-        setIsCreating(false);
+        setWorkflowForm(null);
       },
     });
   }
@@ -102,12 +206,13 @@ export function OrderWorkflowsPage() {
           </p>
         </div>
 
-        {canManage && !isCreating && (
+        {canManage && !workflowForm && (
           <Button
             type="button"
             onClick={() => {
-              createMutation.reset();
-              setIsCreating(true);
+              openWorkflowForm({
+                mode: 'create',
+              });
             }}
           >
             <Plus data-icon="inline-start" />
@@ -137,21 +242,31 @@ export function OrderWorkflowsPage() {
         </Card>
       )}
 
-      {canManage && isCreating && (
+      {canManage && workflowForm && formPresentation && (
         <Card className="mt-8">
           <CardHeader>
-            <CardTitle>Novo fluxo</CardTitle>
-            <CardDescription>Defina o nome e a sequência de etapas do fluxo.</CardDescription>
+            <CardTitle>{formPresentation.title}</CardTitle>
+            <CardDescription>{formPresentation.description}</CardDescription>
           </CardHeader>
+
           <CardContent>
             <OrderWorkflowForm
-              isPending={createMutation.isPending}
-              errorMessage={createMutation.error?.message}
-              onSubmit={handleCreate}
-              onCancel={() => {
-                createMutation.reset();
-                setIsCreating(false);
-              }}
+              key={
+                workflowForm.mode === 'create'
+                  ? 'create'
+                  : `${workflowForm.mode}-${workflowForm.workflow.id}`
+              }
+              {...(formInitialValues
+                ? {
+                    initialValues: formInitialValues,
+                  }
+                : {})}
+              submitLabel={formPresentation.submitLabel}
+              pendingLabel={formPresentation.pendingLabel}
+              isPending={isFormPending}
+              errorMessage={formErrorMessage}
+              onSubmit={handleWorkflowFormSubmit}
+              onCancel={closeWorkflowForm}
             />
           </CardContent>
         </Card>
@@ -262,15 +377,47 @@ export function OrderWorkflowsPage() {
                   ))}
                 </ol>
 
-                {!workflow.isDefault && (
-                  <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-                    {workflow.isActive ? (
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  {workflow._count.orders === 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        openWorkflowForm({
+                          mode: 'edit',
+                          workflow,
+                        });
+                      }}
+                      disabled={areWorkflowActionsDisabled}
+                    >
+                      <Pencil data-icon="inline-start" />
+                      Editar
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        openWorkflowForm({
+                          mode: 'duplicate',
+                          workflow,
+                        });
+                      }}
+                      disabled={areWorkflowActionsDisabled}
+                    >
+                      <Copy data-icon="inline-start" />
+                      Duplicar
+                    </Button>
+                  )}
+
+                  {!workflow.isDefault &&
+                    (workflow.isActive ? (
                       <>
                         <Button
                           type="button"
                           variant="outline"
                           onClick={() => handleSetDefault(workflow.id)}
-                          disabled={actionMutation.isPending}
+                          disabled={areWorkflowActionsDisabled}
                         >
                           {isActionPending(workflow.id, 'default')
                             ? 'Definindo...'
@@ -281,7 +428,7 @@ export function OrderWorkflowsPage() {
                           type="button"
                           variant="outline"
                           onClick={() => handleDeactivate(workflow.id, workflow.name)}
-                          disabled={actionMutation.isPending}
+                          disabled={areWorkflowActionsDisabled}
                         >
                           {isActionPending(workflow.id, 'deactivate')
                             ? 'Desativando...'
@@ -293,13 +440,12 @@ export function OrderWorkflowsPage() {
                         type="button"
                         variant="outline"
                         onClick={() => handleActivate(workflow.id)}
-                        disabled={actionMutation.isPending}
+                        disabled={areWorkflowActionsDisabled}
                       >
                         {isActionPending(workflow.id, 'activate') ? 'Reativando...' : 'Reativar'}
                       </Button>
-                    )}
-                  </div>
-                )}
+                    ))}
+                </div>
               </CardContent>
             </Card>
           ))}

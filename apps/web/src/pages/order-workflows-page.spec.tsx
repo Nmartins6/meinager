@@ -447,6 +447,209 @@ describe('OrderWorkflowsPage', () => {
     expect(screen.queryByText('Inativo')).not.toBeInTheDocument();
   });
 
+  it('should edit an unused workflow', async () => {
+    const user = userEvent.setup();
+    let workflows = [defaultWorkflow, configurableWorkflow];
+
+    const updatedWorkflow = {
+      ...configurableWorkflow,
+      name: 'Atendimento personalizado',
+      updatedAt: '2026-10-02T12:00:00.000Z',
+      stages: [
+        {
+          ...configurableWorkflow.stages[0],
+          id: '1932a51d-744d-465c-8b48-afd8ec2561d0',
+          name: 'Solicitação recebida',
+        },
+        {
+          ...configurableWorkflow.stages[1],
+          id: '2932a51d-744d-465c-8b48-afd8ec2561d0',
+          name: 'Atendimento',
+        },
+        {
+          ...configurableWorkflow.stages[2],
+          id: '3932a51d-744d-465c-8b48-afd8ec2561d0',
+          name: 'Atendimento concluído',
+        },
+      ],
+    };
+
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+
+        if (url.endsWith('/auth/me')) {
+          return jsonResponse(authenticatedUser);
+        }
+
+        if (url.endsWith(`/order-workflows/${configurableWorkflow.id}`) && init?.method === 'PUT') {
+          workflows = [defaultWorkflow, updatedWorkflow];
+
+          return jsonResponse(updatedWorkflow);
+        }
+
+        if (url.endsWith('/order-workflows')) {
+          return jsonResponse(workflows);
+        }
+
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    );
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    await screen.findByText('Prestação de serviços');
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Editar',
+      }),
+    );
+
+    expect(screen.getByText('Editar fluxo')).toBeInTheDocument();
+
+    expect(screen.getByLabelText('Nome do fluxo')).toHaveValue('Prestação de serviços');
+
+    await user.clear(screen.getByLabelText('Nome do fluxo'));
+    await user.type(screen.getByLabelText('Nome do fluxo'), 'Atendimento personalizado');
+
+    await user.clear(screen.getByLabelText('Nome da etapa 1'));
+    await user.type(screen.getByLabelText('Nome da etapa 1'), 'Solicitação recebida');
+
+    await user.clear(screen.getByLabelText('Nome da etapa 2'));
+    await user.type(screen.getByLabelText('Nome da etapa 2'), 'Atendimento');
+
+    await user.clear(screen.getByLabelText('Nome da etapa 3'));
+    await user.type(screen.getByLabelText('Nome da etapa 3'), 'Atendimento concluído');
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Salvar alterações',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `http://localhost:3000/api/order-workflows/${configurableWorkflow.id}`,
+        expect.objectContaining({
+          method: 'PUT',
+          credentials: 'include',
+          body: JSON.stringify({
+            name: 'Atendimento personalizado',
+            stages: [
+              { name: 'Solicitação recebida' },
+              { name: 'Atendimento' },
+              { name: 'Atendimento concluído' },
+            ],
+          }),
+        }),
+      );
+    });
+
+    expect(await screen.findByText('Atendimento personalizado')).toBeInTheDocument();
+
+    expect(screen.queryByText('Editar fluxo')).not.toBeInTheDocument();
+  });
+
+  it('should duplicate a workflow already used by orders', async () => {
+    const user = userEvent.setup();
+    let workflows = [defaultWorkflow, configurableWorkflow];
+
+    const duplicatedWorkflow = {
+      ...defaultWorkflow,
+      id: '4932a51d-744d-465c-8b48-afd8ec2561d0',
+      name: 'Fluxo geral (cópia)',
+      isDefault: false,
+      createdAt: '2026-10-02T13:00:00.000Z',
+      updatedAt: '2026-10-02T13:00:00.000Z',
+      stages: [
+        {
+          ...defaultWorkflow.stages[0],
+          id: '5932a51d-744d-465c-8b48-afd8ec2561d0',
+        },
+        {
+          ...defaultWorkflow.stages[1],
+          id: '6932a51d-744d-465c-8b48-afd8ec2561d0',
+        },
+        {
+          ...defaultWorkflow.stages[2],
+          id: '7932a51d-744d-465c-8b48-afd8ec2561d0',
+        },
+      ],
+      _count: {
+        orders: 0,
+      },
+    };
+
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+
+        if (url.endsWith('/auth/me')) {
+          return jsonResponse(authenticatedUser);
+        }
+
+        if (url.endsWith('/order-workflows') && init?.method === 'POST') {
+          workflows = [defaultWorkflow, configurableWorkflow, duplicatedWorkflow];
+
+          return jsonResponse(duplicatedWorkflow, 201);
+        }
+
+        if (url.endsWith('/order-workflows')) {
+          return jsonResponse(workflows);
+        }
+
+        throw new Error(`Unexpected request: ${url}`);
+      },
+    );
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    await screen.findByText('Fluxo geral');
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Duplicar',
+      }),
+    );
+
+    expect(screen.getByText('Duplicar fluxo')).toBeInTheDocument();
+
+    expect(screen.getByLabelText('Nome do fluxo')).toHaveValue('Fluxo geral (cópia)');
+    expect(screen.getByLabelText('Nome da etapa 1')).toHaveValue('Pendente');
+    expect(screen.getByLabelText('Nome da etapa 2')).toHaveValue('Em andamento');
+    expect(screen.getByLabelText('Nome da etapa 3')).toHaveValue('Concluído');
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Criar cópia',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost:3000/api/order-workflows',
+        expect.objectContaining({
+          method: 'POST',
+          credentials: 'include',
+          body: JSON.stringify({
+            name: 'Fluxo geral (cópia)',
+            stages: [{ name: 'Pendente' }, { name: 'Em andamento' }, { name: 'Concluído' }],
+          }),
+        }),
+      );
+    });
+
+    expect(await screen.findByText('Fluxo geral (cópia)')).toBeInTheDocument();
+    expect(screen.getByText('Fluxo geral')).toBeInTheDocument();
+
+    expect(screen.queryByText('Duplicar fluxo')).not.toBeInTheDocument();
+  });
+
   it('should deny direct workflow configuration access to a viewer', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = String(input);

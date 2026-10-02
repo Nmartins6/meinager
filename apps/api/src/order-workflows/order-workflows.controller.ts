@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import type { AuthenticatedRequest } from '../auth/session/session.types.js';
 import { OrganizationRole } from '../generated/prisma/enums.js';
 import { CreateOrderWorkflowDto } from './dto/create-order-workflow.dto.js';
 import { OrderWorkflowsService } from './order-workflows.service.js';
+import { UpdateOrderWorkflowDto } from './dto/update-order-workflow.dto.js';
 
 @Controller('order-workflows')
 @UseGuards(SessionAuthGuard, OrganizationRolesGuard)
@@ -47,6 +49,22 @@ export class OrderWorkflowsController {
     return this.orderWorkflowsService.create(
       request.auth.organization.id,
       request.auth.user.id,
+      dto,
+    );
+  }
+
+  @Put(':workflowId')
+  @OrganizationRoles(OrganizationRole.OWNER, OrganizationRole.ADMIN)
+  update(
+    @Param('workflowId', new ParseUUIDPipe({ version: '4' }))
+    workflowId: string,
+    @Body() dto: UpdateOrderWorkflowDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.orderWorkflowsService.update(
+      request.auth.organization.id,
+      request.auth.user.id,
+      workflowId,
       dto,
     );
   }
