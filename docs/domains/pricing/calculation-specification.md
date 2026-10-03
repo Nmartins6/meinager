@@ -235,11 +235,12 @@ O faturamento mensal médio deve ser maior que zero.
 
 Exemplo de conversão:
 
-````text
+```text
 Custo fixo mensal:       R$ 2.000,00
 Faturamento mensal:     R$ 10.000,00
 Percentual interno:             0,20
 Percentual apresentado:          20%
+```
 
 O `PF` deve participar do divisor do preço. Ele não deve ser multiplicado pelo
 custo direto nem adicionado novamente ao custo-base.
@@ -259,6 +260,7 @@ Uma implementação extensível poderá representar as deduções como uma cole�
 \[
 DV
 =
+
 \sum_{i=1}^{n}
 \text{Dedução}_{i}
 \]
@@ -323,6 +325,7 @@ O preço mínimo exato é:
 \[
 PMIN
 =
+
 \frac{CB}
 {1-(PF+DV)}
 \]
@@ -337,6 +340,7 @@ O preço sugerido exato é:
 \[
 PSUG
 =
+
 \frac{CB}
 {1-(PF+DV+ML)}
 \]
@@ -358,6 +362,7 @@ DCF = P \times PF
 \[
 \text{ValorDedução}_{i}
 =
+
 P
 \times
 \text{PercentualDedução}_{i}
@@ -374,6 +379,7 @@ Ou, preservando os componentes:
 \[
 DDV
 =
+
 \sum_{i=1}^{n}
 (P \times \text{Dedução}_{i})
 \]
@@ -383,12 +389,16 @@ DDV
 \[
 LC
 =
+
 P
 -
+
 CB
 -
+
 DCF
 -
+
 DDV
 \]
 
@@ -399,6 +409,7 @@ Para `P > 0`:
 \[
 ME
 =
+
 \frac{LC}{P}
 \]
 
@@ -429,6 +440,7 @@ Quando o usuário informar um preço adotado:
 \[
 \text{DiferençaSugerido}
 =
+
 PAD - PSUG
 \]
 
@@ -436,13 +448,13 @@ O sistema deve recalcular `DCF`, `DDV`, `LC` e `ME` utilizando `PAD`.
 
 Classificação recomendada:
 
-| Condição             | Classificação                          |
-| -------------------- | -------------------------------------- |
-| `PAD < PMIN`         | Abaixo do preço mínimo                 |
-| `PAD = PMIN`         | Ponto de cobertura                     |
-| `PMIN < PAD < PSUG`  | Rentável, abaixo da margem desejada    |
-| `PAD = PSUG`         | Margem desejada atendida               |
-| `PAD > PSUG`         | Acima da margem desejada               |
+| Condição            | Classificação                       |
+| ------------------- | ----------------------------------- |
+| `PAD < PMIN`        | Abaixo do preço mínimo              |
+| `PAD = PMIN`        | Ponto de cobertura                  |
+| `PMIN < PAD < PSUG` | Rentável, abaixo da margem desejada |
+| `PAD = PSUG`        | Margem desejada atendida            |
+| `PAD > PSUG`        | Acima da margem desejada            |
 
 As comparações devem considerar os preços monetários efetivamente adotados,
 depois da regra de arredondamento.
@@ -454,8 +466,10 @@ O desconto máximo teórico sobre o preço sugerido é:
 \[
 \text{DescontoMáximo}
 =
+
 1
 -
+
 \frac{PMIN}{PSUG}
 \]
 
@@ -465,7 +479,7 @@ A fórmula somente deve ser aplicada quando:
 PSUG > 0
 PMIN >= 0
 PMIN <= PSUG
-````
+```
 
 O resultado deve ser apresentado como percentual.
 
