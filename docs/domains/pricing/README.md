@@ -96,8 +96,16 @@ existentes.
 A estrutura funcional de produtos, estoque, financeiro, clientes, orçamentos,
 pedidos e fluxos de pedidos já existe.
 
-O motor de precificação, seus parâmetros, composições, versões de cálculo e
-interfaces específicas ainda serão implementados.
+O motor puro `margin-divisor-v1` foi entregue no Marco 1 em
+`apps/api/src/pricing/calculator/`, com 77 testes próprios e 98 testes unitários
+da API aprovados na validação desse marco. O motor não depende da persistência,
+HTTP ou interface.
+
+A direção arquitetural do Marco 2A está registrada na
+[ADR-006 — Persistência de precificação](../../architecture/decisions/ADR-006-pricing-persistence-model.md).
+Persistência, configurações/perfis salvos, composições e versões persistidas,
+adoção de preço, API e interface web continuam pendentes. O Marco 2A registra
+decisões e não implementa schema ou migrations.
 
 ## Processo de alteração
 

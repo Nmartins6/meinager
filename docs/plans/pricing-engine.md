@@ -61,6 +61,8 @@ fontes oficiais.
 - [x] Realizar a auditoria técnica do repositório (02/10/2026; somente Marco 0).
 - [x] Implementar e testar o motor matemático (Marco 1 concluído em
       03/10/2026, após correção validada dos exemplos EX-001/EX-002).
+- [x] Registrar a direção arquitetural da persistência (Marco 2A, 03/10/2026;
+      ADR-006, somente documentação).
 - [ ] Definir e implementar a persistência.
 - [ ] Implementar configuração e perfis de deduções.
 - [ ] Implementar composição e simulação.
@@ -427,6 +429,29 @@ rastreabilidade; não representam o estado atual do marco.
   o bloqueio foi removido e o Marco 1 foi marcado como concluído.
   ADR-005, dependências e o restante da implementação foram preservados.
 
+### Marco 2A — Direção de persistência aprovada — 03/10/2026
+
+- Baseline confirmado: `main`, commit `00b4cd8`, árvore limpa. A auditoria da
+  proposta inspecionou schema, migrations, motor e padrões existentes; esta
+  etapa registra a revisão aprovada, sem executar banco ou implementar código.
+- Evidência: `docs/architecture/decisions/ADR-006-pricing-persistence-model.md`
+  consolida as decisões de revisões, precedência, custos, snapshots, adoção,
+  precisão, isolamento, finalização e autorização futura.
+- Componentes `CATALOG` precisam resolver `Product.directCost` atual; um custo
+  persistido obrigatório na composição seria uma fonte ambígua. A composição
+  passa a prever `costSource`, `sourceProductId` e `storedUnitCost` condicionais;
+  versões congelam `effectiveUnitCost`, resolvido pelo backend. Para `CATALOG`,
+  vem do `Product.directCost` atual; `storedUnitCost` fica nulo e nunca é cache.
+- `PricingPriceAdoption.previousPrice`/`newPrice` devem acompanhar
+  `Product.salePrice` em `Decimal(14,2)`. Resultados maiores continuam válidos
+  em Text/JSONB, mas não são adotáveis nesse campo; não ampliar nem truncar.
+- E2E de produtos possuem limpeza filtrada; os de orçamentos/pedidos apenas
+  encerram a aplicação. Imutabilidade SQL exige bancos de teste descartáveis
+  e credenciais separadas, sem bypass de produção para remover histórico.
+- Impacto: a proposta foi aprovada como direção arquitetural. Persistência e
+  critérios relacionados continuam pendentes; README atualizado para refletir
+  a entrega do motor no Marco 1. Fórmulas, exemplos e rastreabilidade preservados.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -465,9 +490,70 @@ mas não adota preços, grava histórico ou autoriza usuários.
 Em 03/10/2026, a revisão independente e a autorização explícita do usuário
 confirmaram a fórmula existente e a correção documental de EX-001/EX-002,
 sem mudança de regra de negócio ou de precisão intermediária.
-Precisão e representação antes abertas no Marco 0 estão tratadas pela ADR-005;
-leitura de custos, persistência, origem comercial e prévia web continuam
-abertas para os marcos correspondentes.
+Precisão e representação antes abertas no Marco 0 estão tratadas pela ADR-005.
+As decisões posteriores de persistência e leitura interna estão registradas
+na ADR-006, abaixo; origem dos itens comerciais e prévia web continuam
+para os marcos correspondentes.
+
+### Persistência aprovada — Marco 2A
+
+A [ADR-006](../architecture/decisions/ADR-006-pricing-persistence-model.md)
+registra a direção aprovada em 03/10/2026. As decisões abaixo complementam o
+Marco 1 e resolvem os pontos correspondentes da auditoria histórica:
+
+- Ativação explícita e imediata; `effectiveFrom` definido pelo backend, sem
+  agendamento. Alterações criam revisões imutáveis e movem `currentRevisionId`
+  atomicamente, com numeração sob bloqueio da raiz.
+- Margem da composição sobrescreve a global; ausência nos dois níveis rejeita
+  cálculo. Perfil selecionado fornece deduções; snapshot preserva precedência
+  e origem dos valores efetivos.
+- `MANUAL`/`COPIED` exigem `storedUnitCost` e `sourceProductId` nulo.
+  `CATALOG` exige `storedUnitCost` nulo e `sourceProductId` obrigatório, com
+  item ativo da mesma organização, custo atual presente e unidade compatível;
+  rejeitar autorreferência. `effectiveUnitCost` é resolvido pelo backend e
+  congelado no snapshot e em `PricingVersionComponent`; para `CATALOG`, vem
+  do `Product.directCost` atual, sem cache em `storedUnitCost`. Não converter
+  unidades automaticamente.
+- `PATCH` que informe `salePrice`, inclusive igual ou nulo, passa a origem a
+  manual e limpa a referência; omissão preserva origem e valor. Implementação
+  e auditoria dessa integração permanecem para a API posterior.
+- Adoção aceita somente versão finalizada do mesmo produto/organização, com
+  fórmula e contrato suportados, reexecução das entradas congeladas e
+  consistência verificada. Reutilizar versão somente quando o preço escolhido
+  for exatamente igual ao `analyzedPrice` congelado. Sem preço manual, esse
+  valor normalmente corresponde a `suggestedPriceCommercial`. Se o sugerido
+  diferir de `analyzedPrice`, sua adoção exige nova execução com esse preço
+  como `adoptedPrice` e nova versão; qualquer outro preço também exige novo
+  cálculo e versão. Classificação, decomposição, deduções, lucro e margem
+  congelados devem corresponder ao preço efetivamente adotado.
+  `PricingPriceAdoption` referencia a versão que contém a análise de `newPrice`;
+  nunca modificar a versão anterior para acomodar outra adoção.
+- Entradas `Decimal(19,6)`, taxas `Decimal(12,8)`, resultados em Text/JSONB;
+  eventos de adoção usam `Decimal(14,2)`. Preservar limite do catálogo, proibir
+  truncamento e restringir moeda a BRL com check na futura migration.
+- Snapshot JSONB canônico com `input`, `result`, `context` e contrato validado
+  em runtime; todos os decimais são strings. Projeções e colunas-resumo são
+  criadas do mesmo objeto e não substituem o snapshot.
+- Versão nasce `BUILDING`, recebe snapshot/projeções e finaliza uma única vez
+  na mesma transação. Counts/posições/correspondência são verificados; SQL
+  impede alterações e novas projeções após `FINALIZED` e commit com `BUILDING`.
+- FKs comprovam organização/raiz/revisão nos ponteiros e organização/produto/
+  versão na adoção. Raiz, primeira revisão e ponteiro são criados juntos.
+- Bloqueios seguem configuração, perfis por UUID e produtos por UUID.
+  Composição exige `expectedRevision`; versões/adoção bloqueiam produto.
+- Raízes são desativadas e histórico usa `Restrict`, sem exclusão física.
+  Testes/migrations usam bancos descartáveis e administração separada;
+  nenhum endpoint ou bypass de produção para limpeza.
+- Para o Marco 3: `OWNER`/`ADMIN` têm leitura/escrita completas; `OPERATIONS`
+  têm leitura completa e escrita operacional permitida; `FINANCE` tem leitura
+  interna completa sem escrita; `VIEWER` vê somente dados comerciais, sem
+  custos/margens/lucro/decomposição/histórico interno. Abaixo do mínimo somente
+  `OWNER`/`ADMIN`, com confirmação e justificativa.
+
+O contrato atual de `Product` ainda expõe `directCost` ao `VIEWER`. A política
+existente deverá ser revisada separadamente e sem alteração silenciosa; esta
+etapa não altera nenhum contrato. Origem comercial de itens, prévia web e
+integrações financeiras futuras continuam abertas nos marcos correspondentes.
 
 ### Diretrizes confirmadas na auditoria — 02/10/2026
 
@@ -527,6 +613,14 @@ sessão, nunca do corpo. Rota final e nomes dos contratos serão revisados no
 marco correspondente.
 
 ### Decisões abertas e riscos antes da implementação
+
+Os itens abaixo registram a auditoria de 02/10/2026. Para o estado atual,
+consultar a representação do Marco 1 (ADR-005) e a direção aprovada do Marco 2A
+(ADR-006): leitura interna por papel, vigência, fonte de custos, limites na
+adoção, preço manual e concorrência da composição já possuem decisões.
+A origem dos itens comerciais e a revisão do contrato atual de produtos
+permanecem trabalhos posteriores; preservar o registro histórico não os
+reabre nem significa implementação.
 
 1. **Leitura de custos e histórico:** `PREC-CA-047` remete à política da
    organização, mas não define campos/papéis autorizados para decomposição
@@ -825,6 +919,15 @@ Atualize o progresso antes de iniciar persistência.
 
 Persistir configurações, perfis, composições e versões sem alterar dados
 históricos existentes.
+
+### Direção arquitetural — Marco 2A
+
+A proposta foi revisada e registrada na
+[ADR-006](../architecture/decisions/ADR-006-pricing-persistence-model.md).
+Ela orienta entidades, precisão por campo, snapshot canônico, finalização,
+FKs, bloqueios, adoção, retenção e autorização do futuro Marco 3.
+O Marco 2A termina na documentação: schema, migration e validação em banco
+continuam pendentes e exigem etapa própria após revisão.
 
 ### Modelos conceituais
 
@@ -1279,6 +1382,36 @@ pnpm --filter @meinager/api exec vitest run src/pricing/calculator/pricing-calcu
 pnpm --filter @meinager/api typecheck
 pnpm --filter @meinager/api lint
 pnpm --filter @meinager/api test
+git diff --check
+git diff --stat
+git status --short
+```
+
+### Marco 2A — Decisões arquiteturais registradas — 03/10/2026
+
+- Criado `docs/architecture/decisions/ADR-006-pricing-persistence-model.md`.
+  Atualizados somente este plano e `docs/domains/pricing/README.md`.
+- Registradas as decisões aprovadas de vigência, precedência, custos,
+  preço manual, adoção, decimais, BRL, snapshot/projeções, finalização SQL,
+  colunas-resumo, chaves compostas, concorrência, retenção e leitura por papel.
+- Progresso representa somente documentação concluída. Nenhum requisito de
+  persistência foi marcado como implementado; a matriz não foi alterada.
+- Validação documental: Prettier nos três arquivos e verificação de formatação
+  de todos os documentos. Executados os comandos de diff/check/stat e status
+  listados abaixo. Não foram executados testes funcionais nem operações de
+  banco nesta etapa.
+- Limitações: contrato final do snapshot e guards SQL ainda serão implementados;
+  origem comercial dos itens, exposição atual de custos no catálogo e prévia
+  web requerem as revisões descritas na ADR. Decisões já aprovadas não são
+  tratadas como ambiguidades abertas.
+- Nenhum schema, migration, código, endpoint, DTO, serviço, interface,
+  dependência, fórmula ou exemplo foi alterado. Nenhum commit realizado.
+- Execução encerrada no Marco 2A documental, aguardando revisão; a implementação
+  da persistência do Marco 2 não foi iniciada.
+
+```text
+pnpm exec prettier --write docs/architecture/decisions/ADR-006-pricing-persistence-model.md docs/plans/pricing-engine.md docs/domains/pricing/README.md
+pnpm exec prettier --check docs
 git diff --check
 git diff --stat
 git status --short
