@@ -58,7 +58,7 @@ fontes oficiais.
 - [x] Criar critérios de aceitação.
 - [x] Registrar as decisões arquiteturais iniciais.
 - [x] Criar a matriz inicial de rastreabilidade.
-- [ ] Realizar a auditoria técnica do repositório.
+- [x] Realizar a auditoria técnica do repositório (02/10/2026; somente Marco 0).
 - [ ] Implementar e testar o motor matemático.
 - [ ] Definir e implementar a persistência.
 - [ ] Implementar configuração e perfis de deduções.
@@ -82,7 +82,283 @@ Cada descoberta deve conter:
 - evidência;
 - impacto no plano.
 
-Nenhuma descoberta registrada até o momento.
+### Auditoria técnica — 02/10/2026
+
+As evidências abaixo descrevem o código em `1bbe5f8`, que sucede `13a3eb3`.
+A árvore estava limpa no início. Foram lidos integralmente `AGENTS.md` e este
+plano. Não existe módulo, contrato, interface ou modelo específico de
+precificação em `apps/api/src/app.module.ts`, `apps/web/src/App.tsx` ou
+`apps/api/prisma/schema.prisma`.
+
+#### 1. Persistência e serialização decimal
+
+- Evidência: `apps/api/prisma/schema.prisma`, modelos `Product`,
+  `StockMovement`, `FinancialQuoteItem`, `SalesOrderItem` e financeiros.
+  Custos diretos, quantidades e estoque mínimo usam `Decimal(18, 6)`;
+  `Product.salePrice`, preços unitários, totais, descontos, receitas manuais,
+  saldos iniciais, lançamentos e baixas usam `Decimal(14, 2)`.
+- Evidência: `apps/api/src/quotes/quotes.service.ts`, métodos `create` e
+  `update`, usam `Prisma.Decimal` a partir de strings, multiplicação decimal,
+  soma dos totais de itens e `ROUND_HALF_UP` somente no total de cada item.
+  Produtos, orçamentos e pedidos retornam valores Prisma selecionados;
+  o JSON decimal é textual, sem garantir zeros finais. O teste
+  `apps/api/test/products.e2e-spec.ts`, caso de criação com precisão decimal,
+  exige `directCost: '0.123456'` e `salePrice: '29.9'`; o teste de orçamento
+  exige `total: '23'`. Não há interceptor global de serialização decimal em
+  `apps/api/src/app.setup.ts`.
+- Evidência: `apps/api/src/inventory/inventory.service.ts`, `toResponse` e
+  `calculateTotals`, convertem explicitamente com `toString()`. Financeiro
+  também usa centavos `bigint` e `toFixed(2)` em
+  `apps/api/src/finance/summary/summary.service.ts` e
+  `apps/api/src/finance/settlements/settlements.service.ts`.
+- Evidência: `apps/web/src/features/products/products-api.ts` e
+  `apps/web/src/features/quotes/quotes-api.ts` validam decimais como strings
+  com Zod. `product-form.tsx` usa campos textuais com `inputMode="decimal"`.
+  `apps/web/src/features/quotes/quote-form.tsx` calcula prévias com inteiros
+  `bigint` escalados (quantidade em seis casas e dinheiro em centavos).
+- Impacto: reutilizar strings nas fronteiras e aritmética decimal; não copiar
+  o arredondamento dos totais de orçamento para os preços mínimo/sugerido,
+  que exigem arredondamento para cima. Os centavos do financeiro não bastam
+  para divisões e intermediários do motor. A ADR-002 exige novos campos de
+  precificação com pelo menos `(19, 6)` e percentuais `(12, 8)`; os campos
+  existentes têm limites menores e devem ser preservados.
+- Evidência estrutural: modelos usam UUID com `@default(uuid())`/`@db.Uuid`,
+  nomes camelCase mapeados para colunas/tabelas snake_case (`@map`/`@@map`),
+  timestamps `Timestamptz(3)` e `@updatedAt` em entidades editáveis.
+  Reutilizar essas convenções e revisar também SQL de migrations, pois
+  restrições `CHECK` e índices parciais podem não aparecer no schema.
+
+#### 2. Criação e atualização do preço comercial
+
+- Evidência: `apps/api/src/products/products.controller.ts`, `create` e
+  `update`, expõem `POST /api/products` e `PATCH /api/products/:productId`.
+  `dto/create-product.dto.ts` aceita `salePrice` textual não negativo, até
+  12 dígitos inteiros e duas casas; `dto/update-product.dto.ts` diferencia
+  ausência de campo de `null` (inclusive texto vazio normalizado para `null`).
+- Evidência: `apps/api/src/products/products.service.ts`, `create`, grava o
+  preço ou `null`; `update` altera o preço somente quando fornecido, dentro
+  de transação e após `lockProduct`. Histórico de estoque bloqueia mudanças
+  de unidade/tipo/controle, mas permite atualizar preço e custo direto.
+  `apps/api/src/products/products.service.spec.ts` cobre alteração do preço
+  mesmo com histórico de estoque.
+- Evidência: a migration
+  `apps/api/prisma/migrations/20260910182458_add_product_sale_price/migration.sql`
+  adiciona coluna anulável e `CHECK` de preço não negativo e diferente de NaN.
+- Impacto: manter `Product.salePrice` como preço comercial. Adoção futura
+  precisará atualizar preço, referência opcional e auditoria atomicamente;
+  o `PATCH` atual não é um caso de uso de adoção e não calcula margens.
+
+#### 3. Papéis, autenticação e isolamento organizacional
+
+- Evidência: `apps/api/src/products/products.controller.ts` permite criação
+  e alteração por `OWNER`, `ADMIN`, `OPERATIONS`. Listagem e detalhe não têm
+  restrição adicional de papel: todos os cinco papéis autenticados,
+  incluindo `FINANCE` e `VIEWER`, podem consultar.
+  `apps/api/test/products.e2e-spec.ts`, caso de permissões por papel,
+  comprova escrita permitida e leitura dos papéis sem escrita.
+- Evidência: `apps/api/src/auth/session/session-auth.guard.ts` autentica
+  cookie e preenche `request.auth`; `session.service.ts`, `findAuthenticated`,
+  exige sessão válida, usuário ativo, vínculo ativo e organização ativa.
+  A organização vem do primeiro vínculo ativo por `createdAt`, não de um
+  identificador enviado pelo cliente. Não existe seleção organizacional
+  explícita nesse fluxo. `OrganizationRolesGuard` em
+  `apps/api/src/auth/authorization/organization-roles.guard.ts` retorna `403`
+  quando um papel não está na lista; sessão inválida retorna `401`.
+- Evidência: controllers passam `request.auth.organization.id` e usuário
+  separadamente ao service. `ProductsService.findOne`, consultas de
+  `QuotesService` e `OrdersService` filtram ID e organização. Recursos
+  individuais ausentes/externos retornam `404`; coleções de produtos inválidos
+  em orçamento retornam `400` genérico. Updates por ID são precedidos pela
+  validação do recurso dentro da transação.
+- Evidência: o schema possui unicidade composta `[organizationId, id]` e
+  FKs compostas para produtos, clientes, orçamentos, pedidos e fluxos.
+  Relações de lançamentos/baixas com período/categoria/conta usam IDs simples;
+  nesses casos a verificação organizacional depende também dos serviços,
+  como `SettlementsService.create` e validações de `EntriesService`.
+  `PrismaService` não possui filtro automático por organização.
+- Impacto: aplicar os guards e verificações explícitas a todos os recursos
+  novos; preferir relações compostas nos novos modelos. A política de custos
+  não pode ser deduzida apenas da permissão atual de leitura de produtos.
+
+#### 4. Auditoria
+
+- Evidência: `AuditLog` em `apps/api/prisma/schema.prisma` guarda organização,
+  ator opcional, ação, tipo/ID da entidade, metadata JSON, IP opcional e data.
+  Existem índices por organização/data, ator e entidade. Não há módulo ou
+  serviço central de auditoria: os services chamam
+  `transaction.auditLog.create` na mesma transação da mutação.
+- Evidência: `ProductsService` grava `product.created` e `product.updated`
+  sem metadata de preço anterior/novo; `QuotesService.update` grava estados
+  anterior/atual e decimais como strings; `OrdersService.createFromQuote`
+  grava `order.created` com origem, fluxo e total. Esses serviços não
+  preenchem IP em todas as ações.
+- Impacto: reutilizar o modelo e a atomicidade, mas acrescentar os metadados
+  exigidos por `PREC-CA-059` e ADR-003, inclusive versão, preço anterior/novo
+  e justificativa. A simulação isolada dispensa auditoria conforme ADR-003;
+  criação de versão salva deve ser auditada.
+
+#### 5. Snapshots de orçamento
+
+- Evidência: `FinancialQuoteItem` guarda `productId` opcional, posição,
+  descrição, unidade, quantidade, preço unitário, total e notas. Em
+  `apps/api/src/quotes/quotes.service.ts`, `create`/`update` recebem descrição,
+  unidade e preço do DTO; consultam somente IDs de produtos ativos da
+  organização. O backend recalcula totais e desconto, mas não busca
+  `Product.salePrice` como preço autoritativo do item.
+- Evidência: `apps/web/src/features/quotes/quote-form.tsx` copia nome, unidade
+  e `salePrice` ao selecionar produto, mantendo campos editáveis. O snapshot
+  fica persistido no item, sem leitura dinâmica do preço atual. Em edição
+  somente `DRAFT` é aceito: itens enviados são substituídos por
+  `deleteMany`/`create`; sem novos itens, os snapshots existentes são usados.
+  `apps/api/test/quotes.e2e-spec.ts` cobre snapshots, recálculo e bloqueio de
+  campos protegidos e de edição fora de rascunho.
+- Impacto: preservar preço manual comercial e itens livres; não assumir que
+  `productId` comprova origem do preço. A referência futura de precificação
+  precisa ser validada no backend e não pode ser anexada automaticamente a
+  qualquer preço arbitrário recebido. Edição de rascunho deve preservar ou
+  substituir essa origem de forma explícita.
+
+#### 6. Conversão de orçamento em pedido
+
+- Evidência: `apps/api/src/orders/orders.service.ts`, `createFromQuote`,
+  bloqueia a organização, retorna pedido já existente para o orçamento e,
+  quando novo, exige orçamento `APPROVED`. Seleciona fluxo ativo explícito
+  ou padrão e sua primeira etapa ativa. Copia subtotal, desconto, total,
+  notas e todos os campos comerciais dos itens em ordem, sem cálculo e sem
+  consultar preço/custo atual do produto. Cria transição `CREATED` e auditoria.
+- Evidência: `apps/api/test/orders.e2e-spec.ts` cobre preservação dos snapshots,
+  isolamento, conversões concorrentes, permissões, etapas e fluxos.
+  `OrderWorkflowsService.update` em
+  `apps/api/src/order-workflows/order-workflows.service.ts` impede editar
+  fluxos já usados; transições usam atualização condicional de estado/etapa.
+- Impacto: acrescentar futuramente apenas a referência opcional ao snapshot
+  copiado, mantendo o motor fora da conversão e dos fluxos operacionais.
+
+#### 7. Concorrência e unicidade
+
+- Evidência: `apps/api/src/products/lock-product.ts` executa SQL parametrizado
+  `FOR UPDATE` com organização/UUID. Produtos e estoque compartilham esse
+  bloqueio. SKU e código de barras são únicos por organização; `P2002` vira
+  `409` em `ProductsService`. Nome de produto é indexado, não único.
+- Evidência: `QuotesService.create` e `OrdersService.createFromQuote` usam
+  bloqueio da organização antes de `max(number) + 1`. O schema também garante
+  `[organizationId, number]`, um pedido por `[organizationId, quoteId]` e
+  posições únicas por documento. Alterações/transições de orçamento usam
+  bloqueio do orçamento; avanço/cancelamento de pedido usam `updateMany`
+  condicionado ao estado e à etapa lidos, com `409` se outra operação venceu.
+- Evidência: `OrderWorkflowsService` usa bloqueio organizacional para mudanças
+  de fluxo padrão, com índice único parcial definido em
+  `apps/api/prisma/migrations/20260923004913_enforce_one_default_order_workflow/migration.sql`;
+  esse índice não é representado pelo `@@index` do schema. Períodos são únicos
+  por organização/ano/mês; reversão de estoque usa `reversalOfId @unique`.
+- Evidência: `apps/api/test/quotes.e2e-spec.ts`,
+  `apps/api/test/orders.e2e-spec.ts` e `apps/api/test/inventory.e2e-spec.ts`
+  usam `Promise.all` para exercitar disputas de numeração, conversão, etapas,
+  saídas e reversões. `finance-settlements.e2e-spec.ts` cobre baixas concorrentes.
+- Impacto: para versões, recomendar bloqueio por produto e unicidade por
+  organização/produto/sequência. Não usar `max + 1` sem bloqueio. Adoção deve
+  coordenar com o bloqueio usado pelo `PATCH`; transação isolada não impede
+  todos os conflitos. Definir ordem de bloqueios antes de integrar múltiplos
+  insumos, evitando deadlocks e contenção organizacional desnecessária.
+
+#### 8. Padrões de API e frontend reutilizáveis
+
+- Evidência: `apps/api/src/products/products.module.ts` importa `AuthModule`,
+  registra controller/service; `DatabaseModule` é global. Controllers usam
+  decorators Nest, `ParseUUIDPipe({ version: '4' })`, DTOs concretos e guards.
+  DTOs usam `class-validator`/`class-transformer`, strings decimais com regex,
+  trim e `ValidateIf` para campos anuláveis. Coleções usam `ValidateNested`
+  e `Type` em `apps/api/src/quotes/dto/create-quote.dto.ts`.
+  `app.setup.ts` aplica prefixo `/api`, transformação e rejeição de campos
+  não declarados (`whitelist`/`forbidNonWhitelisted`).
+- Evidência: services usam `PrismaService`, `select` explícito com
+  `satisfies Prisma.*Select`, `Prisma.*GetPayload`, transações e exceções Nest
+  `400`/`404`/`409`. `dto/list-products-query.dto.ts` normaliza filtros,
+  booleanos e paginação (20 por padrão no service, máximo 100 no DTO).
+- Evidência: `apps/web/src/lib/api.ts` centraliza fetch com cookie,
+  `ApiError` e mensagens; arquivos `features/*/*-api.ts` validam respostas Zod.
+  `features/products/use-product-query.ts` usa chave
+  `['products', 'detail', productId]` e `enabled`; `use-update-product-mutation.ts`
+  invalida `['products']` e atualiza o cache do detalhe.
+- Evidência: reutilizar `Button`, `Input`, `Label`, `Card` e `Field` em
+  `apps/web/src/components/ui/`; `ProductForm` como padrão de formulário
+  textual validado, não como contêiner obrigatório de toda a precificação.
+  `quote-form.tsx` oferece `useFieldArray`, seleção de catálogo, `useWatch` e
+  prévia; `features/order-workflows/order-workflow-form.tsx` oferece
+  adicionar/remover/reordenar coleções. Formulários usam React Hook Form e
+  `zodResolver`; páginas usam `role="status"`/`role="alert"` e permissões da
+  sessão. Não existe componente decimal ou editor de composição pronto.
+- Impacto: seguir essas convenções e criar contratos específicos de
+  precificação; não generalizar todos os módulos. `ApiError` atualmente não
+  conserva código de erro/campo tipado, apenas mensagem/status: planejar a
+  adaptação necessária para erros do motor no Marco 3.
+
+#### 9. Rota e configuração organizacional
+
+- Evidência: `apps/web/src/App.tsx` usa páginas lazy sob `/app`, protegidas por
+  `ProtectedRoute`, e já possui `/app/produtos/:productId`.
+  `apps/web/src/pages/product-page.tsx` reúne edição, preço e estoque.
+  Não há página de configurações gerais da organização nem parâmetros de
+  precificação no modelo `Organization` (que já possui moeda/timezone).
+- Impacto: recomendar acesso a `/app/produtos/:productId/precificacao` a partir
+  do detalhe, mantendo o preço atual visível. Configuração/perfis pertencem
+  ao domínio `pricing` e à organização, não a `finance` ou ao produto.
+  Recomendar `/app/produtos/precificacao/configuracao`, acessível pelo catálogo
+  e pela precificação do produto, com escrita `OWNER`/`ADMIN`. São rotas
+  propostas, ainda inexistentes; não criar área genérica de configurações
+  como pré-requisito.
+
+#### 10. Limites do financeiro e proteção de custos
+
+- Evidência: `FinancialCategory.type` já distingue `FIXED_EXPENSE`,
+  `VARIABLE_EXPENSE`, `REVENUE`; `CategoriesService` persiste essa classificação.
+  Não é necessário inferir custo fixo pelo nome. `FinancialPeriod` já tem
+  mês/ano/status e receita manual; `FinancialSettlement` possui valor,
+  data e estorno. São bases para integração futura, não entradas obrigatórias.
+- Evidência: `SummaryService.aggregateEntries` soma `FinancialEntry.amount`
+  não cancelado, inclusive pendente; não soma recebimentos. O resumo pode usar
+  `MANUAL_TOTAL`. Logo `totals.revenue` não é o agregado de receita realizada
+  exigido pela ADR-004; um adaptador futuro deve considerar baixas ativas de
+  receitas e a janela oficial, com origem/critério temporal registrado.
+- Evidência: `quoteItemSelect`, `orderItemSelect` e `sourceQuoteSelect` limitam
+  respostas aos campos comerciais. Não incluem `directCost` nem relação com
+  o produto completo. Não há contrato público de compartilhamento/exportação
+  comercial identificado nos controllers e APIs web desses módulos.
+  Em contraste, `productSelect` inclui `directCost` para qualquer papel de
+  leitura; ocultar custos apenas no React não restringe a API.
+- Impacto: manter seleções comerciais explícitas e referência de versão
+  opcional, sem expandir composição/resultados internos nas respostas de
+  orçamento/pedido. Detalhes internos devem vir de endpoints de precificação
+  autorizados. A política de leitura detalhada/histórico por papel ainda
+  precisa ser definida, sem alterar silenciosamente a consulta de produtos.
+
+#### 11. Testes, lacunas e documentação
+
+- Evidência: `apps/api/vitest.config.ts` inclui `*.spec.ts` e
+  `vitest.config.e2e.ts` inclui `*.e2e-spec.ts`. Unitários de produtos usam
+  `Test.createTestingModule`, Prisma/transação simulados e `vi.fn`.
+  E2e de produtos/orçamentos/pedidos/estoque usam aplicação Nest real,
+  `configureApp`, Supertest, cookie, PostgreSQL e UUIDs descartáveis.
+  Alteração de papel durante testes é restaurada em `finally`; limpeza é
+  filtrada pelas organizações criadas, respeitando FKs e `AuditLog Restrict`.
+  Não supor limpeza global ou paralelizar casos que compartilham sessão/papel.
+- Evidência: `apps/web/vitest.config.ts` usa jsdom e setup; testes de página
+  usam Testing Library/user-event, fetch simulado, MemoryRouter e QueryClient
+  com retries desabilitados. `product-page.spec.tsx` cobre edição, `VIEWER`
+  e estoque; `new-quote-page.spec.tsx` cobre cópia do catálogo e item vazio.
+- Impacto: o motor terá specs puros próximos aos arquivos, sem aplicação Nest,
+  banco ou mocks de PrismaService; e2e ficam para os marcos com persistência/API.
+  Inspecionar testes existentes não equivale a executá-los nesta auditoria.
+- Evidência: a matriz inicial marca `PREC-CA-042`/`043` como implementados por
+  não haver precificação; também considera `PREC-CA-044` e `PREC-RN-045`
+  concluídos pela existência de fluxos. Não existe operação de precificação
+  testável para essas garantias. A matriz foi corrigida somente nesses estados
+  e nas evidências comprovadamente imprecisas (auditoria e classificação fixa).
+- Evidência: `docs/domains/pricing/calculation-specification.md` abre uma cerca
+  de quatro crases no exemplo da seção 7 e fecha na seção 14, deixando seções
+  intermediárias dentro do bloco de código no Markdown. O texto das fórmulas
+  existe e foi inspecionado, mas a renderização precisa de revisão separada;
+  a fonte oficial não foi alterada nesta tarefa.
 
 ## Decisões tomadas
 
@@ -108,6 +384,138 @@ durante a fórmula, conforme `ADR-004`.
 
 Novas decisões estruturais devem ser registradas em ADR antes de serem
 aplicadas.
+
+### Diretrizes confirmadas na auditoria — 02/10/2026
+
+- Manter os contratos financeiros como strings decimais; `number` fica
+  restrito a paginação e outros dados não financeiros. Reutilizar o padrão
+  decimal existente sem copiar seus modos de arredondamento indiscriminadamente.
+- Manter `Product.salePrice` e o cadastro manual, conforme ADR-003. Salvar
+  composição, simular e salvar versão não atualizam esse campo. Adoção exige
+  transação que una preço, origem e auditoria, coordenada com `lockProduct`.
+- Reutilizar `SessionAuthGuard`, `OrganizationRolesGuard`, DTOs validados,
+  seleções explícitas e auditoria na transação. Não adicionar um sistema novo
+  de autenticação ou uma camada genérica de repositórios para o domínio.
+- Aplicar a matriz já oficial: configuração/perfis por `OWNER`/`ADMIN`;
+  composição, simulação, versões e adoção acima/igual ao mínimo também por
+  `OPERATIONS`; abaixo do mínimo somente `OWNER`/`ADMIN`, com confirmação e
+  justificativa. `FINANCE` e `VIEWER` mantêm a leitura atual do cadastro de
+  produtos e não possuem escrita de precificação. A autorização para consultar
+  decomposição, custos e histórico internos permanece uma decisão aberta e
+  deve ser definida antes dos endpoints e da interface.
+- Preservar os snapshots comerciais e copiar a origem opcional na conversão,
+  sem motor em `OrdersService` e sem expansão automática de custos internos.
+- Na primeira entrega utilizar parâmetros manuais com origem registrada;
+  agregados financeiros permanecem evolução posterior conforme escopo/ADR-004.
+  Não reutilizar receita do resumo atual como receita efetivamente recebida.
+
+Essas diretrizes confirmam regras/ADRs existentes e padrões do repositório.
+As recomendações de arquivos, módulos e rotas abaixo são planejamento técnico,
+não novos contratos implementados ou decisões de negócio aprovadas.
+
+### Recomendações de limites e caminhos
+
+Recomenda-se um módulo `pricing`, como os demais domínios, com pastas internas
+por responsabilidade. Não há necessidade comprovada de vários módulos Nest
+ou de um novo pacote compartilhado no Marco 1. O motor recebe valores
+consolidados; autenticação, organização, carga de insumos/configuração e
+transações pertencem à aplicação. Identificadores podem acompanhar entradas
+para rastreabilidade, mas o motor puro não consulta nem valida posse no banco.
+
+| Limite                                | Responsabilidade                                                        | Caminhos prováveis (ainda não criados)                                                                                                                                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Motor puro — Marco 1                  | `margin-divisor-v1`, validação matemática, memória e erros tipados      | `apps/api/src/pricing/calculator/pricing-calculator.ts`, `pricing-calculator.types.ts`, `pricing-calculator.errors.ts`, `pricing-calculator.spec.ts`; adaptador `pricing-decimal.ts` somente se necessário                                                      |
+| Aplicação — Marco 3                   | Orquestrar configuração/perfis, composição, simulação, versões e adoção | `apps/api/src/pricing/pricing.module.ts`, `pricing.controller.ts`, `pricing.service.ts`, `dto/`; separar services por responsabilidade apenas se o tamanho exigir                                                                                               |
+| Configuração organizacional — Marco 2 | Parâmetros com vigência/origem e perfis organizacionais                 | Novos modelos no schema existente, conceitualmente `OrganizationPricingConfiguration`, `PricingSalesProfile`, `PricingDeduction`; definição final após contratos do motor                                                                                       |
+| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis   | Modelos conceituais `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion` e cópias de componentes/deduções; referência opcional de origem em produto/itens                                                                               |
+| Web — Marco 4                         | Contratos Zod, queries/mutations e formulários específicos              | `apps/web/src/features/pricing/pricing-api.ts`, `use-*-query.ts`, `use-*-mutation.ts`, `pricing-composition-form.tsx`, `pricing-configuration-form.tsx`, `pricing-history.tsx`; `apps/web/src/pages/product-pricing-page.tsx`, `pricing-configuration-page.tsx` |
+| Integração comercial — Marco 5        | Validar/capturar origem e copiar snapshot sem custos                    | Extensões localizadas em `apps/api/src/quotes/quotes.service.ts`, `apps/api/src/orders/orders.service.ts`, DTOs e `apps/web/src/features/quotes/`; sem alterações nos fluxos                                                                                    |
+| Validação posterior                   | Permissões, isolamento, imutabilidade, concorrência e não regressão     | `apps/api/test/pricing.e2e-spec.ts`, testes existentes de produtos/orçamentos/pedidos; specs web próximos às páginas/features                                                                                                                                   |
+
+Configuração deve ser recurso de precificação associado à organização, com
+vigência, origem, ator e data; não acrescentar parâmetros financeiros soltos
+à sessão ou ao cadastro do produto. Recomenda-se separar configuração atual
+das cópias completas em versões, sem determinar nesta auditoria a modelagem
+de todas as revisões de configuração. Para API, caminhos prováveis são
+`/api/pricing/configuration`, `/api/pricing/profiles` e
+`/api/pricing/products/:productId/...`; o controller recebe organização da
+sessão, nunca do corpo. Rota final e nomes dos contratos serão revisados no
+marco correspondente.
+
+### Decisões abertas e riscos antes da implementação
+
+1. **Leitura de custos e histórico:** `PREC-CA-047` remete à política da
+   organização, mas não define campos/papéis autorizados para decomposição
+   completa. `FINANCE` e `VIEWER` leem produtos e `directCost` hoje. Definir
+   projeções comerciais, resumo e detalhe interno antes dos endpoints/web;
+   não conceder nem retirar acesso implicitamente. Isso não bloqueia o motor.
+2. **Precisão e biblioteca decimal:** a API usa `Prisma.Decimal`, sem
+   configuração explícita de precisão identificada no código funcional;
+   `apps/api/package.json`/`apps/web/package.json` não declaram biblioteca
+   decimal autônoma. Há `decimal.js` transitiva no lockfile, o que não a torna
+   contrato de dependência do projeto. Antes de codificar o Marco 1, definir
+   representação, precisão significativa, limites de entrada, serialização
+   dos resultados de divisões e estratégia decimal sem estado global.
+   Recomenda-se um adaptador local restrito que não importe PrismaService,
+   tipos de entidades ou cliente de banco; avaliar o custo de dependência
+   do export gerado de Decimal versus biblioteca explícita. O arquivo
+   `apps/api/src/generated/prisma/client.ts` importa a classe do cliente e
+   `internal/prismaNamespace.ts` reexporta `runtime.Decimal`; importar o
+   cliente gerado inteiro não é uma dependência puramente matemática.
+   Não importar arquivos internos gerados como atalho. Não houve
+   instalação nem escolha definitiva de biblioteca nesta auditoria.
+3. **Prévia local única:** a web não possui biblioteca decimal própria nem
+   pacote compartilhado existente. Os helpers `bigint` de orçamento são
+   adequados ao contrato atual, mas não substituem o motor de margem divisora.
+   Antes do Marco 4, decidir extração do motor para pacote puro ou estratégia
+   equivalente testada, preservando `PREC-CA-027` (100 ms) e sem manter duas
+   fórmulas manuais. Não criar pacote compartilhado antecipadamente.
+4. **Limite do preço adotado:** novos resultados podem exceder os 12 dígitos
+   inteiros de `Product.salePrice`/itens comerciais. Definir rejeição explícita
+   por faixa na adoção ou migration justificada posterior; nunca truncar,
+   reduzir escala nem alterar campos existentes nesta auditoria. O motor
+   precisa de casos de borda para divisores próximos de zero e valores grandes.
+5. **Origem comercial:** definir como um orçamento editável reconhece preço
+   proveniente de versão quando há preço manual, desconto, seleção antiga no
+   navegador ou mudança concorrente do produto. Igualdade de preço isolada
+   não prova origem. A referência deve representar uma versão válida da mesma
+   organização/produto e o significado comercial escolhido, sem invalidar
+   itens livres ou preços manuais atuais. Também definir tratamento explícito
+   da referência atual quando o preço for substituído via `PATCH` manual,
+   inclusive remoção com `null`, conforme a distinção exigida pela ADR-003.
+6. **Vigência e adoção de versão:** as regras exigem vigência e imutabilidade,
+   mas não detalham agendamento futuro/sobreposição de configurações nem toda
+   a seleção de versão antiga para adoção. ADR-003 exige recálculo ao salvar
+   ou adotar e admite criar/identificar versão. Definir contrato que preserve
+   snapshots e preço adotado sem editar versão antiga ou substituí-la
+   silenciosamente por parâmetros atuais. Revisar no desenho da persistência/API.
+7. **Custos referenciados:** o catálogo fornece `directCost` opcional, unidade
+   livre e ativação; não fornece conversão de unidades ou custo médio de
+   estoque. Definir tratamento de insumo sem custo/inativo, custo manual de
+   referência e referências ao próprio produto/ciclos antes da composição.
+   Não interpretar custo ausente como zero nem implementar explosão recursiva
+   de composições sem regra aprovada. O Marco 1 só opera valores consolidados.
+8. **Imutabilidade e concorrência:** definir proteção de versões contra
+   atualização/exclusão, unicidade, ordem de bloqueios e comportamento de
+   adoções concorrentes antes do Marco 2. O padrão atual serializa updates,
+   mas não possui controle geral de formulário desatualizado. ADR-003 exige
+   consistência integral da versão vencedora; política adicional de conflito
+   para edição desatualizada não deve ser inventada silenciosamente.
+9. **Casos matemáticos sem resultado definido:** a especificação determina
+   não calcular margem em preço zero e restringe desconto a sugerido positivo;
+   decidir representação tipada dessa ausência (por exemplo, valor anulável)
+   no contrato do Marco 1. Não retornar NaN/Infinity nem inventar margem zero.
+   Campos financeiros negativos são proibidos na entrada; lucro/margem de
+   resultado podem ser negativos e precisam de representação compatível.
+10. **Evidência de auditoria:** a auditoria atual de produto não comprova
+    preço anterior/novo. Novas adoções e substituições deverão acrescentar
+    esse conteúdo sem duplicar ações indevidamente. Não transportar custos
+    internos para metadata exposta em contratos comerciais.
+
+As decisões de negócio abertas precisam de revisão explícita no marco que
+depende delas. Não bloqueiam a conclusão da auditoria; nenhuma foi resolvida
+por alteração funcional. Decisões estruturais novas exigem ADR antes de
+aplicação, conforme a regra deste plano.
 
 ## Estado atual do repositório
 
@@ -204,6 +612,27 @@ Atualize:
 
 Não implemente migration antes de concluir essa auditoria.
 
+### Respostas e critério de encerramento — 02/10/2026
+
+| Pergunta                 | Resposta e evidência registrada em Descobertas                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Decimais              | PostgreSQL `Decimal`, Prisma.Decimal/centavos bigint, JSON textual com normalização variável; descoberta 1                      |
+| 2. Preço atual           | POST/PATCH de produto com string ou null, update sob bloqueio e auditoria, sem cálculo; descoberta 2                            |
+| 3. Papéis                | Escrita OWNER/ADMIN/OPERATIONS; leitura dos cinco papéis autenticados; descoberta 3                                             |
+| 4. Outra organização     | Organização da sessão, consultas filtradas e validação de relações, FKs compostas onde existentes; descoberta 3                 |
+| 5. AuditLog              | Criação explícita no service na transação, sem serviço central; metadata monetária textual; descoberta 4                        |
+| 6. Snapshot de orçamento | Campos comerciais recebidos e totais recalculados; itens persistidos independentes do cadastro, rascunho editável; descoberta 5 |
+| 7. Cópia para pedido     | `OrdersService.createFromQuote` copia itens/totais de orçamento aprovado, sem recálculo; descoberta 6                           |
+| 8. Concorrência          | Bloqueios por produto/organização/documento, restrições únicas e updates condicionais, testes com disputas; descoberta 7        |
+| 9. Formulários           | React Hook Form/Zod, componentes UI, `useFieldArray`/`useWatch` em orçamento e fluxos; descoberta 8                             |
+| 10. Rota                 | Recomendada `/app/produtos/:productId/precificacao`, ligada ao detalhe existente; descoberta 9                                  |
+
+Auditoria concluída com evidências estáticas, limites, riscos e caminhos
+propostos. Correções na matriz refletem a inspeção, sem marcar requisitos novos
+como entregues. Não foi iniciada implementação do Marco 1. O próximo passo é
+revisar este resultado; só depois, em tarefa própria, definir os contratos e
+a precisão do motor e implementar os exemplos oficiais.
+
 ## Marco 1 — Motor matemático puro
 
 ### Objetivo
@@ -212,8 +641,8 @@ Implementar `margin-divisor-v1` sem depender de banco, HTTP ou React.
 
 ### Localização esperada
 
-A auditoria deverá confirmar a localização final. A opção inicial é uma pasta
-no domínio de precificação da API, com separação semelhante a:
+A auditoria do Marco 0 recomenda manter o motor puro no domínio de
+precificação da API, seguindo arquivos de teste próximos ao código:
 
 ```text
 apps/api/src/pricing/
@@ -224,7 +653,15 @@ apps/api/src/pricing/
     pricing-calculator.spec.ts
 ```
 
-Os nomes podem ser adaptados aos padrões do repositório.
+Usar imports ESM com extensão `.js`, conforme o backend atual. Tipos e erros
+não dependem de Nest, DTOs, entidades Prisma, HTTP, React ou persistência.
+O motor recebe e devolve valores financeiros textuais ou por representação
+decimal definida explicitamente no contrato; normalização é determinística.
+Um adaptador decimal local pode ser acrescentado se necessário, após decidir
+precisão e dependência. Não modificar a configuração global de Decimal usada
+por outros módulos. Exigir todos os exemplos e limites relevantes antes de
+discutir colunas ou criar modelos. Os nomes podem ser ajustados mantendo
+essa separação; nenhum desses arquivos foi criado no Marco 0.
 
 ### Contrato de entrada
 
@@ -391,8 +828,10 @@ Implemente casos de uso equivalentes a:
 - adotar preço;
 - confirmar adoção abaixo do mínimo.
 
-A auditoria definirá se os recursos ficarão em um único módulo `pricing` ou em
-submódulos menores.
+A auditoria recomenda um único módulo `pricing` inicialmente, com separação
+interna por responsabilidade quando necessária. Os caminhos e limites
+propostos estão em `Decisões tomadas`; contratos finais e política de leitura
+de custos devem ser revisados antes de criar endpoints.
 
 ### Autorização
 
@@ -491,7 +930,9 @@ Evite manter duas fórmulas manuais divergentes.
 
 - `OWNER` e `ADMIN`: configuração e todos os casos de uso;
 - `OPERATIONS`: composição, simulação e adoção permitida;
-- `VIEWER`: somente leitura;
+- `FINANCE` e `VIEWER`: nenhuma escrita de precificação; somente a leitura
+  autorizada pela política de exposição de custos internos, que deverá ser
+  definida antes deste marco;
 - preço abaixo do mínimo: somente `OWNER` e `ADMIN`, com justificativa.
 
 ### Testes
@@ -642,4 +1083,32 @@ Preencha esta seção ao final com:
 - limitações restantes;
 - próximos passos.
 
-Nenhum resultado registrado até o momento.
+### Marco 0 concluído — 02/10/2026
+
+- Entrega: auditoria técnica e planejamento documentados, dez perguntas
+  respondidas, limites de domínio e caminhos propostos; decisões de negócio
+  abertas identificadas sem implementação.
+- Documentos alterados: `docs/plans/pricing-engine.md` e
+  `docs/product/requirements-traceability.md` (somente correções de estados
+  e evidências iniciais comprovadas pela inspeção).
+- Testes executados pelos comandos abaixo. Neste ambiente os argumentos após
+  `--` não restringiram as suítes: passaram todos os 6 arquivos/21 testes
+  unitários da API e 22 arquivos/68 testes web. Nenhum teste novo foi criado.
+- Validação documental: formatação e verificação com Prettier dos dois
+  documentos, `git diff --check`, `git diff --stat` e `git status --short`.
+- Limitações: e2e foram inspecionados, não executados; não houve validação
+  de estado real do banco, aplicação de migrations, testes de novas fórmulas,
+  verificação visual ou typecheck/lint/build nesta tarefa documental.
+- Nenhum código funcional, schema, migration, endpoint, componente ou
+  dependência foi alterado; nenhum commit foi criado.
+- Execução encerrada no Marco 0, aguardando revisão. Marco 1 permanece pendente.
+
+```text
+pnpm --filter @meinager/api test -- src/products/products.service.spec.ts src/auth/session/session.service.spec.ts
+pnpm --filter @meinager/web test -- src/pages/product-page.spec.tsx src/pages/new-quote-page.spec.tsx
+pnpm exec prettier --write docs/plans/pricing-engine.md docs/product/requirements-traceability.md
+pnpm exec prettier --check docs/plans/pricing-engine.md docs/product/requirements-traceability.md
+git diff --check
+git diff --stat
+git status --short
+```

@@ -7,6 +7,10 @@ existente e com o trabalho ainda necessário.
 
 Última revisão inicial: 02/10/2026.
 
+Correções da auditoria técnica do Marco 0: 02/10/2026. Evidências detalhadas
+em `docs/plans/pricing-engine.md`, seção `Descobertas`. Nenhum requisito novo
+de precificação foi implementado nesta revisão.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -41,8 +45,10 @@ A API possui módulos para:
 - orçamentos;
 - pedidos;
 - fluxos configuráveis de pedidos;
-- auditoria;
 - saúde da aplicação.
+
+A auditoria utiliza o modelo `AuditLog` e gravações nos services dos módulos;
+não existe módulo Nest específico de auditoria em `apps/api/src/app.module.ts`.
 
 ### Frontend
 
@@ -80,32 +86,32 @@ Não existem atualmente modelos específicos de precificação.
 
 ## 4. Situação dos módulos gerais
 
-| Área                             | Estado        | Evidência atual                                    | Trabalho necessário                             |
-| -------------------------------- | ------------- | -------------------------------------------------- | ----------------------------------------------- |
-| Autenticação                     | `IMPLEMENTED` | `apps/api/src/auth` e `apps/web/src/features/auth` | Preservar                                       |
-| Sessões                          | `IMPLEMENTED` | `apps/api/src/auth/session`                        | Preservar                                       |
-| Autorização por papel            | `IMPLEMENTED` | `apps/api/src/auth/authorization`                  | Reutilizar na precificação                      |
-| Isolamento por organização       | `IMPLEMENTED` | Serviços existentes e modelos organizacionais      | Cobrir novos recursos                           |
-| Auditoria                        | `PARTIAL`     | Modelo `AuditLog` e usos existentes                | Adicionar ações de precificação                 |
-| Clientes                         | `IMPLEMENTED` | `apps/api/src/clients` e páginas de clientes       | Preservar                                       |
-| LTV de clientes                  | `PENDING`     | Sem evidência específica                           | Implementar em evolução posterior               |
-| Produtos e serviços              | `IMPLEMENTED` | `apps/api/src/products` e páginas de produtos      | Estender sem quebrar preços atuais              |
-| Estoque                          | `IMPLEMENTED` | `apps/api/src/inventory`                           | Permitir referência a insumos                   |
-| Categorias financeiras           | `IMPLEMENTED` | `apps/api/src/finance/categories`                  | Avaliar classificação explícita de custo fixo   |
-| Contas financeiras               | `IMPLEMENTED` | `apps/api/src/finance/accounts`                    | Preservar                                       |
-| Lançamentos                      | `IMPLEMENTED` | `apps/api/src/finance/entries`                     | Reutilizar futuramente nos agregados            |
-| Baixas financeiras               | `IMPLEMENTED` | `apps/api/src/finance/settlements`                 | Reutilizar para receita realizada               |
-| Períodos financeiros             | `IMPLEMENTED` | `apps/api/src/finance/periods`                     | Reutilizar na janela de faturamento             |
-| Resumo financeiro                | `IMPLEMENTED` | `apps/api/src/finance/summary`                     | Estender futuramente                            |
-| Recorrência financeira           | `VERIFY`      | Nenhum módulo específico identificado              | Inspecionar antes de planejar                   |
-| Orçamentos                       | `IMPLEMENTED` | `apps/api/src/quotes` e páginas de orçamentos      | Acrescentar referência opcional de precificação |
-| Pedidos                          | `IMPLEMENTED` | `apps/api/src/orders` e páginas de pedidos         | Preservar snapshots                             |
-| Fluxos de pedidos                | `IMPLEMENTED` | `apps/api/src/order-workflows`                     | Não alterar pela precificação                   |
-| Calendário                       | `PENDING`     | Nenhum módulo identificado                         | Evolução posterior                              |
-| Notificações                     | `PENDING`     | Nenhum módulo identificado                         | Evolução posterior                              |
-| Metas                            | `PENDING`     | Nenhum módulo identificado                         | Evolução posterior                              |
-| Ponto de equilíbrio              | `PENDING`     | Nenhum módulo identificado                         | Evolução posterior                              |
-| Backup e criptografia em repouso | `VERIFY`      | Responsabilidade de infraestrutura                 | Documentar no plano de implantação              |
+| Área                             | Estado        | Evidência atual                                                                                                | Trabalho necessário                             |
+| -------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Autenticação                     | `IMPLEMENTED` | `apps/api/src/auth` e `apps/web/src/features/auth`                                                             | Preservar                                       |
+| Sessões                          | `IMPLEMENTED` | `apps/api/src/auth/session`                                                                                    | Preservar                                       |
+| Autorização por papel            | `IMPLEMENTED` | `apps/api/src/auth/authorization`                                                                              | Reutilizar na precificação                      |
+| Isolamento por organização       | `IMPLEMENTED` | Serviços existentes e modelos organizacionais                                                                  | Cobrir novos recursos                           |
+| Auditoria                        | `PARTIAL`     | Modelo `AuditLog` e usos existentes                                                                            | Adicionar ações de precificação                 |
+| Clientes                         | `IMPLEMENTED` | `apps/api/src/clients` e páginas de clientes                                                                   | Preservar                                       |
+| LTV de clientes                  | `PENDING`     | Sem evidência específica                                                                                       | Implementar em evolução posterior               |
+| Produtos e serviços              | `IMPLEMENTED` | `apps/api/src/products` e páginas de produtos                                                                  | Estender sem quebrar preços atuais              |
+| Estoque                          | `IMPLEMENTED` | `apps/api/src/inventory`                                                                                       | Permitir referência a insumos                   |
+| Categorias financeiras           | `IMPLEMENTED` | `FinancialCategory.type` (`FIXED_EXPENSE`) no schema e `apps/api/src/finance/categories/categories.service.ts` | Reutilizar classificação explícita já existente |
+| Contas financeiras               | `IMPLEMENTED` | `apps/api/src/finance/accounts`                                                                                | Preservar                                       |
+| Lançamentos                      | `IMPLEMENTED` | `apps/api/src/finance/entries`                                                                                 | Reutilizar futuramente nos agregados            |
+| Baixas financeiras               | `IMPLEMENTED` | `apps/api/src/finance/settlements`                                                                             | Reutilizar para receita realizada               |
+| Períodos financeiros             | `IMPLEMENTED` | `apps/api/src/finance/periods`                                                                                 | Reutilizar na janela de faturamento             |
+| Resumo financeiro                | `IMPLEMENTED` | `apps/api/src/finance/summary`                                                                                 | Estender futuramente                            |
+| Recorrência financeira           | `VERIFY`      | Nenhum módulo específico identificado                                                                          | Inspecionar antes de planejar                   |
+| Orçamentos                       | `IMPLEMENTED` | `apps/api/src/quotes` e páginas de orçamentos                                                                  | Acrescentar referência opcional de precificação |
+| Pedidos                          | `IMPLEMENTED` | `apps/api/src/orders` e páginas de pedidos                                                                     | Preservar snapshots                             |
+| Fluxos de pedidos                | `IMPLEMENTED` | `apps/api/src/order-workflows`                                                                                 | Não alterar pela precificação                   |
+| Calendário                       | `PENDING`     | Nenhum módulo identificado                                                                                     | Evolução posterior                              |
+| Notificações                     | `PENDING`     | Nenhum módulo identificado                                                                                     | Evolução posterior                              |
+| Metas                            | `PENDING`     | Nenhum módulo identificado                                                                                     | Evolução posterior                              |
+| Ponto de equilíbrio              | `PENDING`     | Nenhum módulo identificado                                                                                     | Evolução posterior                              |
+| Backup e criptografia em repouso | `VERIFY`      | Responsabilidade de infraestrutura                                                                             | Documentar no plano de implantação              |
 
 ## 5. Rastreabilidade da precificação
 
@@ -197,19 +203,25 @@ Não existem atualmente modelos específicos de precificação.
 
 ### Integração com estoque e financeiro
 
-| Critérios                     | Estado        | Base reutilizável                        | Implementação esperada            |
-| ----------------------------- | ------------- | ---------------------------------------- | --------------------------------- |
-| `PREC-CA-042`                 | `IMPLEMENTED` | Precificação ainda não movimenta estoque | Criar teste de não regressão      |
-| `PREC-CA-043`                 | `IMPLEMENTED` | Precificação ainda não cria lançamentos  | Criar teste de não regressão      |
-| `PREC-RN-039` a `PREC-RN-041` | `FUTURE`      | Módulos financeiros existentes           | Agregados financeiros posteriores |
-| `PREC-RN-043` e `PREC-RN-044` | `PARTIAL`     | Limites de domínio existentes            | Preservar ao implementar          |
+| Critérios                     | Estado    | Base reutilizável                                                                                 | Implementação esperada                                                       |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `PREC-CA-042`                 | `PENDING` | `apps/api/src/inventory/inventory.service.ts`; domínio de precificação ausente em `app.module.ts` | Implementar operação de precificação e testar ausência de movimentações      |
+| `PREC-CA-043`                 | `PENDING` | `apps/api/src/finance/finance.module.ts`; domínio de precificação ausente em `app.module.ts`      | Implementar operação de precificação e testar ausência de lançamentos/baixas |
+| `PREC-RN-039` a `PREC-RN-041` | `FUTURE`  | Módulos financeiros existentes                                                                    | Agregados financeiros posteriores                                            |
+| `PREC-RN-043` e `PREC-RN-044` | `PARTIAL` | Limites de domínio existentes                                                                     | Preservar ao implementar                                                     |
 
 ### Fluxos de pedidos
 
-| Critérios     | Estado        | Base reutilizável               | Implementação esperada     |
-| ------------- | ------------- | ------------------------------- | -------------------------- |
-| `PREC-CA-044` | `IMPLEMENTED` | Fluxos configuráveis existentes | Teste de não regressão     |
-| `PREC-RN-045` | `IMPLEMENTED` | `order-workflows`               | Não acoplar à precificação |
+| Critérios     | Estado    | Base reutilizável                                                                              | Implementação esperada                                       |
+| ------------- | --------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `PREC-CA-044` | `PARTIAL` | `apps/api/src/order-workflows/order-workflows.service.ts` e `apps/api/test/orders.e2e-spec.ts` | Validar preservação dos fluxos após implementar precificação |
+| `PREC-RN-045` | `PARTIAL` | `order-workflows`; `OrdersService.createFromQuote` copia snapshots sem motor                   | Preservar a separação ao integrar precificação               |
+
+A existência de fluxos fornece uma base parcial; a ausência do domínio de
+precificação não comprova critérios de ausência de efeitos colaterais.
+`PREC-CA-042` e `PREC-CA-043` exigem operações implementadas e testes próprios,
+conforme a regra de evidência desta matriz. Os testes existentes de pedidos
+comprovam o comportamento atual, mas não a integração futura.
 
 ### Permissões
 
