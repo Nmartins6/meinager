@@ -109,9 +109,15 @@ Cobertura de custos fixos:    R$  9,091
 Imposto:                      R$  5,4546
 Taxa de pagamento:            R$  3,6364
 Total das deduções:           R$  9,091
-Lucro estimado:               R$ 22,729
-Margem efetiva aproximada:       25,0011%
+Lucro estimado exato:         R$ 22,728
+Lucro estimado exibido:       R$ 22,73
+Margem efetiva aproximada:       25,0005499945...%
+Margem efetiva exibida:          25,0005%
 ```
+
+A margem efetiva é `22.728 / 90.91 = 0.250005499945...`.
+O percentual exibido utiliza `ROUND_HALF_UP` com quatro casas decimais;
+essa formatação não altera o lucro ou a margem usados no cálculo.
 
 ### Desconto máximo teórico
 
@@ -335,8 +341,13 @@ Taxa de pagamento:            R$   4,9483
 Comissão:                     R$   2,8276
 Total das deduções:           R$  16,2587
 Lucro estimado:               R$  35,3453
-Margem efetiva aproximada:        25,0001%
+Margem efetiva aproximada:        25,000212194...%
+Margem efetiva exibida:           25,0002%
 ```
+
+A margem efetiva é `35.3453 / 141.38 = 0.250002121940...`.
+O percentual exibido utiliza `ROUND_HALF_UP` com quatro casas decimais;
+o lucro exato permanece `35.3453`.
 
 ---
 

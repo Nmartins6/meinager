@@ -11,6 +11,11 @@ Correções da auditoria técnica do Marco 0: 02/10/2026. Evidências detalhadas
 em `docs/plans/pricing-engine.md`, seção `Descobertas`. Nenhum requisito novo
 de precificação foi implementado nesta revisão.
 
+Revisão do Marco 1: 03/10/2026. Motor puro concluído após correção dos
+resultados documentais de EX-001/EX-002, autorizada por validação matemática
+independente. Os 77 testes do motor e os 98 testes da API passaram. Os estados
+abaixo distinguem a base matemática testada das integrações ainda ausentes.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -115,6 +120,35 @@ Não existem atualmente modelos específicos de precificação.
 
 ## 5. Rastreabilidade da precificação
 
+### Evidências do motor puro — Marco 1
+
+Os caminhos `calculator/pricing-calculator.ts` e
+`calculator/pricing-calculator.spec.ts` abaixo são relativos a
+`apps/api/src/pricing/`. A especificação de tipos está em
+`calculator/pricing-calculator.types.ts`; validação/representação decimal em
+`calculator/pricing-decimal.ts`; erros em `calculator/pricing-calculator.errors.ts`.
+ADR-005 registra precisão e limites técnicos. Não há migration neste marco.
+
+| Requisito                 | Estado        | Evidência de código e teste                                                                                                                                           | Limite da entrega                                                        |
+| ------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| EX-001                    | `IMPLEMENTED` | `calculator/pricing-calculator.spec.ts`, teste `EX-001 — precificação simples`: lucro exato `22.728`, exibido `22.73` e margem percentual `25.0005` com ROUND_HALF_UP | Expectativas corrigidas após validação independente; somente motor puro  |
+| EX-002                    | `IMPLEMENTED` | `calculator/pricing-calculator.spec.ts`, teste `EX-002 — precificação completa`: lucro exato `35.3453` e margem percentual `25.0002` com ROUND_HALF_UP                | Expectativas corrigidas após validação independente; somente motor puro  |
+| EX-003 a EX-012           | `IMPLEMENTED` | `calculator/pricing-calculator.spec.ts`, dez testes com os respectivos IDs no nome                                                                                    | Cenários matemáticos aprovados; sem integração de domínio                |
+| PREC-CA-013 e PREC-CA-016 | `IMPLEMENTED` | `calculator/pricing-calculator.ts`; testes de componentes fracionários e negativos por campo                                                                          | Multiplicação e rejeição tipada no motor                                 |
+| PREC-CA-019 e PREC-CA-021 | `IMPLEMENTED` | Testes EX-009/EX-010 e denominadores ativos com numerador zero                                                                                                        | Validação condicional dos modos utilizados                               |
+| PREC-CA-023 e PREC-CA-024 | `IMPLEMENTED` | `calculator/pricing-calculator.spec.ts`, testes EX-001 e EX-002 aprovados contra os resultados oficiais corrigidos                                                    | Cálculo simples e completo no motor puro                                 |
+| PREC-CA-025               | `IMPLEMENTED` | EX-006/EX-007 e divisor mínimo inválido com custo zero                                                                                                                | Erro tipado com mensagem, nenhum preço retornado                         |
+| PREC-CA-030 e PREC-CA-032 | `PARTIAL`     | O motor calcula classificação e aviso; EX-003/EX-004, comparações comerciais e preço zero testados                                                                    | Exposição e adoção desses resultados pela API e pela interface pendentes |
+| PREC-CA-051 e PREC-CA-053 | `IMPLEMENTED` | EX-011, mínimo para cima, fronteiras de centavo e lucro residual                                                                                                      | Arredondamento e recálculo decimal no motor                              |
+| PREC-CA-050               | `IMPLEMENTED` | EX-001 a EX-012 aprovados em `calculator/pricing-calculator.spec.ts`; precisão, grandes quantidades e divisores próximos de zero testados                             | Reprodução decimal dos exemplos no motor puro                            |
+| PREC-CA-052               | `PARTIAL`     | `PricingMoney.display`, teste de half-up sem realimentar cálculo                                                                                                      | Formatação retornada pelo motor; exibição web pendente                   |
+
+Evidência de execução em 03/10/2026: 77 de 77 testes do motor aprovados;
+suíte completa da API com 98 testes aprovados em 7 arquivos. O bloqueio foi
+removido após essas validações e a correção documental autorizada, sem alterar
+fórmulas ou arredondar valores intermediários. Persistência, endpoints e
+interface de precificação permanecem ausentes.
+
 ### Configuração da organização
 
 | Critérios                     | Estado    | Base reutilizável                    | Implementação esperada                  |
@@ -124,54 +158,54 @@ Não existem atualmente modelos específicos de precificação.
 
 ### Perfis de deduções
 
-| Critérios                     | Estado    | Base reutilizável            | Implementação esperada          |
-| ----------------------------- | --------- | ---------------------------- | ------------------------------- |
-| `PREC-CA-006` a `PREC-CA-009` | `PENDING` | Autorização e organização    | Perfis e deduções configuráveis |
-| `PREC-RN-021` a `PREC-RN-023` | `PENDING` | Nenhuma estrutura específica | Modelos, API e interface        |
+| Critérios                     | Estado    | Base reutilizável                                                                          | Implementação esperada                        |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| `PREC-CA-006` a `PREC-CA-009` | `PENDING` | Autorização e organização                                                                  | Perfis e deduções configuráveis               |
+| `PREC-RN-021` a `PREC-RN-023` | `PARTIAL` | Coleções de deduções em `calculator/pricing-calculator.ts`, EX-001/EX-002 e teste de ordem | Perfis persistidos, API e interface pendentes |
 
 ### Composição de custos
 
-| Critérios                     | Estado    | Base reutilizável                  | Implementação esperada              |
-| ----------------------------- | --------- | ---------------------------------- | ----------------------------------- |
-| `PREC-CA-010` a `PREC-CA-016` | `PENDING` | Produto e estoque                  | Composição associada ao produto     |
-| `PREC-RN-006` a `PREC-RN-011` | `PENDING` | Produtos podem representar insumos | Componentes manuais e referenciados |
+| Critérios                     | Estado    | Base reutilizável                                                                                      | Implementação esperada                               |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `PREC-CA-010` a `PREC-CA-016` | `PARTIAL` | Componentes/quantidades/categorias, custos copiados e validação no motor; specs fracionários/negativos | Composição persistente e posse dos insumos pendentes |
+| `PREC-RN-006` a `PREC-RN-011` | `PARTIAL` | `calculator/pricing-calculator.ts` e specs de opcionais, ordem e memória                               | Sem consulta de catálogo nem snapshots salvos        |
 
 ### Mão de obra
 
-| Critérios                     | Estado    | Base reutilizável            | Implementação esperada          |
-| ----------------------------- | --------- | ---------------------------- | ------------------------------- |
-| `PREC-CA-017` a `PREC-CA-019` | `PENDING` | Nenhuma estrutura específica | Parâmetros e cálculo por minuto |
-| `PREC-RN-012` a `PREC-RN-015` | `PENDING` | Nenhuma estrutura específica | Motor decimal e interface       |
+| Critérios                     | Estado    | Base reutilizável                                                                                  | Implementação esperada                        |
+| ----------------------------- | --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `PREC-CA-017` a `PREC-CA-019` | `PARTIAL` | Motor aceita custo mensal/horas/tempo em minutos; EX-009 e specs de tempo fracionário/cancelamento | Conversão de campos da interface pendente     |
+| `PREC-RN-012` a `PREC-RN-015` | `PARTIAL` | Tipos de mão de obra, cálculo e testes puros em `calculator/`                                      | Configuração e snapshot persistente pendentes |
 
 ### Frete
 
-| Critérios                     | Estado    | Base reutilizável            | Implementação esperada         |
-| ----------------------------- | --------- | ---------------------------- | ------------------------------ |
-| `PREC-CA-020` a `PREC-CA-022` | `PENDING` | Nenhuma estrutura específica | Rateio e entrada manual        |
-| `PREC-RN-016` e `PREC-RN-017` | `PENDING` | Nenhuma estrutura específica | Componente de frete rastreável |
+| Critérios                     | Estado    | Base reutilizável                                                             | Implementação esperada                         |
+| ----------------------------- | --------- | ----------------------------------------------------------------------------- | ---------------------------------------------- |
+| `PREC-CA-020` a `PREC-CA-022` | `PARTIAL` | Motor manual/rateado, EX-010 e specs de consumo fracionário/frete manual      | Contratos de domínio/API e interface pendentes |
+| `PREC-RN-016` e `PREC-RN-017` | `PARTIAL` | `PricingFreightInput`, memória por modo e respectivos testes em `calculator/` | Snapshot persistente pendente                  |
 
 ### Motor de cálculo
 
-| Critérios                     | Estado    | Base reutilizável                              | Implementação esperada           |
-| ----------------------------- | --------- | ---------------------------------------------- | -------------------------------- |
-| `PREC-CA-023` a `PREC-CA-028` | `PENDING` | Padrão decimal existente deve ser inspecionado | Motor puro e API autoritativa    |
-| `PREC-RN-018` a `PREC-RN-027` | `PENDING` | Nenhuma implementação específica               | Fórmula `margin-divisor-v1`      |
-| `EX-001` a `EX-012`           | `PENDING` | Vitest configurado                             | Testes unitários determinísticos |
+| Critérios                     | Estado        | Base reutilizável                                                                      | Implementação esperada                                      |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `PREC-CA-023` a `PREC-CA-028` | `PARTIAL`     | `calculator/pricing-calculator.ts` e 77 testes aprovados, incluindo EX-001/EX-002      | Implementar interface e integração com backend autoritativo |
+| `PREC-RN-018` a `PREC-RN-027` | `PARTIAL`     | Motor `margin-divisor-v1`, taxas consolidadas/derivadas, deduções e divisores testados | Implementar perfis persistidos e integrações do domínio     |
+| `EX-001` a `EX-012`           | `IMPLEMENTED` | 12 testes aprovados, nomeados por exemplo em `calculator/pricing-calculator.spec.ts`   | Cenários matemáticos aprovados; sem integração de domínio   |
 
 ### Preço adotado
 
-| Critérios                     | Estado    | Base reutilizável                 | Implementação esperada                 |
-| ----------------------------- | --------- | --------------------------------- | -------------------------------------- |
-| `PREC-CA-029` a `PREC-CA-034` | `PARTIAL` | Produto já possui preço comercial | Adoção explícita e análise de margem   |
-| `PREC-RN-028` a `PREC-RN-031` | `PENDING` | Atualização de produto existente  | Vincular preço à versão                |
-| Preço abaixo do mínimo        | `PENDING` | Autorização e auditoria           | Confirmação, justificativa e restrição |
+| Critérios                     | Estado    | Base reutilizável                                                                                 | Implementação esperada                             |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `PREC-CA-029` a `PREC-CA-034` | `PARTIAL` | Produto já possui preço comercial                                                                 | Adoção explícita e análise de margem               |
+| `PREC-RN-028` a `PREC-RN-031` | `PARTIAL` | Análise de preço/lucro/margem/desconto em `calculator/`; EX-003/EX-004/EX-005 e testes comerciais | Adotar preço e vincular versão continuam pendentes |
+| Preço abaixo do mínimo        | `PENDING` | Autorização e auditoria                                                                           | Confirmação, justificativa e restrição             |
 
 ### Decomposição e explicação
 
-| Critérios                     | Estado    | Base reutilizável                   | Implementação esperada |
-| ----------------------------- | --------- | ----------------------------------- | ---------------------- |
-| `PREC-CA-026`                 | `PENDING` | Componentes de interface existentes | Resumo detalhado       |
-| `PREC-RN-032` a `PREC-RN-034` | `PENDING` | Nenhuma estrutura específica        | Memória de cálculo     |
+| Critérios                     | Estado    | Base reutilizável                                                             | Implementação esperada                                    |
+| ----------------------------- | --------- | ----------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `PREC-CA-026`                 | `PARTIAL` | Decomposição em strings, EX-003/EX-004 e memória determinística testados      | Interface pendente                                        |
+| `PREC-RN-032` a `PREC-RN-034` | `PARTIAL` | Memória retornada por `calculatePricing`, teste de ordem e cópia das entradas | Data/usuário/histórico persistente e prévia web pendentes |
 
 ### Histórico e snapshots
 
@@ -233,10 +267,10 @@ comprovam o comportamento atual, mas não a integração futura.
 
 ### Precisão e arredondamento
 
-| Critérios                     | Estado    | Base reutilizável                                  | Implementação esperada       |
-| ----------------------------- | --------- | -------------------------------------------------- | ---------------------------- |
-| `PREC-CA-050` a `PREC-CA-053` | `PENDING` | Campos decimais existentes devem ser inspecionados | Abstração decimal e testes   |
-| `ADR-002`                     | `PENDING` | Prisma/PostgreSQL                                  | Aplicar nas novas estruturas |
+| Critérios                     | Estado    | Base reutilizável                                                                 | Implementação esperada                         |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `PREC-CA-050` a `PREC-CA-053` | `PARTIAL` | Clone local de decimal.js, EX-011 e specs de limites/cancelamento; detalhes acima | Exibir na web                                  |
+| `ADR-002`                     | `PARTIAL` | Representação e arredondamento no motor; ADR-005 e specs                          | Novas estruturas persistidas ainda não existem |
 
 ### Interface
 
@@ -248,12 +282,12 @@ comprovam o comportamento atual, mas não a integração futura.
 
 ### Auditoria e segurança
 
-| Critérios                     | Estado    | Base reutilizável             | Implementação esperada              |
-| ----------------------------- | --------- | ----------------------------- | ----------------------------------- |
-| `PREC-CA-058` e `PREC-CA-059` | `PARTIAL` | `AuditLog`                    | Adicionar novas ações               |
-| `PREC-CA-060`                 | `PENDING` | Validação de DTOs e serviços  | Ignorar resultados do cliente       |
-| `PREC-CA-061`                 | `PARTIAL` | Multi-tenancy existente       | Validar todos os relacionamentos    |
-| `PREC-RN-046` a `PREC-RN-048` | `PENDING` | Tratamento de erros existente | Códigos e mensagens de precificação |
+| Critérios                     | Estado    | Base reutilizável                                               | Implementação esperada                                |
+| ----------------------------- | --------- | --------------------------------------------------------------- | ----------------------------------------------------- |
+| `PREC-CA-058` e `PREC-CA-059` | `PARTIAL` | `AuditLog`                                                      | Adicionar novas ações                                 |
+| `PREC-CA-060`                 | `PENDING` | Validação de DTOs e serviços                                    | Ignorar resultados do cliente                         |
+| `PREC-CA-061`                 | `PARTIAL` | Multi-tenancy existente                                         | Validar todos os relacionamentos                      |
+| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL` | `PricingCalculatorError`, EX-006 a EX-010 e negativos por campo | Mensagens/formulários web e integração HTTP pendentes |
 
 ## 6. Rotas atuais que devem ser preservadas
 

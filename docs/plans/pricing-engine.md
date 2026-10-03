@@ -59,7 +59,8 @@ fontes oficiais.
 - [x] Registrar as decisões arquiteturais iniciais.
 - [x] Criar a matriz inicial de rastreabilidade.
 - [x] Realizar a auditoria técnica do repositório (02/10/2026; somente Marco 0).
-- [ ] Implementar e testar o motor matemático.
+- [x] Implementar e testar o motor matemático (Marco 1 concluído em
+      03/10/2026, após correção validada dos exemplos EX-001/EX-002).
 - [ ] Definir e implementar a persistência.
 - [ ] Implementar configuração e perfis de deduções.
 - [ ] Implementar composição e simulação.
@@ -360,6 +361,72 @@ precificação em `apps/api/src/app.module.ts`, `apps/web/src/App.tsx` ou
   existe e foi inspecionado, mas a renderização precisa de revisão separada;
   a fonte oficial não foi alterada nesta tarefa.
 
+### Marco 1 — Implementação e bloqueio dos exemplos — 02/10/2026 (histórico)
+
+O bloqueio registrado abaixo foi resolvido em 03/10/2026, conforme a
+descoberta seguinte. Os resultados da execução inicial são mantidos para
+rastreabilidade; não representam o estado atual do marco.
+
+- Estado inicial: `git status --short` sem saída, HEAD `71302b6`. Foram lidos
+  integralmente AGENTS.md e todos os documentos exigidos para o marco antes
+  das alterações. A correção da cerca Markdown da especificação já está
+  presente nesse HEAD; a descoberta do Marco 0 descreve o estado anterior.
+- Evidência técnica: `apps/api/tsconfig.json` usa TypeScript estrito,
+  `nodenext` e ES2023; módulos internos usam extensão `.js`. Specs usam
+  Vitest com globals e ficam junto ao código. O motor e seus testes em
+  `apps/api/src/pricing/calculator/` não importam Nest ou Prisma.
+- Representação: dependência direta `decimal.js` 10.6.0, clone privado por
+  execução com configuração explícita e 160 dígitos significativos, strings
+  nas fronteiras. Limites, arredondamento e resultados não aplicáveis estão
+  registrados na ADR-005.
+- Descoberta numérica: calcular o total a partir do custo periódico por
+  minuto/frete pode introduzir resíduos na fronteira de um centavo. O motor
+  mantém numeradores/denominadores finitos até formar base, preços e lucro;
+  testes verificam cancelamento de dízimas, grandes produtos e divisores
+  mensais próximos de zero. Nenhum valor de apresentação volta ao cálculo.
+- **Bloqueio EX-001:** a especificação exige
+  `LC = P - CB - DCF - DDV`. Os próprios valores do exemplo dão
+  `90.91 - 50 - 9.091 - 9.091 = 22.728`, mas o exemplo exige `22.729`.
+  A margem derivada é aproximadamente `25.00054999%`, enquanto o exemplo
+  registra `25.0011%`. Não é possível cumprir ambos sem alterar fórmula ou
+  fonte oficial. O teste conserva o lucro esperado da fonte e falha.
+- **Bloqueio EX-002:** o lucro `35.3453` coincide com a fórmula, mas
+  `35.3453 / 141.38 * 100 = 25.00021219...%`, ou `25.0002%` em quatro casas,
+  não `25.0001%` como registrado no exemplo. O teste usa exatamente o
+  percentual apresentado no documento, após arredondamento decimal de
+  apresentação, e falha. A expectativa inicial de teste em oito casas foi
+  substituída pela precisão apresentada na fonte, sem alterar o motor.
+- Confirmação independente: cálculo em Node com clone de Decimal de 80
+  dígitos, aplicando diretamente as subtrações e divisão da especificação,
+  confirmou ambos os resultados acima sem chamar `calculatePricing`.
+- Impacto: implementação afetada interrompida, exemplos e fórmulas oficiais
+  preservados, sem escolher silenciosamente qual resultado deve prevalecer.
+  Marco 1 **não concluído**. A revisão deve autorizar a resolução das
+  divergências antes de ajustar expectativas ou considerar os exemplos
+  aprovados. Marcos 2 em diante não foram iniciados.
+
+### Marco 1 — Correção canônica validada — 03/10/2026
+
+- A revisão matemática independente confirmou o motor e identificou erros
+  documentais em EX-001/EX-002. O usuário autorizou corrigir exclusivamente
+  as expectativas oficiais, preservando fórmula e implementação.
+- Os resultados oficiais de EX-001 e EX-002 estão em
+  `docs/domains/pricing/examples.md` e são verificados pelos testes em
+  `apps/api/src/pricing/calculator/pricing-calculator.spec.ts`.
+- EX-001: lucro exato `22.728`, exibido `22.73`; margem
+  `22.728 / 90.91 = 0.250005499945...`, percentual
+  `25.0005499945...%`, exibido `25.0005%` com quatro casas e `ROUND_HALF_UP`.
+- EX-002: lucro exato permanece `35.3453`; margem
+  `35.3453 / 141.38 = 0.250002121940...`, percentual
+  `25.000212194...%`, exibido `25.0002%` com quatro casas e `ROUND_HALF_UP`.
+- Os testes verificam lucro, prefixos decimais das margens sem tolerância de
+  ponto flutuante e apresentação percentual com arredondamento explícito.
+  Não foi introduzido arredondamento intermediário.
+- Impacto: os 77 testes do motor e todos os 98 testes unitários da API
+  passaram. Typecheck e lint também passaram. Somente após esses resultados
+  o bloqueio foi removido e o Marco 1 foi marcado como concluído.
+  ADR-005, dependências e o restante da implementação foram preservados.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -384,6 +451,23 @@ durante a fórmula, conforme `ADR-004`.
 
 Novas decisões estruturais devem ser registradas em ADR antes de serem
 aplicadas.
+
+### Representação do motor puro — Marco 1
+
+`docs/architecture/decisions/ADR-005-pure-pricing-decimal.md` registra a escolha
+técnica autorizada de decimal.js, clone local, precisão, limites de entrada,
+avaliação de frações, strings e arredondamento. Dados monetários exatos e de
+apresentação são separados. Margem efetiva para preço zero e desconto para
+sugerido zero são `null`; não se cria preço adotado quando ele está ausente.
+Arrays preservam a ordem de entrada. O motor analisa preços e devolve avisos,
+mas não adota preços, grava histórico ou autoriza usuários.
+
+Em 03/10/2026, a revisão independente e a autorização explícita do usuário
+confirmaram a fórmula existente e a correção documental de EX-001/EX-002,
+sem mudança de regra de negócio ou de precisão intermediária.
+Precisão e representação antes abertas no Marco 0 estão tratadas pela ADR-005;
+leitura de custos, persistência, origem comercial e prévia web continuam
+abertas para os marcos correspondentes.
 
 ### Diretrizes confirmadas na auditoria — 02/10/2026
 
@@ -1108,6 +1192,93 @@ pnpm --filter @meinager/api test -- src/products/products.service.spec.ts src/au
 pnpm --filter @meinager/web test -- src/pages/product-page.spec.tsx src/pages/new-quote-page.spec.tsx
 pnpm exec prettier --write docs/plans/pricing-engine.md docs/product/requirements-traceability.md
 pnpm exec prettier --check docs/plans/pricing-engine.md docs/product/requirements-traceability.md
+git diff --check
+git diff --stat
+git status --short
+```
+
+### Marco 1 iniciado e bloqueado — 02/10/2026 (histórico; resolvido em 03/10/2026)
+
+Esta seção registra a execução inicial. O estado final e a validação após
+a revisão estão na seção seguinte.
+
+- Arquivos criados: `apps/api/src/pricing/calculator/pricing-calculator.ts`,
+  `pricing-calculator.types.ts`, `pricing-calculator.errors.ts`,
+  `pricing-decimal.ts`, `pricing-calculator.spec.ts` e ADR-005.
+- Arquivos modificados: `apps/api/package.json`, `pnpm-lock.yaml`, este plano
+  e `docs/product/requirements-traceability.md`. Nenhuma integração, schema,
+  migration, controller, DTO HTTP ou interface foi criada.
+- Motor disponível para revisão: composição por quantidade, mão de obra em
+  minutos, frete manual/rateado, percentual fixo direto/derivado, coleções de
+  deduções, mínimo/sugerido exatos/comerciais, análise de preço informado,
+  lucro/margem/desconto, memória e erros tipados. Não há efeitos colaterais.
+- Os testes com nomes EX-001 até EX-012 ficam na primeira seção de
+  `pricing-calculator.spec.ts`, com mapeamento literal aos exemplos. EX-003
+  até EX-012 passam; EX-001 e EX-002 permanecem falhando para expor as
+  divergências documentadas em Descobertas, sem mudar a matemática.
+- Validação direcionada: 77 testes, 75 aprovados e 2 falhas conhecidas.
+  Typecheck e lint da API passaram. `pnpm --filter @meinager/api test` executou
+  98 testes em 7 arquivos: 96 aprovados e as mesmas 2 falhas em EX-001/EX-002
+  (exit code 1); os 21 testes preexistentes passaram. Prettier foi executado
+  nos arquivos alterados; `git diff --check` não encontrou erros. Diff/stat
+  e status confirmam os arquivos deste escopo, incluindo arquivos novos não
+  rastreados (que não entram no `git diff --stat` sem staging).
+- Limitações: os exemplos oficiais inconsistentes impedem encerrar o marco;
+  não houve alteração em fórmulas ou exemplos para contornar a restrição do
+  usuário. API, persistência, autorização, snapshots salvos, auditoria e
+  compartilhamento web permanecem fora deste motor. Requisitos de domínio
+  abrangentes são parciais na matriz; não foram declarados integralmente
+  entregues apenas pela existência de uma função.
+- Nenhum commit foi feito. Execução encerrada no Marco 1 bloqueado, antes de
+  qualquer implementação dos Marcos 2 em diante.
+
+Comandos de validação deste marco:
+
+```text
+pnpm --filter @meinager/api exec vitest run src/pricing/calculator/pricing-calculator.spec.ts
+pnpm --filter @meinager/api typecheck
+pnpm --filter @meinager/api lint
+pnpm --filter @meinager/api test
+pnpm exec prettier --write <arquivos alterados>
+git diff --check
+git diff --stat
+git status --short
+```
+
+### Marco 1 concluído — 03/10/2026
+
+- Entrega: motor puro `margin-divisor-v1` validado contra EX-001 até EX-012,
+  incluindo as expectativas canônicas corrigidas após revisão independente.
+- Alterações nesta revisão: `docs/domains/pricing/examples.md`,
+  `apps/api/src/pricing/calculator/pricing-calculator.spec.ts`, este plano e
+  `docs/product/requirements-traceability.md`. O motor, os tipos, os erros,
+  o adaptador decimal, a ADR-005 e as dependências não foram alterados.
+- Validação direcionada: 77 testes do motor aprovados. Validação completa
+  unitária da API: 98 testes aprovados em 7 arquivos, incluindo os 21
+  preexistentes. Typecheck e lint passaram. Nenhuma falha restante.
+- Rastreabilidade: EX-001/EX-002 e o conjunto EX-001 a EX-012 agora estão
+  `IMPLEMENTED`; a reprodução decimal dos exemplos (`PREC-CA-050`) e os
+  cenários de cálculo simples/completo (`PREC-CA-023`/`PREC-CA-024`) possuem
+  evidência dos testes. Requisitos de persistência, API e interface não foram
+  promovidos a implementados nesta revisão.
+- Prettier aplicado aos quatro arquivos desta revisão; `git diff --check`,
+  `git diff --stat` e `git status --short` executados. A árvore contém também
+  as alterações anteriores do motor, que foram preservadas; arquivos novos
+  não rastreados não aparecem no stat normal sem staging.
+- Limitações: persistência, autorização, configurações/perfis persistidos,
+  snapshots salvos, adoção em produto, contratos HTTP e prévia web continuam
+  para os marcos seguintes. A política de leitura de custos, vigência e
+  origem comercial permanece aberta conforme a auditoria.
+- Execução encerrada no Marco 1 concluído. Nenhum schema, migration,
+  endpoint, DTO HTTP, componente ou integração foi alterado. Nenhum commit
+  foi criado; os Marcos 2 em diante permanecem pendentes.
+
+```text
+pnpm exec prettier --write docs/domains/pricing/examples.md apps/api/src/pricing/calculator/pricing-calculator.spec.ts docs/plans/pricing-engine.md docs/product/requirements-traceability.md
+pnpm --filter @meinager/api exec vitest run src/pricing/calculator/pricing-calculator.spec.ts
+pnpm --filter @meinager/api typecheck
+pnpm --filter @meinager/api lint
+pnpm --filter @meinager/api test
 git diff --check
 git diff --stat
 git status --short
