@@ -214,6 +214,65 @@ as fórmulas em SQL; valida a estrutura e as projeções do resultado produzido.
 Revisões de configuração/perfil e suas deduções, assim como eventos de adoção,
 também não permitem atualização/exclusão de conteúdo histórico.
 
+### Fechamento transacional dos guards — revisão de 04/10/2026
+
+A correção do Marco 2B.1 mantém os onze modelos conceituais. Duas tabelas
+SQL técnicas no schema privado `pricing_internal` registram operações de produto
+e revisões em montagem, identificadas por `pg_current_xact_id()` (transação
+principal, inclusive em savepoints). São estado interno transacional, não
+simulações nem histórico de negócio; os guards diferidos verificam o estado final
+e removem os registros antes do commit. Rollback, inclusive de savepoint,
+reverte também esses registros. Não utilizar `xmin` ou `pg_xact_status`.
+
+A aplicação não recebe acesso a esse schema. Todas as funções SQL e PL/pgSQL
+da migration usam `search_path = pg_catalog, public, pg_temp`, com o schema
+temporário explicitamente por último. Relações, tipos compostos e chamadas
+entre funções próprias permanecem qualificadas por `public` ou
+`pricing_internal`; a proteção não depende apenas do `search_path`. Somente
+funções de trigger com `SECURITY DEFINER` podem registrar ou consumir o estado
+privado; sua execução direta é revogada de `PUBLIC`. A credencial de aplicação
+mantém o direito de criar tabelas temporárias, mas não recebe propriedade,
+`SUPERUSER`, `BYPASSRLS`, DDL nem acesso a `pricing_internal`.
+
+Cada revisão inserida precisa terminar como revisão atual da própria raiz.
+Movimentação do ponteiro somente aceita revisão montada pela mesma transação,
+com número superior ao anterior. Metadados e desativação não movem o ponteiro.
+Deduções somente entram enquanto a revisão correspondente está em montagem.
+
+Para adoção, o banco captura o estado anterior real sob bloqueio do produto,
+independentemente de evento ou atualização ocorrer primeiro. No fechamento,
+exige escrita do produto e evento com preços e referências anterior/final
+correspondentes. Cada evento da transação deve corresponder à adoção que
+permanece no estado final daquele produto. Mudança manual que termina com
+ponteiro nulo dispensa evento; um evento existente continua exigindo o estado
+final correspondente. A escrita em `AuditLog` permanece responsabilidade do
+serviço futuro, sem garantia de auditoria por estes triggers.
+
+Identidade e autoria de criação da composição são imutáveis. Alterar a própria
+composição ou inserir, alterar ou remover um de seus componentes exige que a
+revisão final seja exatamente a revisão inicial mais um, independentemente da
+ordem das escritas. Várias alterações de componentes na mesma transação usam um
+único incremento; dois incrementos são rejeitados. A criação inicial permanece
+na revisão 1 e aceita seus componentes na mesma transação. Identificador,
+organização, composição pai e data de criação do componente são imutáveis. O
+estado transacional privado também cobre essa coordenação e acompanha rollback
+de savepoints. Custos negativos do catálogo são rejeitados explicitamente pelo
+guard, além das restrições existentes no catálogo.
+
+Os testes reais usam conexões independentes e demonstram serialização de
+revisões da mesma configuração, adoções concorrentes como transições sucessivas
+coerentes e uma única edição vencedora para `expectedRevision` da composição.
+A API do Marco 3 continuará responsável por bloquear e comparar a revisão
+esperada. A estratégia de idempotência de retries de adoção também permanece
+para esse marco; esta migration não inventa chave idempotente nem elimina
+eventos válidos de transições distintas.
+
+O caminho de `snapshotSchemaVersion` dentro do JSON ainda não foi definido
+oficialmente. O SQL valida a coluna positiva e as correspondências estruturais
+já definidas pelo motor; correspondência completa do contrato, incluindo sua
+versão no JSON, depende da definição e validação runtime do Marco 3. Não fixar
+um caminho JSON implicitamente nesta migration.
+
 ### FKs e isolamento
 
 A organização vem da sessão, nunca do corpo do cliente. Além dos filtros da

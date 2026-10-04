@@ -63,6 +63,8 @@ fontes oficiais.
       03/10/2026, após correção validada dos exemplos EX-001/EX-002).
 - [x] Registrar a direção arquitetural da persistência (Marco 2A, 03/10/2026;
       ADR-006, somente documentação).
+- [x] Revisar schema e migration ainda não aplicada e validar guards em PostgreSQL
+      descartável (Marco 2B.1, 04/10/2026; aplicação no banco normal pendente).
 - [ ] Definir e implementar a persistência.
 - [ ] Implementar configuração e perfis de deduções.
 - [ ] Implementar composição e simulação.
@@ -451,6 +453,65 @@ rastreabilidade; não representam o estado atual do marco.
 - Impacto: a proposta foi aprovada como direção arquitetural. Persistência e
   critérios relacionados continuam pendentes; README atualizado para refletir
   a entrega do motor no Marco 1. Fórmulas, exemplos e rastreabilidade preservados.
+
+### Marco 2B.1 — Guards transacionais e PostgreSQL real — 04/10/2026
+
+- Evidências: `apps/api/prisma/schema.prisma`,
+  `apps/api/prisma/migrations/20261003181002_add_pricing_persistence/migration.sql`
+  e `apps/api/test/pricing/persistence-postgres.cjs`. Os 11 modelos e sete enums
+  conceituais são preservados. A migration permanece não aplicada no banco normal.
+- A revisão identificou que guards independentes não garantiam a atomicidade de
+  adoção e revisão. A migration captura o estado anterior real do produto sob
+  lock e exige, no fechamento da transação, evento, versão finalizada e estado
+  final compatíveis. As duas ordens de escrita passam; preço manual com ponteiro
+  final nulo continua permitido. `AuditLog` permanece responsabilidade do serviço.
+- Revisões novas devem tornar-se atuais na mesma transação; ponteiros históricos
+  não podem ser restaurados arbitrariamente. Deduções só podem ser inseridas
+  durante a construção da revisão. Duas tabelas técnicas privadas em
+  `pricing_internal`, distintas dos modelos de domínio, registram o trabalho
+  transacional e são esvaziadas pelos guards diferidos. A estratégia substitui
+  `xmin`/`pg_xact_status`, usa o identificador da transação principal e preserva
+  rollback de savepoints. A ADR-006 registra explicitamente essa decisão.
+- A identidade e os metadados de criação da composição são imutáveis; edição
+  legítima exige incremento da revisão. O guard de catálogo rejeita explicitamente
+  custo negativo, além dos demais critérios aprovados.
+- O contrato oficial ainda não define um caminho JSON para `snapshotSchemaVersion`.
+  Não foi inventado um caminho. O banco exige coluna positiva e coerência das
+  projeções previstas; correspondência completa e validação runtime do contrato
+  continuam no Marco 3. A migration não garante essa parte.
+- A suíte realizou 198 verificações em dois bancos exclusivos descartáveis:
+  replay completo vazio e baseline com organizações, usuários, produtos,
+  orçamento e pedido. Deploy normal do Prisma aplica a migration uma única vez;
+  snapshots comerciais existentes permanecem inalterados. Foram comprovados
+  bloqueios de mutações históricas, adoções inconsistentes, revisões sem ponteiro,
+  deduções tardias, alterações de identidade e catálogo inválido, incluindo
+  savepoints. O custo negativo também é rejeitado pelo CHECK existente de Product.
+- Todas as funções da migration usam `search_path = pg_catalog, public, pg_temp`
+  e qualificam explicitamente relações e funções próprias. Sessões novas da role
+  da aplicação criaram tabelas temporárias homônimas antes da primeira chamada e
+  não conseguiram desviar os guards de versão `BUILDING`, projeções, adoção,
+  catálogo ou preço analisado das relações reais em `public`.
+- Alterações de componentes agora participam do controle transacional da
+  composição: criação inicial permanece na revisão 1; inserção, atualização ou
+  exclusão posterior exige exatamente um incremento do pai, em qualquer ordem e
+  também quando há várias alterações. Identidade, organização, composição pai e
+  data de criação do componente são imutáveis. Savepoints não deixam estado
+  privado residual.
+- Testes com duas conexões independentes comprovaram serialização de revisões da
+  mesma configuração sem órfãos, duas adoções concorrentes como transições reais
+  sucessivas e apenas uma edição de composição vencedora para a mesma revisão
+  esperada. Idempotência de retry de adoção permanece decisão do Marco 3; não foi
+  criada unicidade nova nesta migration.
+- O baseline anterior já impede custo direto negativo por CHECK. Essa limitação
+  foi comprovada sem enfraquecer migrations antigas; o teste mais direto mantém
+  custo real zero, cria uma origem temporária homônima com custo negativo e prova
+  que o guard consulta `public.products`, além de verificar sua condição explícita.
+- Credenciais separadas da aplicação não têm DDL nem acesso às tabelas técnicas;
+  tentativas de acesso e desativação de triggers são rejeitadas. Os bancos criados
+  foram removidos após conferir nome exclusivo e marcador de propriedade.
+- Impacto: registrar evidências SQL sem declarar persistência/API/interface
+  concluídas. A matriz de rastreabilidade permanece preservada; serviços,
+  autorização por papel, auditoria e contrato runtime ainda não foram entregues.
 
 ## Decisões tomadas
 
@@ -1411,6 +1472,42 @@ git status --short
 
 ```text
 pnpm exec prettier --write docs/architecture/decisions/ADR-006-pricing-persistence-model.md docs/plans/pricing-engine.md docs/domains/pricing/README.md
+pnpm exec prettier --check docs
+git diff --check
+git diff --stat
+git status --short
+```
+
+### Marco 2B.1 — Revisão da migration não aplicada — 04/10/2026
+
+- Migration revisada e suíte standalone de PostgreSQL criada. A ADR-006 registra
+  o fechamento transacional dos guards; as evidências estão em Descobertas.
+- Resultado PostgreSQL: 198 verificações aprovadas em dois bancos descartáveis,
+  removidos ao final. Nenhuma aplicação da migration no banco normal.
+- Os testes desta revisão cobrem shadowing por tabelas temporárias em sessões
+  novas, coordenação entre componentes e revisão da composição, savepoints e
+  concorrência real com duas conexões. A role temporária manteve `TEMP`, sem
+  propriedade, privilégios administrativos, DDL ou acesso ao schema privado.
+- Validações aprovadas: Prisma format/validate/generate, typecheck, lint sem
+  avisos, 98 testes unitários da API, build, Prettier de docs e diff check.
+  `prisma migrate status` retornou código 1 esperado, indicando exclusivamente
+  `20261003181002_add_pricing_persistence` pendente no banco `meinager`.
+- A correção preexistente da migration antiga e os demais arquivos do usuário
+  foram preservados. Nenhum motor, fórmula, API, interface ou dependência alterado.
+- Limitações: aplicação da migration pendente; auditoria e permissões da aplicação,
+  validação completa do snapshot e integrações continuam nos marcos posteriores.
+- Execução encerrada no escopo de revisão do Marco 2B.1, sem commit, para revisão.
+
+```text
+PRICING_TEST_CONFIRM_DISPOSABLE=YES node apps/api/test/pricing/persistence-postgres.cjs
+pnpm --filter @meinager/api exec prisma format
+pnpm --filter @meinager/api exec prisma validate
+pnpm --filter @meinager/api exec prisma generate
+pnpm --filter @meinager/api typecheck
+pnpm --filter @meinager/api lint
+pnpm --filter @meinager/api test
+pnpm --filter @meinager/api build
+pnpm --filter @meinager/api exec prisma migrate status
 pnpm exec prettier --check docs
 git diff --check
 git diff --stat
