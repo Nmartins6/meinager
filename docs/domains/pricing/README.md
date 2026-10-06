@@ -45,6 +45,10 @@ Os documentos oficiais deste domínio são:
   e critérios de conclusão.
 - [`examples.md`](examples.md): exemplos matemáticos canônicos e cenários
   inválidos.
+- [ADR-006 — Persistência de precificação](../../architecture/decisions/ADR-006-pricing-persistence-model.md):
+  modelo persistente, invariantes e histórico.
+- [ADR-007 — Contrato e segurança da API](../../architecture/decisions/ADR-007-pricing-api-contract.md):
+  endpoints, autorização, snapshot v1, erros e concorrência do Marco 3.
 
 Quando houver divergência entre esses documentos e materiais preliminares,
 prevalecem os documentos oficiais, observadas as decisões arquiteturais
@@ -101,11 +105,18 @@ O motor puro `margin-divisor-v1` foi entregue no Marco 1 em
 da API aprovados na validação desse marco. O motor não depende da persistência,
 HTTP ou interface.
 
-A direção arquitetural do Marco 2A está registrada na
-[ADR-006 — Persistência de precificação](../../architecture/decisions/ADR-006-pricing-persistence-model.md).
-Persistência, configurações/perfis salvos, composições e versões persistidas,
-adoção de preço, API e interface web continuam pendentes. O Marco 2A registra
-decisões e não implementa schema ou migrations.
+A direção arquitetural do Marco 2 está registrada na ADR-006. O commit `9427866`
+versionou a fundação persistente e a migration
+`20261003181002_add_pricing_persistence`. Em 04/10/2026, a migration foi aplicada
+somente ao banco local de desenvolvimento; a validação local mostrou 16
+migrations e banco atualizado. Não há confirmação sobre outros ambientes. O
+schema, as relações e os guards SQL existem, mas ainda não há services ou API
+que exponham esses recursos à aplicação.
+
+O contrato e a segurança da API foram definidos documentalmente no Marco 3A
+pela ADR-007. A criação e consulta de configurações, perfis, composições,
+versões e adoções por services/API, assim como a interface web, continuam sem
+implementação.
 
 ## Processo de alteração
 

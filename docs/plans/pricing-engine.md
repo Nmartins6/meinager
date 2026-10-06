@@ -63,9 +63,16 @@ fontes oficiais.
       03/10/2026, após correção validada dos exemplos EX-001/EX-002).
 - [x] Registrar a direção arquitetural da persistência (Marco 2A, 03/10/2026;
       ADR-006, somente documentação).
-- [x] Revisar schema e migration ainda não aplicada e validar guards em PostgreSQL
-      descartável (Marco 2B.1, 04/10/2026; aplicação no banco normal pendente).
-- [ ] Definir e implementar a persistência.
+- [x] Revisar, antes da aplicação, schema e migration e validar guards em
+      PostgreSQL descartável (Marco 2B.1, 04/10/2026; estado histórico daquela
+      execução).
+- [x] Versionar a fundação de persistência no commit `9427866` e validar a
+      migration no banco local de desenvolvimento (04/10/2026; 16 migrations e
+      banco local atualizado).
+- [x] Definir o contrato e a segurança da API (Marco 3A, 04/10/2026; ADR-007,
+      somente documentação).
+- [ ] Implementar os services e endpoints da API de precificação (Marcos 3B a
+      3D).
 - [ ] Implementar configuração e perfis de deduções.
 - [ ] Implementar composição e simulação.
 - [ ] Implementar versões, histórico e adoção de preço.
@@ -513,6 +520,41 @@ rastreabilidade; não representam o estado atual do marco.
   concluídas. A matriz de rastreabilidade permanece preservada; serviços,
   autorização por papel, auditoria e contrato runtime ainda não foram entregues.
 
+### Fundação de persistência versionada — 05/10/2026
+
+- O commit `9427866` versionou o schema e a migration
+  `20261003181002_add_pricing_persistence` revisados no Marco 2B.1; o commit não
+  representa a aplicação da migration em qualquer banco.
+- Em 04/10/2026, a migration foi aplicada somente ao banco local de
+  desenvolvimento. Essa validação local mostrou 16 migrations e banco
+  atualizado e sucede os relatos anteriores daquela execução nos quais a
+  migration ainda aparecia pendente. O estado de outros ambientes não foi
+  verificado.
+- A fundação contém modelos, relações, constraints e guards transacionais. Não
+  existem ainda services, endpoints ou interface de precificação; esses casos
+  de uso continuam nos Marcos 3 e 4.
+
+### Marco 3A — Contrato e segurança da API — 04/10/2026
+
+- A API existente usa sessão, `@OrganizationRoles(...)`, DTOs com rejeição de
+  campos desconhecidos, respostas diretas, transações Prisma e auditoria na
+  mesma transação. Não existe hoje um filtro global com códigos estáveis de
+  domínio.
+- `GET` de produtos atualmente inclui `directCost` para qualquer usuário
+  autenticado. O Marco 3 restringirá explicitamente o endpoint legado:
+  `OWNER`, `ADMIN`, `OPERATIONS` e `FINANCE` recebem o campo; `VIEWER` não.
+  Selects separados e testes de não vazamento cobrirão essa compatibilidade.
+- O banco já fornece raízes/revisões, snapshots, projeções e guards, mas a API
+  precisa construir e validar o snapshot v1, recalcular no backend e traduzir
+  conflitos para um contrato HTTP estável.
+- Simulação não altera estado e não será auditada. Versões, revisões, composição,
+  adoção e mudança manual de preço terão auditoria atômica e metadados mínimos.
+- Adoção repetida enquanto produto, versão e preço já coincidirem é idempotente
+  e não cria novo evento. O Marco 3 usará somente estado atual e lock do produto,
+  sem `Idempotency-Key` ou nova persistência.
+- Impacto: a ADR-007 fixa endpoints, permissões, autoridade do backend, snapshot,
+  erros, locks e a divisão 3B/3C/3D antes de qualquer código funcional.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -591,7 +633,7 @@ Marco 1 e resolvem os pontos correspondentes da auditoria histórica:
   nunca modificar a versão anterior para acomodar outra adoção.
 - Entradas `Decimal(19,6)`, taxas `Decimal(12,8)`, resultados em Text/JSONB;
   eventos de adoção usam `Decimal(14,2)`. Preservar limite do catálogo, proibir
-  truncamento e restringir moeda a BRL com check na futura migration.
+  truncamento e restringir moeda a BRL com check na migration versionada.
 - Snapshot JSONB canônico com `input`, `result`, `context` e contrato validado
   em runtime; todos os decimais são strings. Projeções e colunas-resumo são
   criadas do mesmo objeto e não substituem o snapshot.
@@ -611,10 +653,46 @@ Marco 1 e resolvem os pontos correspondentes da auditoria histórica:
   custos/margens/lucro/decomposição/histórico interno. Abaixo do mínimo somente
   `OWNER`/`ADMIN`, com confirmação e justificativa.
 
-O contrato atual de `Product` ainda expõe `directCost` ao `VIEWER`. A política
-existente deverá ser revisada separadamente e sem alteração silenciosa; esta
-etapa não altera nenhum contrato. Origem comercial de itens, prévia web e
-integrações financeiras futuras continuam abertas nos marcos correspondentes.
+O contrato atual de `Product` ainda expõe `directCost` ao `VIEWER`. A ADR-007
+aprovou sua restrição explícita no Marco 3, com selects por autorização e testes
+de não vazamento. Origem comercial de itens, prévia web e integrações financeiras
+futuras continuam abertas nos marcos correspondentes.
+
+### Contrato e segurança da API — Marco 3A
+
+A [ADR-007](../architecture/decisions/ADR-007-pricing-api-contract.md) define a
+fronteira HTTP antes da implementação:
+
+- rotas sob `/api/pricing`, separando o resumo comercial dos contratos internos;
+- leitura interna para `OWNER`, `ADMIN`, `OPERATIONS` e `FINANCE`, escrita de
+  configuração/perfis para `OWNER`/`ADMIN`, escrita operacional para
+  `OWNER`/`ADMIN`/`OPERATIONS` e adoção abaixo do mínimo somente para
+  `OWNER`/`ADMIN`;
+- `salePrice` manual somente para `OWNER`/`ADMIN`; `OPERATIONS` pode adotar uma
+  versão igual ou superior ao mínimo, mas não informar preço manual;
+- organização e ator sempre derivados da sessão, entradas recarregadas e motor
+  executado pelo backend em todo salvamento ou adoção;
+- `PricingSnapshotV1` canônico com tipos persistidos próprios, opcionais
+  materializados como `null`, proveniência v1 validada, margem selecionada e
+  contexto congelado;
+- erros HTTP estáveis, sem dados internos, e `404` indistinguível para recurso
+  inexistente ou pertencente a outra organização;
+- retry do estado já adotado retorna sucesso sem duplicar evento; uma nova
+  adoção depois de transição intermediária é uma decisão comercial nova;
+- ordem de locks configuração, perfis por UUID e produtos por UUID, com revisões
+  esperadas e conflitos convertidos em `409`;
+- eventos de auditoria definidos para revisões, composição, versão, adoção e
+  preço manual; a justificativa fica somente em `PricingPriceAdoption`, e o
+  `AuditLog` referencia a adoção sem duplicar o texto; simulações não geram
+  auditoria;
+- implementação dividida em 3B (configuração/perfis), 3C
+  (composição/cálculo/snapshot/histórico) e 3D (adoção/preço manual).
+
+Não há decisão essencial pendente para os Marcos 3B a 3D. A ADR-007 consolidou
+idempotência por estado, restrição de `directCost`, preço manual e separação da
+justificativa entre `PricingPriceAdoption` e `AuditLog`. As decisões ainda
+abertas bloqueiam somente a prévia web do Marco 4 e a origem comercial dos itens
+do Marco 5.
 
 ### Diretrizes confirmadas na auditoria — 02/10/2026
 
@@ -630,10 +708,11 @@ integrações financeiras futuras continuam abertas nos marcos correspondentes.
 - Aplicar a matriz já oficial: configuração/perfis por `OWNER`/`ADMIN`;
   composição, simulação, versões e adoção acima/igual ao mínimo também por
   `OPERATIONS`; abaixo do mínimo somente `OWNER`/`ADMIN`, com confirmação e
-  justificativa. `FINANCE` e `VIEWER` mantêm a leitura atual do cadastro de
-  produtos e não possuem escrita de precificação. A autorização para consultar
-  decomposição, custos e histórico internos permanece uma decisão aberta e
-  deve ser definida antes dos endpoints e da interface.
+  justificativa. `FINANCE` não possui escrita. `OPERATIONS` não informa
+  `salePrice` manualmente. A ADR-007 resolveu a leitura dos contratos novos e
+  legados: `FINANCE` pode consultar dados internos; `VIEWER` recebe somente
+  projeção comercial e produtos sem `directCost`, decomposição, custos ou
+  histórico financeiro.
 - Preservar os snapshots comerciais e copiar a origem opcional na conversão,
   sem motor em `OrdersService` e sem expansão automática de custos internos.
 - Na primeira entrega utilizar parâmetros manuais com origem registrada;
@@ -653,12 +732,12 @@ consolidados; autenticação, organização, carga de insumos/configuração e
 transações pertencem à aplicação. Identificadores podem acompanhar entradas
 para rastreabilidade, mas o motor puro não consulta nem valida posse no banco.
 
-| Limite                                | Responsabilidade                                                        | Caminhos prováveis (ainda não criados)                                                                                                                                                                                                                          |
+| Limite                                | Responsabilidade                                                        | Caminhos atuais ou planejados                                                                                                                                                                                                                                   |
 | ------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Motor puro — Marco 1                  | `margin-divisor-v1`, validação matemática, memória e erros tipados      | `apps/api/src/pricing/calculator/pricing-calculator.ts`, `pricing-calculator.types.ts`, `pricing-calculator.errors.ts`, `pricing-calculator.spec.ts`; adaptador `pricing-decimal.ts` somente se necessário                                                      |
-| Aplicação — Marco 3                   | Orquestrar configuração/perfis, composição, simulação, versões e adoção | `apps/api/src/pricing/pricing.module.ts`, `pricing.controller.ts`, `pricing.service.ts`, `dto/`; separar services por responsabilidade apenas se o tamanho exigir                                                                                               |
-| Configuração organizacional — Marco 2 | Parâmetros com vigência/origem e perfis organizacionais                 | Novos modelos no schema existente, conceitualmente `OrganizationPricingConfiguration`, `PricingSalesProfile`, `PricingDeduction`; definição final após contratos do motor                                                                                       |
-| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis   | Modelos conceituais `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion` e cópias de componentes/deduções; referência opcional de origem em produto/itens                                                                               |
+| Aplicação — Marco 3                   | Orquestrar configuração/perfis, composição, simulação, versões e adoção | Estrutura aprovada na ADR-007: `pricing.module.ts`, `contracts/`, `dto/`, `errors/`, `controllers/`, `services/` e `pricing-locks.ts`                                                                                                                           |
+| Configuração organizacional — Marco 2 | Parâmetros com vigência/origem e perfis organizacionais                 | Modelos implementados em `apps/api/prisma/schema.prisma`: `OrganizationPricingConfiguration`, revisões, `PricingSalesProfile`, revisões e `PricingDeduction`; services planejados na ADR-007                                                                    |
+| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis   | Modelos implementados `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion`, projeções e `PricingPriceAdoption`; referência opcional do produto implementada, casos de uso ainda pendentes                                               |
 | Web — Marco 4                         | Contratos Zod, queries/mutations e formulários específicos              | `apps/web/src/features/pricing/pricing-api.ts`, `use-*-query.ts`, `use-*-mutation.ts`, `pricing-composition-form.tsx`, `pricing-configuration-form.tsx`, `pricing-history.tsx`; `apps/web/src/pages/product-pricing-page.tsx`, `pricing-configuration-page.tsx` |
 | Integração comercial — Marco 5        | Validar/capturar origem e copiar snapshot sem custos                    | Extensões localizadas em `apps/api/src/quotes/quotes.service.ts`, `apps/api/src/orders/orders.service.ts`, DTOs e `apps/web/src/features/quotes/`; sem alterações nos fluxos                                                                                    |
 | Validação posterior                   | Permissões, isolamento, imutabilidade, concorrência e não regressão     | `apps/api/test/pricing.e2e-spec.ts`, testes existentes de produtos/orçamentos/pedidos; specs web próximos às páginas/features                                                                                                                                   |
@@ -667,11 +746,10 @@ Configuração deve ser recurso de precificação associado à organização, co
 vigência, origem, ator e data; não acrescentar parâmetros financeiros soltos
 à sessão ou ao cadastro do produto. Recomenda-se separar configuração atual
 das cópias completas em versões, sem determinar nesta auditoria a modelagem
-de todas as revisões de configuração. Para API, caminhos prováveis são
-`/api/pricing/configuration`, `/api/pricing/profiles` e
+de todas as revisões de configuração. Para a API, a ADR-007 aprovou caminhos
+sob `/api/pricing/configuration`, `/api/pricing/profiles` e
 `/api/pricing/products/:productId/...`; o controller recebe organização da
-sessão, nunca do corpo. Rota final e nomes dos contratos serão revisados no
-marco correspondente.
+sessão, nunca do corpo.
 
 ### Decisões abertas e riscos antes da implementação
 
@@ -683,11 +761,11 @@ A origem dos itens comerciais e a revisão do contrato atual de produtos
 permanecem trabalhos posteriores; preservar o registro histórico não os
 reabre nem significa implementação.
 
-1. **Leitura de custos e histórico:** `PREC-CA-047` remete à política da
-   organização, mas não define campos/papéis autorizados para decomposição
-   completa. `FINANCE` e `VIEWER` leem produtos e `directCost` hoje. Definir
-   projeções comerciais, resumo e detalhe interno antes dos endpoints/web;
-   não conceder nem retirar acesso implicitamente. Isso não bloqueia o motor.
+1. **Leitura de custos e histórico — resolvida no Marco 3A:** `FINANCE` terá
+   leitura interna e `VIEWER` somente projeção comercial. O Marco 3 também
+   removerá `directCost` das respostas legadas para `VIEWER`, mantendo o campo
+   para `OWNER`, `ADMIN`, `OPERATIONS` e `FINANCE`, com selects separados e
+   testes de compatibilidade.
 2. **Precisão e biblioteca decimal:** a API usa `Prisma.Decimal`, sem
    configuração explícita de precisão identificada no código funcional;
    `apps/api/package.json`/`apps/web/package.json` não declaram biblioteca
@@ -777,7 +855,11 @@ Existem módulos de API para:
 
 Existem funcionalidades web equivalentes.
 
-O schema ainda não possui entidades específicas de precificação.
+O schema possui a fundação de precificação definida na ADR-006 e versionada no
+commit `9427866`. A migration correspondente foi aplicada somente ao banco local
+de desenvolvimento na validação de 04/10/2026; não há afirmação sobre outros
+ambientes. O módulo funcional, os services, os endpoints e a interface ainda não
+existem.
 
 Produtos, orçamentos e pedidos existentes devem permanecer válidos após as
 migrations.
@@ -987,8 +1069,10 @@ A proposta foi revisada e registrada na
 [ADR-006](../architecture/decisions/ADR-006-pricing-persistence-model.md).
 Ela orienta entidades, precisão por campo, snapshot canônico, finalização,
 FKs, bloqueios, adoção, retenção e autorização do futuro Marco 3.
-O Marco 2A termina na documentação: schema, migration e validação em banco
-continuam pendentes e exigem etapa própria após revisão.
+O Marco 2A terminou na documentação. A etapa posterior versionou schema e
+migration no commit `9427866`. A aplicação comprovada ocorreu somente no banco
+local de desenvolvimento durante a validação de 04/10/2026. Services e contratos
+de aplicação permanecem para o Marco 3.
 
 ### Modelos conceituais
 
@@ -1075,18 +1159,24 @@ Implemente casos de uso equivalentes a:
 - consultar versão;
 - adotar preço;
 - confirmar adoção abaixo do mínimo.
+- alterar preço manual com limpeza explícita da versão adotada.
 
-A auditoria recomenda um único módulo `pricing` inicialmente, com separação
-interna por responsabilidade quando necessária. Os caminhos e limites
-propostos estão em `Decisões tomadas`; contratos finais e política de leitura
-de custos devem ser revisados antes de criar endpoints.
+A ADR-007 aprova um único módulo `pricing`, com controllers de configuração,
+perfis e produto e services separados por responsabilidade. O contrato completo
+de rotas, respostas, snapshot e erros está nessa ADR.
 
 ### Autorização
 
-Aplique os critérios `PREC-CA-045` até `PREC-CA-049`.
+Aplique os critérios `PREC-CA-045` até `PREC-CA-049` e a matriz da ADR-007.
 
 Todos os identificadores relacionados devem ser verificados contra a
 organização autenticada.
+
+No `PATCH` de produto, somente `OWNER` e `ADMIN` podem enviar `salePrice`.
+`OPERATIONS` preserva as demais alterações já permitidas, mas não define preço
+manual. Omissão de `salePrice` preserva preço e ponteiro; presença explícita,
+inclusive `null` ou valor igual ao atual, limpa `adoptedPricingVersionId` e
+gera auditoria. O Marco 3D cobrirá essa compatibilidade com testes próprios.
 
 ### Backend autoritativo
 
@@ -1099,6 +1189,20 @@ Em operações de salvamento ou adoção:
 5. ignore totais calculados pelo cliente;
 6. persista entradas e resultados;
 7. grave auditoria.
+
+Organização e ator vêm exclusivamente da sessão. DTOs rejeitam resultados,
+snapshots, origens resolvidas, números de versão e campos desconhecidos.
+
+### Divisão de execução
+
+- **Marco 3B:** base HTTP, erros, configuração e perfis;
+- **Marco 3C:** composição, simulação, snapshot v1, versões e histórico;
+- **Marco 3D:** adoção, idempotência do estado atual e alteração manual do preço.
+
+Cada subetapa possui arquivos, endpoints, testes, critério de conclusão e
+condições de parada detalhados na ADR-007. Não avançar quando a solução exigir
+mudança de modelo persistente, reinterpretação histórica ou alteração da fórmula
+sem uma nova decisão aprovada.
 
 ### Testes e2e
 
@@ -1178,9 +1282,9 @@ Evite manter duas fórmulas manuais divergentes.
 
 - `OWNER` e `ADMIN`: configuração e todos os casos de uso;
 - `OPERATIONS`: composição, simulação e adoção permitida;
-- `FINANCE` e `VIEWER`: nenhuma escrita de precificação; somente a leitura
-  autorizada pela política de exposição de custos internos, que deverá ser
-  definida antes deste marco;
+- `FINANCE`: leitura interna, sem escrita de precificação;
+- `VIEWER`: somente projeção comercial, sem `directCost`, decomposição, custos,
+  margem, lucro ou histórico financeiro;
 - preço abaixo do mínimo: somente `OWNER` e `ADMIN`, com justificativa.
 
 ### Testes
@@ -1480,6 +1584,10 @@ git status --short
 
 ### Marco 2B.1 — Revisão da migration não aplicada — 04/10/2026
 
+Esta seção preserva o estado daquela execução. Depois, o commit `9427866`
+versionou a fundação, e a migration foi aplicada separadamente somente ao banco
+local de desenvolvimento, conforme o progresso e as descobertas atuais acima.
+
 - Migration revisada e suíte standalone de PostgreSQL criada. A ADR-006 registra
   o fechamento transacional dos guards; as evidências estão em Descobertas.
 - Resultado PostgreSQL: 198 verificações aprovadas em dois bancos descartáveis,
@@ -1513,3 +1621,37 @@ git diff --check
 git diff --stat
 git status --short
 ```
+
+### Marco 3A — Contrato documental da API — 04/10/2026
+
+- A ADR-007 registrou endpoints, métodos, respostas, separação comercial/interna,
+  matriz de papéis e autoridade do backend por mutação.
+- O snapshot oficial v1 congela entradas resolvidas, resultado integral do motor,
+  contexto e origens, com canonicalização decimal e validação runtime.
+- Foram definidos erros HTTP estáveis, isolamento por organização, ordem de locks,
+  idempotência da adoção no estado atual e eventos de auditoria.
+- A implementação foi dividida em Marcos 3B, 3C e 3D, cada qual com endpoints,
+  arquivos, testes, critério de conclusão, riscos e condições de parada.
+- Nenhum código funcional, schema, migration, dependência, banco, interface ou
+  requisito da matriz de rastreabilidade foi alterado nesta etapa.
+
+### Marco 3A — Revisão antes do commit — 05/10/2026
+
+- Estado alinhado ao commit `9427866`: fundação persistente versionada. A
+  validação de 04/10/2026 aplicou a migration somente ao banco local de
+  desenvolvimento e mostrou 16 migrations e banco local atualizado; services,
+  API e web permanecem pendentes, e outros ambientes não foram verificados.
+- Autorização consolidada: preço manual somente por `OWNER`/`ADMIN`;
+  `OPERATIONS` mantém adoção igual/acima do mínimo. `VIEWER` deixa de receber
+  `directCost` no contrato legado, com alteração explícita e testes no Marco 3D.
+- Idempotência limitada ao estado atual sob lock do produto, sem chave ou nova
+  persistência. `PricingPriceAdoption` mantém a justificativa, e o `AuditLog`
+  referencia a adoção sem duplicar o texto.
+- Snapshot v1 passou a usar tipos persistidos próprios, proveniência versionada,
+  perfil anulável e margem desejada efetiva com origem e precedência.
+- Simulação usa `REPEATABLE READ` sem locks de escrita. Criação de versão observa
+  configuração, perfil, produto-alvo e fontes `CATALOG` de forma consistente,
+  com produtos bloqueados por UUID e releitura da composição/revisão.
+- Nenhuma decisão essencial permanece aberta para o Marco 3. A prévia
+  compartilhada bloqueia somente o Marco 4, e a origem comercial dos itens,
+  somente o Marco 5.

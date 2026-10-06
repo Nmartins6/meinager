@@ -1,6 +1,6 @@
 # ADR-006 — Persistência, revisões e snapshots da precificação
 
-- Status: aceito como direção arquitetural no Marco 2A; implementação pendente
+- Status: aceito; fundação de persistência implementada
 - Data: 03/10/2026
 - Domínio: precificação, produtos, orçamentos e pedidos
 - Decisores: responsáveis pelo produto Meinager, após revisão da proposta do Marco 2A
@@ -8,9 +8,23 @@
 ## Contexto
 
 O Marco 1 entregou o motor puro `margin-divisor-v1`, com 77 testes próprios e
-98 testes unitários da API aprovados. A persistência ainda não existe.
-Esta ADR registra a direção aprovada antes de modificar o schema ou gerar
-migration; complementa ADR-001 a ADR-005, sem alterar fórmulas ou o motor.
+98 testes unitários da API aprovados. Quando esta ADR foi proposta, a
+persistência específica ainda não existia. A ADR registrou a direção aprovada
+antes de modificar o schema ou gerar migration; complementa ADR-001 a ADR-005,
+sem alterar fórmulas ou o motor.
+
+### Nota de implementação — 05/10/2026
+
+O commit `9427866` versionou a fundação descrita nesta ADR no schema Prisma e na
+migration `20261003181002_add_pricing_persistence`. Em 04/10/2026, a migration
+foi aplicada somente ao banco local de desenvolvimento; essa validação local
+mostrou 16 migrations e banco atualizado. Isso não afirma o estado de outros
+ambientes. Os 11 modelos, sete enums, relações compostas, constraints, funções,
+triggers e guards transacionais foram validados antes do commit.
+
+Essa entrega fornece estruturas e proteção no banco. Services, contratos HTTP,
+validação runtime do snapshot, autorização dos casos de uso, auditoria da
+aplicação e interface continuam pendentes nos Marcos 3 e 4.
 
 `Product.directCost` usa `Decimal(18,6)` e `Product.salePrice` usa
 `Decimal(14,2)`. Orçamentos e pedidos preservam snapshots comerciais e a
@@ -48,10 +62,11 @@ efetivos, o nível de onde foram selecionados e suas origens.
 
 ### Entidades conceituais
 
-Os nomes abaixo orientam o futuro schema. Todos os modelos novos possuem UUID,
-`organizationId` obrigatório, timestamps e relações explícitas com organização.
-Usar os mapeamentos snake_case e `Timestamptz(3)` existentes. Autoria deve ser
-registrada e validada contra a sessão e o vínculo organizacional.
+Os nomes abaixo foram adotados no schema implementado. Todos os modelos novos
+possuem UUID, `organizationId` obrigatório, timestamps e relações explícitas com
+organização. Eles seguem os mapeamentos snake_case e `Timestamptz(3)` existentes.
+Autoria deve ser registrada e validada contra a sessão e o vínculo
+organizacional pelos futuros services.
 
 | Entidade                                   | Responsabilidade e campos principais                                                                                                                                                                                 |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -263,15 +278,15 @@ Os testes reais usam conexões independentes e demonstram serialização de
 revisões da mesma configuração, adoções concorrentes como transições sucessivas
 coerentes e uma única edição vencedora para `expectedRevision` da composição.
 A API do Marco 3 continuará responsável por bloquear e comparar a revisão
-esperada. A estratégia de idempotência de retries de adoção também permanece
-para esse marco; esta migration não inventa chave idempotente nem elimina
-eventos válidos de transições distintas.
+esperada. A ADR-007 definiu idempotência somente pelo estado atual sob lock do
+produto; esta migration não cria chave idempotente nem elimina eventos válidos
+de transições distintas.
 
-O caminho de `snapshotSchemaVersion` dentro do JSON ainda não foi definido
-oficialmente. O SQL valida a coluna positiva e as correspondências estruturais
-já definidas pelo motor; correspondência completa do contrato, incluindo sua
-versão no JSON, depende da definição e validação runtime do Marco 3. Não fixar
-um caminho JSON implicitamente nesta migration.
+Na execução da migration, o caminho de `snapshotSchemaVersion` dentro do JSON
+ainda não estava definido oficialmente. Por isso, o SQL valida a coluna positiva
+e correspondências estruturais sem fixar um caminho JSON. A ADR-007 definiu
+depois o campo na raiz do snapshot; sua correspondência completa depende do
+validador runtime do Marco 3C.
 
 ### FKs e isolamento
 
@@ -326,8 +341,10 @@ Operações que usam apenas um desses recursos podem adquirir só seu bloqueio.
 Determinar o conjunto necessário antes de bloquear. Se uma releitura exigir
 um bloqueio de classe anterior ou fora da ordem, abortar/reiniciar a transação;
 não inverter a ordem. Revisões imutáveis permitem capturar parâmetros sem
-manter bloqueios de escrita desnecessários. Ler os custos do catálogo de forma
-consistente, sem bloquear ou calcular composições recursivamente.
+manter bloqueios de escrita desnecessários. A ADR-007 refina a criação de versão:
+ela usa `REPEATABLE READ` e bloqueia produto-alvo e fontes `CATALOG` em ordem
+crescente de UUID, relendo composição, revisão e custos depois dos locks. Não
+calcular composições recursivamente.
 
 Criação de versão e adoção devem preservar integralmente a operação vencedora,
 com preço, referência, evento e auditoria consistentes. Tratamento de conflitos
@@ -359,7 +376,9 @@ versão anterior para acomodar outra adoção.
 Validar intervalo de `Decimal(14,2)`, centavos e permissões antes da adoção.
 Preço abaixo do mínimo exige `OWNER`/`ADMIN`, confirmação explícita e
 justificativa. Salvar preço, referência, evento de adoção e auditoria na mesma
-transação; registrar preço anterior/novo, ator, produto, versão e justificativa.
+transação. `PricingPriceAdoption` preserva a justificativa; o `AuditLog` não
+duplica seu texto e referencia a adoção com os demais metadados definidos na
+ADR-007.
 
 Se o `PATCH` de produto receber explicitamente `salePrice`, inclusive `null`
 ou valor numericamente igual ao atual, sua origem passa a ser manual e
@@ -393,22 +412,22 @@ uma nova migration. Eventual retenção futura exige outra decisão revisada.
 
 ### Autorização futura — Marco 3
 
-| Papel            | Leitura e escrita de precificação                                                                                                                     |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OWNER`, `ADMIN` | Leitura e escrita completas; abaixo do mínimo exige confirmação e justificativa.                                                                      |
-| `OPERATIONS`     | Leitura completa; escrita de composição, simulação, versão e adoção igual/acima do mínimo. Não altera configuração/perfis nem adota abaixo do mínimo. |
-| `FINANCE`        | Leitura completa de custos, decomposição e histórico; sem escrita.                                                                                    |
-| `VIEWER`         | Somente dados comerciais já autorizados; sem custos, margens, lucro, decomposição ou histórico interno.                                               |
+| Papel            | Leitura e escrita de precificação                                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OWNER`, `ADMIN` | Leitura e escrita completas; podem informar `salePrice`; abaixo do mínimo exige confirmação e justificativa.                                                              |
+| `OPERATIONS`     | Leitura completa; escrita de composição, simulação, versão e adoção igual/acima do mínimo. Não informa `salePrice`, altera configuração/perfis ou adota abaixo do mínimo. |
+| `FINANCE`        | Leitura completa de custos, decomposição e histórico; sem escrita.                                                                                                        |
+| `VIEWER`         | Somente dados comerciais já autorizados; sem custos, margens, lucro, decomposição ou histórico interno.                                                                   |
 
 Todas as operações exigem sessão e isolamento. Contratos comerciais de
 orçamento/pedido não expandem custos ou resultados internos. A política acima
 orienta os novos endpoints e suas seleções explícitas, não somente a interface.
 
-**Política existente a revisar separadamente:** o contrato atual de `Product`
-ainda expõe `directCost` ao `VIEWER`. Esta ADR não altera esse contrato nem
-retira acesso silenciosamente. Sua revisão deverá ser explícita, com análise
-de compatibilidade e testes, antes de considerar uniforme a proteção de custos
-entre catálogo e precificação.
+**Compatibilidade aprovada para o Marco 3:** o contrato atual de `Product`
+expõe `directCost` ao `VIEWER`. A ADR-007 determina que `OWNER`, `ADMIN`,
+`OPERATIONS` e `FINANCE` continuam recebendo o campo, enquanto `VIEWER` deixa de
+recebê-lo. A implementação deverá usar selects separados e testes de não
+vazamento; a restrição é intencional e não será aplicada apenas na interface.
 
 ## Consequências positivas
 
@@ -430,7 +449,7 @@ entre catálogo e precificação.
 - Proteção de exclusão muda a limpeza dos testes e impede remoção livre de organizações com histórico.
 - Texto decimal não permite ordenação financeira lexicográfica; consultas numéricas futuras precisam de estratégia própria.
 - Fórmulas/contratos antigos precisam permanecer suportados para adoção; leitura histórica não pode migrar resultados silenciosamente.
-- A exposição atual de `directCost` no catálogo continua uma diferença de política a revisar.
+- A restrição de `directCost` para `VIEWER` altera intencionalmente o contrato legado e exige testes de compatibilidade.
 
 ## Alternativas descartadas
 
@@ -453,14 +472,14 @@ entre catálogo e precificação.
 - Integração automática de agregados financeiros, conversão de unidades, agendamento, retenção com exclusão e novas moedas.
 - Alteração de fórmulas, resultados canônicos ou arquitetura matemática do Marco 1.
 
-No Marco 2A atual, também estão fora: qualquer alteração de schema, migration,
-código, dependências, banco ou estados da matriz de rastreabilidade.
+No Marco 2A documental, também estavam fora alterações de schema, migration,
+código, dependências, banco ou estados da matriz de rastreabilidade. A fundação
+foi implementada posteriormente pelo commit `9427866`.
 
 ## Pontos ainda abertos
 
-- Contrato final do snapshot e seus validadores/guards SQL, a implementar após revisão.
+- Validadores runtime do contrato de snapshot definido na ADR-007, no Marco 3C.
 - Semântica de seleção antiga, preço manual e descontos na origem comercial dos itens do Marco 5.
-- Revisão explícita da exposição existente de `Product.directCost` ao `VIEWER`.
 - Compartilhamento da prévia com a web e integrações financeiras futuras.
 
 As decisões de vigência imediata, precedência, fonte de custos, preço manual,
