@@ -75,7 +75,8 @@ fontes oficiais.
       versionada (Marco 3B.1, 05/10/2026).
 - [ ] Implementar os services e endpoints da API de precificação (Marcos 3B a
       3D).
-- [ ] Implementar perfis de deduções e concluir o Marco 3B.
+- [x] Implementar perfis de deduções e concluir o Marco 3B (Marco 3B.2,
+      06/10/2026).
 - [ ] Implementar composição e simulação.
 - [ ] Implementar versões, histórico e adoção de preço.
 - [ ] Implementar a interface web.
@@ -593,6 +594,31 @@ rastreabilidade; não representam o estado atual do marco.
   composição, cálculo HTTP, snapshots, versões, histórico, adoção, produtos e
   web permanecem fora desta subetapa.
 
+### Marco 3B.2 — Perfis de venda e deduções — 06/10/2026
+
+- `PricingModule` passou a expor listagem paginada, detalhe, criação, revisão e
+  desativação em `/api/pricing/profiles`. Leituras usam a organização da sessão
+  e retornam somente a revisão atual; detalhe ordena deduções por posição e
+  serializa taxas explicitamente como strings.
+- Criação monta raiz, revisão inicial, deduções individualizadas, ponteiro e
+  auditoria na mesma transação. Atualização bloqueia a raiz, relê o agregado,
+  valida `expectedRevision` e trata a coleção enviada como substituição completa
+  ordenada. Campos omitidos são preservados e taxas equivalentes são comparadas
+  por valor decimal canônico.
+- Posições são derivadas no backend de `1` a `N`. Categoria permanece textual e
+  extensível. Coleção vazia é aceita porque as regras oficiais não exigem pelo
+  menos uma dedução. Os documentos e o schema não definem unicidade nominal;
+  nenhuma regra ou migration de nome único foi inventada.
+- Proveniência persiste metadados autorizados, com `confirmedByUserId` derivado
+  da sessão. IDs, organização, autoria, revisão nova, posição e datas não são
+  aceitos do cliente.
+- No-op é decidido após lock e validação da revisão; não cria revisão nem
+  auditoria. Desativação altera somente a raiz, preserva todo o histórico e é
+  idempotente depois de validar `expectedRevision`.
+- Testes E2E em PostgreSQL descartável comprovaram papéis, isolamento, recurso
+  externo indistinguível, paginação/filtro, revisão imutável, auditoria,
+  validação, no-op e concorrência entre updates e entre update/desativação.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -756,6 +782,19 @@ do Marco 5.
   não contorna a validação de `expectedRevision`.
 - A implementação usa a raiz e as revisões já aprovadas, sem alterar schema,
   migration, fórmula ou configuração decimal global.
+
+### Perfis versionados — Marco 3B.2
+
+- Perfil e deduções formam um agregado versionado. Cada alteração cria uma nova
+  revisão e novas linhas de dedução; revisões anteriores nunca são alteradas.
+- A listagem segue `{ data, pagination }`, com 20 itens por padrão, limite 100,
+  filtro `isActive` e ordenação determinística por nome atual e ID.
+- `OWNER` e `ADMIN` escrevem; `OWNER`, `ADMIN`, `OPERATIONS` e `FINANCE` leem;
+  `VIEWER` recebe `PRICING_FORBIDDEN`. Recurso externo ou inexistente usa o
+  mesmo `PRICING_PROFILE_NOT_FOUND`.
+- Auditorias `pricing_sales_profile.created`, `.updated` e `.deactivated`
+  pertencem à transação da mutação e registram somente IDs, revisões, estado e
+  nomes dos campos alterados, sem taxas ou coleções completas.
 
 ### Diretrizes confirmadas na auditoria — 02/10/2026
 
@@ -1754,3 +1793,18 @@ git diff --check
 git diff --stat
 git status --short
 ```
+
+### Marco 3B.2 concluído — 06/10/2026
+
+- Entrega: cinco endpoints de perfis de venda, com paginação, filtro de estado,
+  detalhe, revisões imutáveis, deduções extensíveis e desativação sem exclusão.
+- Validação direcionada: 17 testes em dois arquivos. O runner aprovou 27 testes
+  E2E em dois arquivos no banco descartável
+  `pricing_configuration_e2e_867a7a894731ca6f`, após aplicar as 16 migrations,
+  e removeu o banco ao final. A prova de limpeza após erro também passou. A
+  suíte unitária completa aprovou 129 testes em 10 arquivos; typecheck, lint e
+  build da API passaram.
+- Limites: persistência e API de perfis não comprovam ainda seu uso por
+  composição, cálculo ou snapshot; esses itens permanecem no Marco 3C.
+- Nenhum schema, migration, banco normal, dependência, calculador, fórmula,
+  produto ou arquivo web foi alterado. Nenhum commit foi criado.

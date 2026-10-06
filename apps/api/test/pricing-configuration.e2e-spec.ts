@@ -204,9 +204,37 @@ describe('Pricing configuration (e2e)', () => {
       .expect(400);
     expect(clientConfirmedBy.body.code).toBe('VALIDATION_ERROR');
 
+    const originsArray = await request(httpServer())
+      .patch('/api/pricing/configuration')
+      .set('Cookie', primary.cookie)
+      .send({ ...validConfiguration(null), parameterOrigins: [] })
+      .expect(400);
+    expect(originsArray.body.code).toBe('VALIDATION_ERROR');
+
+    const individualOriginArray = await request(httpServer())
+      .patch('/api/pricing/configuration')
+      .set('Cookie', primary.cookie)
+      .send({
+        ...validConfiguration(null),
+        parameterOrigins: {
+          ...validConfiguration(null).parameterOrigins,
+          fixedCostRate: [],
+        },
+      })
+      .expect(400);
+    expect(individualOriginArray.body.code).toBe('VALIDATION_ERROR');
+
     expect(
       await prisma.organizationPricingConfiguration.count({
         where: { organizationId: primary.organizationId },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId: primary.organizationId,
+          entityType: 'organization_pricing_configuration',
+        },
       }),
     ).toBe(0);
   });

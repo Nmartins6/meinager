@@ -1,4 +1,4 @@
-/* Runs pricing configuration E2E tests in owned, disposable PostgreSQL databases. */
+/* Runs pricing API E2E tests in owned, disposable PostgreSQL databases. */
 const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
@@ -151,6 +151,7 @@ async function main() {
           '--config',
           './vitest.config.e2e.ts',
           'test/pricing-configuration.e2e-spec.ts',
+          'test/pricing-profiles.e2e-spec.ts',
         ],
         {
           DATABASE_URL: databaseUrl,

@@ -3,6 +3,7 @@ import {
   IsDefined,
   IsEnum,
   IsInt,
+  IsObject,
   IsOptional,
   Min,
   ValidateIf,
@@ -59,6 +60,7 @@ export class UpdatePricingConfigurationDto {
   defaultDesiredMargin?: string | null;
 
   @ValidateIf((_object, value) => value !== undefined)
+  @IsObject()
   @ValidateNested()
   @Type(() => PricingConfigurationParameterOriginsDto)
   parameterOrigins?: PricingConfigurationParameterOriginsDto;

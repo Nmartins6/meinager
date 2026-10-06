@@ -29,6 +29,11 @@ possuem service versionado, autorização, isolamento, validação decimal,
 auditoria atômica e testes de concorrência. A evidência é limitada à
 configuração; perfis e os demais casos de uso da API permanecem pendentes.
 
+Revisão do Marco 3B.2: 06/10/2026. Perfis e deduções possuem API versionada,
+autorização, isolamento, auditoria, no-op e concorrência comprovados em banco
+descartável. A integração desses perfis ao cálculo e ao snapshot permanece
+pendente no Marco 3C.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -186,10 +191,13 @@ adicionada depois; endpoints, services e interface continuam ausentes.
 
 ### Perfis de deduções
 
-| Critérios                     | Estado    | Base reutilizável                                                                                        | Implementação esperada                           |
-| ----------------------------- | --------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `PREC-CA-006` a `PREC-CA-009` | `PENDING` | Modelos de perfil, revisão e dedução; guards SQL, autorização e organização                              | Service, API, autorização e testes funcionais    |
-| `PREC-RN-021` a `PREC-RN-023` | `PARTIAL` | Estruturas persistentes e coleções no `calculator/pricing-calculator.ts`, EX-001/EX-002 e teste de ordem | Orquestração, contrato HTTP e interface pendente |
+| Critérios                     | Estado        | Base reutilizável                                                                                    | Implementação esperada                            |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `PREC-CA-006` a `PREC-CA-008` | `IMPLEMENTED` | Criação, nomes não vazios, deduções extensíveis, revisão e desativação comprovadas por unitários/E2E | Interface web pendente, sem invalidar a API       |
+| `PREC-CA-009`                 | `PARTIAL`     | Endpoints ocultam perfil externo como inexistente e listagem isola organizações                      | Revalidar o perfil em composição e simulação      |
+| `PREC-RN-021`                 | `PARTIAL`     | Deduções percentuais individualizadas na API e suportadas pelo motor                                 | Integrar perfil selecionado ao cálculo/snapshot   |
+| `PREC-RN-022`                 | `IMPLEMENTED` | Perfis organizacionais versionados para canais, com nomes e percentuais configuráveis                | Interface web pendente                            |
+| `PREC-RN-023`                 | `PARTIAL`     | Revisões preservam cada dedução histórica e o motor mantém a coleção individual                      | Congelar as deduções efetivas no snapshot oficial |
 
 ### Composição de custos
 
