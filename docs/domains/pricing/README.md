@@ -110,12 +110,14 @@ versionou a fundação persistente e a migration
 `20261003181002_add_pricing_persistence`. Em 04/10/2026, a migration foi aplicada
 somente ao banco local de desenvolvimento; a validação local mostrou 16
 migrations e banco atualizado. Não há confirmação sobre outros ambientes. O
-schema, as relações e os guards SQL existem, mas ainda não há services ou API
-que exponham esses recursos à aplicação.
+schema, as relações e os guards SQL existem. O Marco 3B.1 implementou o módulo
+HTTP, o contrato local de erros e os endpoints versionados de consulta e
+alteração da configuração organizacional. Essa entrega usa revisão esperada,
+locks, auditoria atômica, isolamento e strings decimais validadas.
 
 O contrato e a segurança da API foram definidos documentalmente no Marco 3A
-pela ADR-007. A criação e consulta de configurações, perfis, composições,
-versões e adoções por services/API, assim como a interface web, continuam sem
+pela ADR-007. Perfis, composições, cálculos HTTP, snapshots runtime, versões,
+histórico, adoções, integração com produtos e interface web continuam sem
 implementação.
 
 ## Processo de alteração

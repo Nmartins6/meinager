@@ -71,9 +71,11 @@ fontes oficiais.
       banco local atualizado).
 - [x] Definir o contrato e a segurança da API (Marco 3A, 04/10/2026; ADR-007,
       somente documentação).
+- [x] Implementar base HTTP, erros locais e configuração organizacional
+      versionada (Marco 3B.1, 05/10/2026).
 - [ ] Implementar os services e endpoints da API de precificação (Marcos 3B a
       3D).
-- [ ] Implementar configuração e perfis de deduções.
+- [ ] Implementar perfis de deduções e concluir o Marco 3B.
 - [ ] Implementar composição e simulação.
 - [ ] Implementar versões, histórico e adoção de preço.
 - [ ] Implementar a interface web.
@@ -555,6 +557,42 @@ rastreabilidade; não representam o estado atual do marco.
 - Impacto: a ADR-007 fixa endpoints, permissões, autoridade do backend, snapshot,
   erros, locks e a divisão 3B/3C/3D antes de qualquer código funcional.
 
+### Marco 3B.1 — Configuração organizacional — 05/10/2026
+
+- `PricingModule` passou a expor somente `GET` e `PATCH`
+  `/api/pricing/configuration`. O contrato usa os guards existentes e um filtro
+  local para códigos estáveis, sem modificar respostas dos demais domínios.
+- `PATCH` cria a raiz, a primeira revisão e o ponteiro corrente na mesma
+  transação, ou cria uma revisão imutável depois de bloquear a raiz e comparar
+  `expectedRevision`. A criação inicial bloqueia a organização. Testes com duas
+  requisições independentes comprovaram um único vencedor em ambas as disputas.
+- Strings decimais são validadas quanto a sintaxe, sinal, precisão e escala
+  antes de chegarem ao Prisma. Não há coerção de `number`, expoente,
+  arredondamento ou truncamento. A resposta converte explicitamente todos os
+  campos decimais para string.
+- `parameterOrigins` é um patch parcial por parâmetro. Origens de valores
+  inalterados são preservadas; valores criados ou alterados exigem a origem
+  correspondente, cujo confirmador é sempre o ator da sessão. Valores
+  removidos e campos que deixam de se aplicar ao modo de custo fixo perdem
+  também a origem. Origens desconhecidas, incompatíveis ou com confirmador
+  enviado pelo cliente são rejeitadas.
+- Decimais são comparados por valor canônico e proveniências por JSON com chaves
+  ordenadas. Depois do lock e da validação da revisão esperada, um estado
+  resolvido idêntico retorna a revisão atual sem nova revisão ou auditoria;
+  revisão esperada obsoleta continua retornando conflito.
+- Cada revisão confirmada gera exatamente um
+  `pricing_configuration.updated` na mesma transação. O metadata contém somente
+  operação, configuração, revisões e nomes dos campos alterados, sem valores
+  financeiros.
+- A execução direcionada aprovou 18 testes unitários e 16 testes E2E. Os E2E
+  cobrem autenticação, todos os papéis, isolamento, validação, merge e remoção
+  de proveniência, no-op, preservação histórica, auditoria, rollback e
+  concorrência. Um runner exclusivo cria um banco PostgreSQL, aplica as 16
+  migrations pelo Prisma e remove o banco em `finally`; uma prova separada
+  confirma a remoção também quando a execução interna falha. Perfis,
+  composição, cálculo HTTP, snapshots, versões, histórico, adoção, produtos e
+  web permanecem fora desta subetapa.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -693,6 +731,31 @@ idempotência por estado, restrição de `directCost`, preço manual e separaç�
 justificativa entre `PricingPriceAdoption` e `AuditLog`. As decisões ainda
 abertas bloqueiam somente a prévia web do Marco 4 e a origem comercial dos itens
 do Marco 5.
+
+### Configuração HTTP versionada — Marco 3B.1
+
+- O contrato de erros de precificação é traduzido por filtro aplicado somente ao
+  controller do domínio. Erros inesperados retornam `INTERNAL_ERROR` sem stack,
+  SQL, constraint ou código Prisma; autenticação e autorização reutilizam os
+  guards existentes.
+- A criação usa lock da organização; atualizações usam lock da raiz da
+  configuração. `expectedRevision: null` identifica somente a criação inicial,
+  e revisão positiva identifica atualização. Estado desatualizado retorna
+  `PRICING_REVISION_CONFLICT`; falhas concorrentes conhecidas do Prisma retornam
+  `PRICING_CONCURRENT_MODIFICATION`.
+- `effectiveFrom` e o confirmador da proveniência são definidos pelo backend.
+  Campos de custo fixo que não se aplicam ao modo escolhido são persistidos como
+  `null`; custo mensal de mão de obra e horas produtivas formam um par.
+- Proveniências são mescladas por parâmetro. Uma mudança de valor exige origem
+  na mesma requisição; a confirmação anterior nunca é atribuída a um valor
+  novo. Remoção do valor e mudança do modo de custo fixo eliminam origens
+  inaplicáveis. Metadados adicionais permanecem opcionais porque os documentos
+  do domínio não os tornam obrigatórios por tipo de origem.
+- A comparação de estado ocorre após normalização decimal e canonicalização de
+  JSON. No-op confirmado sob lock retorna `200` sem revisão nem `AuditLog`, mas
+  não contorna a validação de `expectedRevision`.
+- A implementação usa a raiz e as revisões já aprovadas, sem alterar schema,
+  migration, fórmula ou configuração decimal global.
 
 ### Diretrizes confirmadas na auditoria — 02/10/2026
 
@@ -1655,3 +1718,39 @@ git status --short
 - Nenhuma decisão essencial permanece aberta para o Marco 3. A prévia
   compartilhada bloqueia somente o Marco 4, e a origem comercial dos itens,
   somente o Marco 5.
+
+### Marco 3B.1 concluído — 05/10/2026
+
+- Entrega: módulo Nest de precificação, contrato local de erros e configuração
+  organizacional versionada em `GET`/`PATCH /api/pricing/configuration`.
+- Autorização: leitura para `OWNER`, `ADMIN`, `OPERATIONS` e `FINANCE`; escrita
+  para `OWNER` e `ADMIN`; `VIEWER` recebe `403`, e ausência de sessão recebe
+  `401` nos dois métodos.
+- Persistência: criação e revisão são atômicas, preservam revisões anteriores,
+  bloqueiam organização ou raiz conforme o caso e exigem revisão esperada.
+  Auditoria usa `pricing_configuration.updated` na mesma transação.
+- Validação direcionada: 18 testes unitários em dois arquivos e 16 testes E2E
+  de configuração aprovados. O E2E executou em
+  `pricing_configuration_e2e_a6c78af2dd7cb1e5`, criado somente para a suíte
+  após aplicação das 16 migrations e removido ao final. O runner também
+  comprovou a remoção de um segundo banco após erro intencional. A suíte
+  unitária completa aprovou 116 testes em 9 arquivos; typecheck, lint e build da
+  API também passaram.
+- Limites: perfis/deduções concluem o restante do Marco 3B; composição,
+  simulação, snapshot, versões e histórico pertencem ao Marco 3C; adoção,
+  produto e `directCost` pertencem ao Marco 3D; a web permanece no Marco 4.
+- Nenhum schema, migration, motor, fórmula, dependência ou arquivo web foi
+  alterado. Nenhum commit foi criado.
+
+```text
+pnpm --filter @meinager/api typecheck
+pnpm --filter @meinager/api lint
+pnpm --filter @meinager/api exec vitest run src/pricing/services/pricing-configuration.service.spec.ts src/pricing/errors/pricing-exception.filter.spec.ts
+PRICING_TEST_CONFIRM_DISPOSABLE=YES node apps/api/test/pricing/configuration-e2e-postgres.cjs
+pnpm --filter @meinager/api test
+pnpm --filter @meinager/api build
+pnpm exec prettier --check docs
+git diff --check
+git diff --stat
+git status --short
+```

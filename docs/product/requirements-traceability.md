@@ -24,6 +24,11 @@ migrations e banco atualizado, sem comprovar outros ambientes. Essa evidência
 estrutural não promove requisitos que ainda dependem de services, API, auditoria
 da aplicação ou interface.
 
+Revisão do Marco 3B.1: 05/10/2026. Os endpoints de configuração organizacional
+possuem service versionado, autorização, isolamento, validação decimal,
+auditoria atômica e testes de concorrência. A evidência é limitada à
+configuração; perfis e os demais casos de uso da API permanecem pendentes.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -58,10 +63,12 @@ A API possui módulos para:
 - orçamentos;
 - pedidos;
 - fluxos configuráveis de pedidos;
-- saúde da aplicação.
+- saúde da aplicação;
+- configuração organizacional de precificação.
 
 A auditoria utiliza o modelo `AuditLog` e gravações nos services dos módulos;
-não existe módulo Nest específico de auditoria em `apps/api/src/app.module.ts`.
+não existe módulo Nest específico de auditoria. `PricingConfigurationService`
+também grava seu evento na transação da mutação.
 
 ### Frontend
 
@@ -103,7 +110,8 @@ A fundação persistente de precificação está versionada no commit `9427866`,
 `apps/api/prisma/schema.prisma` e na migration
 `20261003181002_add_pricing_persistence`. A aplicação da migration comprovada em
 04/10/2026 limita-se ao banco local de desenvolvimento. Os casos de uso ainda
-não possuem módulo Nest, services ou endpoints.
+pendentes não são promovidos pela entrega dos endpoints de configuração do
+Marco 3B.1.
 
 ## 4. Situação dos módulos gerais
 
@@ -167,10 +175,14 @@ adicionada depois; endpoints, services e interface continuam ausentes.
 
 ### Configuração da organização
 
-| Critérios                     | Estado    | Base reutilizável                                                                  | Implementação esperada                          |
-| ----------------------------- | --------- | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `PREC-CA-001` a `PREC-CA-005` | `PENDING` | Modelos de configuração/revisão e guards SQL; organização, autorização e auditoria | Service, API, autorização e testes funcionais   |
-| `PREC-RN-001` a `PREC-RN-005` | `PENDING` | Fundação multi-tenant e configuração versionada no schema                          | Orquestração, validação runtime e contrato HTTP |
+| Critérios                     | Estado        | Base reutilizável                                                                                        | Implementação esperada                                                |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `PREC-CA-001` a `PREC-CA-004` | `IMPLEMENTED` | `PricingConfigurationService`, controller e E2E de criação, revisão, isolamento e faturamento zero       | Interface ainda pendente; cálculo derivado pertence à etapa posterior |
+| `PREC-CA-005`                 | `PARTIAL`     | Valores mensais são persistidos e o motor sabe derivar a taxa                                            | Exposição do percentual derivado pela API e interface pendente        |
+| `PREC-RN-001`                 | `PARTIAL`     | Filtro pela organização da sessão, relações compostas e E2E da configuração com duas organizações        | Comprovar isolamento nos demais recursos da API                       |
+| `PREC-RN-002` e `PREC-RN-003` | `PARTIAL`     | Patch parcial de proveniência testado, com origem por valor alterado e confirmador derivado da sessão    | Perfis, integração financeira e uso no snapshot pendentes             |
+| `PREC-RN-004`                 | `IMPLEMENTED` | Vigência definida pelo backend, revisões imutáveis e preservação dos snapshots comerciais por guards SQL | Reutilizar a revisão vigente nas versões do Marco 3C                  |
+| `PREC-RN-005`                 | `PARTIAL`     | Faturamento zero é rejeitado e a proveniência aceita período e origem                                    | Garantir janela e origem do faturamento na configuração ou snapshot   |
 
 ### Perfis de deduções
 
@@ -275,11 +287,11 @@ comprovam o comportamento atual, mas não a integração futura.
 
 ### Permissões
 
-| Critérios                     | Estado    | Base reutilizável             | Implementação esperada             |
-| ----------------------------- | --------- | ----------------------------- | ---------------------------------- |
-| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | Guards e papéis existentes    | Aplicar matriz aos novos endpoints |
-| Acesso não autenticado        | `PARTIAL` | `SessionAuthGuard`            | Cobrir endpoints novos             |
-| Isolamento organizacional     | `PARTIAL` | Padrão existente nos serviços | Testar todos os recursos           |
+| Critérios                     | Estado    | Base reutilizável                                                  | Implementação esperada                                 |
+| ----------------------------- | --------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
+| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | Matriz completa comprovada nos endpoints de configuração por E2E   | Aplicar aos perfis e demais endpoints                  |
+| Acesso não autenticado        | `PARTIAL` | `401 AUTHENTICATION_REQUIRED` testado em GET/PATCH de configuração | Cobrir os endpoints posteriores                        |
+| Isolamento organizacional     | `PARTIAL` | Configuração consulta e altera somente a organização da sessão     | Testar perfis, composição, versões, histórico e adoção |
 
 ### Precisão e arredondamento
 
@@ -298,12 +310,12 @@ comprovam o comportamento atual, mas não a integração futura.
 
 ### Auditoria e segurança
 
-| Critérios                     | Estado    | Base reutilizável                                               | Implementação esperada                                |
-| ----------------------------- | --------- | --------------------------------------------------------------- | ----------------------------------------------------- |
-| `PREC-CA-058` e `PREC-CA-059` | `PARTIAL` | `AuditLog`, modelo imutável `PricingPriceAdoption` e guards SQL | Criar os dois registros vinculados no service         |
-| `PREC-CA-060`                 | `PENDING` | Validação de DTOs e serviços                                    | Ignorar resultados do cliente                         |
-| `PREC-CA-061`                 | `PARTIAL` | Multi-tenancy existente                                         | Validar todos os relacionamentos                      |
-| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL` | `PricingCalculatorError`, EX-006 a EX-010 e negativos por campo | Mensagens/formulários web e integração HTTP pendentes |
+| Critérios                     | Estado    | Base reutilizável                                                                                | Implementação esperada                                |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `PREC-CA-058` e `PREC-CA-059` | `PARTIAL` | Configuração gera auditoria atômica testada; modelo imutável `PricingPriceAdoption` e guards SQL | Auditar perfis e criar adoção/AuditLog vinculados     |
+| `PREC-CA-060`                 | `PENDING` | Validação de DTOs e serviços                                                                     | Ignorar resultados do cliente                         |
+| `PREC-CA-061`                 | `PARTIAL` | Isolamento da configuração comprovado com organização derivada da sessão                         | Validar os relacionamentos dos demais recursos        |
+| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL` | `PricingCalculatorError`, EX-006 a EX-010 e negativos por campo                                  | Mensagens/formulários web e integração HTTP pendentes |
 
 ## 6. Rotas atuais que devem ser preservadas
 
