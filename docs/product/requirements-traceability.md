@@ -34,6 +34,21 @@ autorização, isolamento, auditoria, no-op e concorrência comprovados em banco
 descartável. A integração desses perfis ao cálculo e ao snapshot permanece
 pendente no Marco 3C.
 
+Revisão do Marco 3C.1: 06/10/2026. Composições de produto possuem consulta e
+substituição completa com revisão esperada, componentes ordenados, referências
+de catálogo validadas, isolamento, auditoria e concorrência comprovados em banco
+descartável. Simulação, snapshots, versões, histórico e adoção permanecem
+pendentes nas próximas subetapas do Marco 3. A validação aprovou 10 testes
+unitários direcionados, 40 E2E e 139 testes na suíte unitária completa da API.
+
+Correção de serialização do Marco 3C.1: 07/10/2026. Um helper compartilhado
+passou a serializar `Prisma.Decimal` com `toFixed()` sem precisão fixa em
+configuração, perfis e composição. Testes unitários e E2E comprovam que
+`0.00000001` persiste, retorna sem expoente e pode ser reenviado como no-op sem
+nova revisão ou auditoria. A validação atual aprovou 36 testes unitários
+direcionados, 43 E2E e 140 testes em 13 arquivos na suíte unitária completa da
+API.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -70,6 +85,8 @@ A API possui módulos para:
 - fluxos configuráveis de pedidos;
 - saúde da aplicação;
 - configuração organizacional de precificação.
+- perfis de venda e deduções de precificação;
+- composições de custos de produtos.
 
 A auditoria utiliza o modelo `AuditLog` e gravações nos services dos módulos;
 não existe módulo Nest específico de auditoria. `PricingConfigurationService`
@@ -115,8 +132,8 @@ A fundação persistente de precificação está versionada no commit `9427866`,
 `apps/api/prisma/schema.prisma` e na migration
 `20261003181002_add_pricing_persistence`. A aplicação da migration comprovada em
 04/10/2026 limita-se ao banco local de desenvolvimento. Os casos de uso ainda
-pendentes não são promovidos pela entrega dos endpoints de configuração do
-Marco 3B.1.
+pendentes não são promovidos pelas APIs já entregues de configuração, perfis e
+composição.
 
 ## 4. Situação dos módulos gerais
 
@@ -191,20 +208,21 @@ adicionada depois; endpoints, services e interface continuam ausentes.
 
 ### Perfis de deduções
 
-| Critérios                     | Estado        | Base reutilizável                                                                                    | Implementação esperada                            |
-| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `PREC-CA-006` a `PREC-CA-008` | `IMPLEMENTED` | Criação, nomes não vazios, deduções extensíveis, revisão e desativação comprovadas por unitários/E2E | Interface web pendente, sem invalidar a API       |
-| `PREC-CA-009`                 | `PARTIAL`     | Endpoints ocultam perfil externo como inexistente e listagem isola organizações                      | Revalidar o perfil em composição e simulação      |
-| `PREC-RN-021`                 | `PARTIAL`     | Deduções percentuais individualizadas na API e suportadas pelo motor                                 | Integrar perfil selecionado ao cálculo/snapshot   |
-| `PREC-RN-022`                 | `IMPLEMENTED` | Perfis organizacionais versionados para canais, com nomes e percentuais configuráveis                | Interface web pendente                            |
-| `PREC-RN-023`                 | `PARTIAL`     | Revisões preservam cada dedução histórica e o motor mantém a coleção individual                      | Congelar as deduções efetivas no snapshot oficial |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                | Implementação esperada                            |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `PREC-CA-006` a `PREC-CA-008` | `IMPLEMENTED` | Criação, nomes não vazios, deduções extensíveis, revisão e desativação comprovadas por unitários/E2E                             | Interface web pendente, sem invalidar a API       |
+| `PREC-CA-009`                 | `IMPLEMENTED` | Perfis externos são ocultados como inexistentes; composição revalida perfil sob lock e o E2E rejeita perfil de outra organização | Preservar a regra na simulação                    |
+| `PREC-RN-021`                 | `PARTIAL`     | Deduções percentuais individualizadas na API e suportadas pelo motor                                                             | Integrar perfil selecionado ao cálculo/snapshot   |
+| `PREC-RN-022`                 | `IMPLEMENTED` | Perfis organizacionais versionados para canais, com nomes e percentuais configuráveis                                            | Interface web pendente                            |
+| `PREC-RN-023`                 | `PARTIAL`     | Revisões preservam cada dedução histórica e o motor mantém a coleção individual                                                  | Congelar as deduções efetivas no snapshot oficial |
 
 ### Composição de custos
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                          | Implementação esperada                                      |
-| ----------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `PREC-CA-010` a `PREC-CA-016` | `PARTIAL` | Modelos de composição/componentes e guards; categorias, custos copiados e validação no motor; specs fracionários/negativos | Service, posse/resolução dos insumos, API e interface       |
-| `PREC-RN-006` a `PREC-RN-011` | `PARTIAL` | Estruturas persistentes; `calculator/pricing-calculator.ts` e specs de opcionais, ordem e memória                          | Consulta de catálogo e criação validada de versões/snapshot |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                     | Implementação esperada                                |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `PREC-CA-010` e `PREC-CA-011` | `IMPLEMENTED` | API cria e substitui composição completa; E2E cobre as oito categorias, coleção ordenada e componentes `MANUAL`, `COPIED` e `CATALOG` | Interface web pendente                                |
+| `PREC-CA-012` a `PREC-CA-016` | `PARTIAL`     | Coleção vazia, decimais/negativos e catálogo são validados na composição; multiplicação já é testada no motor                         | Executar cálculo e congelar custo efetivo no snapshot |
+| `PREC-RN-006` a `PREC-RN-011` | `PARTIAL`     | Service resolve e valida componentes manuais, copiados e de catálogo; motor cobre opcionais, ordem e negativos                        | Criar cálculo validado, versão e snapshot imutável    |
 
 ### Mão de obra
 
@@ -278,7 +296,7 @@ adicionada depois; endpoints, services e interface continuam ausentes.
 | `PREC-CA-042`                 | `PENDING` | `apps/api/src/inventory/inventory.service.ts`; domínio de precificação ausente em `app.module.ts` | Implementar operação de precificação e testar ausência de movimentações      |
 | `PREC-CA-043`                 | `PENDING` | `apps/api/src/finance/finance.module.ts`; domínio de precificação ausente em `app.module.ts`      | Implementar operação de precificação e testar ausência de lançamentos/baixas |
 | `PREC-RN-039` a `PREC-RN-041` | `FUTURE`  | Módulos financeiros existentes                                                                    | Agregados financeiros posteriores                                            |
-| `PREC-RN-043` e `PREC-RN-044` | `PARTIAL` | Limites de domínio existentes                                                                     | Preservar ao implementar                                                     |
+| `PREC-RN-043` e `PREC-RN-044` | `PARTIAL` | E2E comprova que criar/substituir composição não move estoque nem cria lançamento financeiro      | Repetir a prova para simulação e versão                                      |
 
 ### Fluxos de pedidos
 
@@ -295,11 +313,11 @@ comprovam o comportamento atual, mas não a integração futura.
 
 ### Permissões
 
-| Critérios                     | Estado    | Base reutilizável                                                  | Implementação esperada                                 |
-| ----------------------------- | --------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
-| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | Matriz completa comprovada nos endpoints de configuração por E2E   | Aplicar aos perfis e demais endpoints                  |
-| Acesso não autenticado        | `PARTIAL` | `401 AUTHENTICATION_REQUIRED` testado em GET/PATCH de configuração | Cobrir os endpoints posteriores                        |
-| Isolamento organizacional     | `PARTIAL` | Configuração consulta e altera somente a organização da sessão     | Testar perfis, composição, versões, histórico e adoção |
+| Critérios                     | Estado    | Base reutilizável                                                                          | Implementação esperada                           |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | Matriz aplicável comprovada em configuração, perfis e composição por E2E                   | Aplicar a simulação, versões, histórico e adoção |
+| Acesso não autenticado        | `PARTIAL` | `401 AUTHENTICATION_REQUIRED` testado em configuração, perfis e composição                 | Cobrir os endpoints posteriores                  |
+| Isolamento organizacional     | `PARTIAL` | Configuração, perfis e composição usam a organização da sessão e ocultam recursos externos | Testar versões, histórico e adoção               |
 
 ### Precisão e arredondamento
 
@@ -318,12 +336,12 @@ comprovam o comportamento atual, mas não a integração futura.
 
 ### Auditoria e segurança
 
-| Critérios                     | Estado    | Base reutilizável                                                                                | Implementação esperada                                |
-| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| `PREC-CA-058` e `PREC-CA-059` | `PARTIAL` | Configuração gera auditoria atômica testada; modelo imutável `PricingPriceAdoption` e guards SQL | Auditar perfis e criar adoção/AuditLog vinculados     |
-| `PREC-CA-060`                 | `PENDING` | Validação de DTOs e serviços                                                                     | Ignorar resultados do cliente                         |
-| `PREC-CA-061`                 | `PARTIAL` | Isolamento da configuração comprovado com organização derivada da sessão                         | Validar os relacionamentos dos demais recursos        |
-| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL` | `PricingCalculatorError`, EX-006 a EX-010 e negativos por campo                                  | Mensagens/formulários web e integração HTTP pendentes |
+| Critérios                     | Estado    | Base reutilizável                                                                                                      | Implementação esperada                                |
+| ----------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `PREC-CA-058` e `PREC-CA-059` | `PARTIAL` | Configuração, perfis e composição geram auditoria atômica testada; modelo imutável `PricingPriceAdoption` e guards SQL | Criar adoção/AuditLog vinculados                      |
+| `PREC-CA-060`                 | `PENDING` | Validação de DTOs e serviços                                                                                           | Ignorar resultados do cliente                         |
+| `PREC-CA-061`                 | `PARTIAL` | Configuração, perfil, produto-alvo e insumos de composição são validados pela organização da sessão                    | Validar configuração/versão no cálculo e na adoção    |
+| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL` | `PricingCalculatorError`, EX-006 a EX-010 e negativos por campo                                                        | Mensagens/formulários web e integração HTTP pendentes |
 
 ## 6. Rotas atuais que devem ser preservadas
 

@@ -13,6 +13,7 @@ import {
   PricingErrorCode,
   PricingHttpException,
 } from '../errors/pricing-http.exception.js';
+import { serializePricingDecimal } from '../pricing-decimal-serialization.js';
 
 const deductionSelect = {
   id: true,
@@ -316,7 +317,7 @@ export class PricingProfilesService {
       position: index + 1,
       name: item.name,
       category: item.category,
-      rate: new Prisma.Decimal(item.rate).toString(),
+      rate: serializePricingDecimal(new Prisma.Decimal(item.rate)),
       origin: item.origin,
       originDetails: {
         schemaVersion: 1,
@@ -336,7 +337,7 @@ export class PricingProfilesService {
       position: item.position,
       name: item.name,
       category: item.category,
-      rate: item.rate.toString(),
+      rate: serializePricingDecimal(item.rate),
       origin: item.origin,
       originDetails: item.originDetails as Prisma.InputJsonObject,
     };
@@ -469,7 +470,7 @@ export class PricingProfilesService {
                 position: item.position,
                 name: item.name,
                 category: item.category,
-                rate: item.rate.toString(),
+                rate: serializePricingDecimal(item.rate),
                 origin: item.origin,
                 originDetails: item.originDetails,
                 createdAt: item.createdAt.toISOString(),

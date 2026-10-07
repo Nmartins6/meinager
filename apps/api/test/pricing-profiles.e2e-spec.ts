@@ -301,6 +301,61 @@ describe('Pricing sales profiles (e2e)', () => {
     expect(stale.body.code).toBe('PRICING_REVISION_CONFLICT');
   });
 
+  it('round-trips the smallest deduction rate without exponent or a new revision', async () => {
+    const deduction = {
+      name: 'Taxa mínima',
+      category: 'TINY',
+      rate: '0.00000001',
+      origin: 'MANUAL',
+    };
+    const created = await request(server())
+      .post('/api/pricing/profiles')
+      .set('Cookie', primary.cookie)
+      .send({ name: `Tiny ${randomUUID()}`, deductions: [deduction] })
+      .expect(201);
+    expect(created.body.currentRevision.deductions[0].rate).toBe('0.00000001');
+    expect(JSON.stringify(created.body)).not.toMatch(/[eE]-8/);
+
+    const persisted = await prisma.pricingDeduction.findFirstOrThrow({
+      where: {
+        organizationId: primary.organizationId,
+        profileRevisionId: created.body.currentRevision.id,
+      },
+    });
+    expect(persisted.rate.toFixed()).toBe('0.00000001');
+
+    const read = await request(server())
+      .get(`/api/pricing/profiles/${created.body.id}`)
+      .set('Cookie', primary.cookie)
+      .expect(200);
+    expect(read.body.currentRevision.deductions[0].rate).toBe('0.00000001');
+    const auditsBefore = await prisma.auditLog.count({
+      where: { entityId: created.body.id },
+    });
+    const resent = await request(server())
+      .patch(`/api/pricing/profiles/${created.body.id}`)
+      .set('Cookie', primary.cookie)
+      .send({
+        expectedRevision: read.body.currentRevision.revision,
+        deductions: [
+          {
+            ...deduction,
+            rate: read.body.currentRevision.deductions[0].rate,
+          },
+        ],
+      })
+      .expect(200);
+    expect(resent.body.currentRevision.id).toBe(read.body.currentRevision.id);
+    expect(
+      await prisma.pricingSalesProfileRevision.count({
+        where: { profileId: created.body.id },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.auditLog.count({ where: { entityId: created.body.id } }),
+    ).toBe(auditsBefore);
+  });
+
   it('isolates organizations and makes foreign resources indistinguishable', async () => {
     const created = await createProfile('foreign', foreign);
     const missing = randomUUID();

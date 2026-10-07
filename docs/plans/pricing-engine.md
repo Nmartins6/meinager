@@ -73,11 +73,13 @@ fontes oficiais.
       somente documentação).
 - [x] Implementar base HTTP, erros locais e configuração organizacional
       versionada (Marco 3B.1, 05/10/2026).
-- [ ] Implementar os services e endpoints da API de precificação (Marcos 3B a
-      3D).
+- [ ] Implementar todos os services e endpoints da API de precificação (Marcos
+      3B a 3D; configuração, perfis e composição já concluídos).
 - [x] Implementar perfis de deduções e concluir o Marco 3B (Marco 3B.2,
       06/10/2026).
-- [ ] Implementar composição e simulação.
+- [x] Implementar consulta e substituição completa da composição (Marco 3C.1,
+      06/10/2026).
+- [ ] Implementar simulação e snapshot runtime.
 - [ ] Implementar versões, histórico e adoção de preço.
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
@@ -619,6 +621,36 @@ rastreabilidade; não representam o estado atual do marco.
   externo indistinguível, paginação/filtro, revisão imutável, auditoria,
   validação, no-op e concorrência entre updates e entre update/desativação.
 
+### Marco 3C.1 — Composição de custos — 06/10/2026
+
+- `ProductPricingController` e `PricingCompositionsService` expõem consulta e
+  substituição completa em `/api/pricing/products/:productId/composition`. A
+  primeira gravação cria a revisão 1; cada mudança efetiva incrementa uma única
+  revisão, substitui os componentes na ordem recebida e grava a auditoria na
+  mesma transação.
+- Componentes `MANUAL` e `COPIED` exigem `storedUnitCost` e não aceitam produto
+  de origem. Componentes `CATALOG` exigem produto-fonte ativo, da mesma
+  organização, com unidade correspondente e `directCost`; esse custo é
+  resolvido sob lock e não é persistido como cache na composição.
+- Perfil, produto-alvo e produtos-fonte são bloqueados em ordem determinística.
+  A composição e `expectedRevision` são relidos após os locks. Estado
+  semanticamente idêntico retorna `200` sem revisão ou auditoria; revisão
+  obsoleta continua retornando `409`.
+- DTOs aceitam somente strings decimais simples dentro da precisão persistente,
+  rejeitam `number`, expoente, sinal positivo, negativos, `NaN`, `Infinity`,
+  campos protegidos e estruturas aninhadas incompatíveis. Posições, organização,
+  ator e confirmação de proveniência são definidos pelo backend.
+- A revisão de 07/10/2026 identificou que `Prisma.Decimal.toString()` podia
+  emitir expoente para valores válidos como `0.00000001`. Configuração, perfis e
+  composição passaram a usar um serializador compartilhado baseado em
+  `toFixed()` sem precisão fixa, tanto na canonicalização quanto nas respostas,
+  sem alterar a configuração global do Decimal.
+- O E2E descartável comprova autorização, isolamento, referências externas
+  indistinguíveis, ordenação, criação, substituição vazia, no-op, conflito,
+  concorrência real e ausência de movimentação de estoque ou lançamento
+  financeiro. Simulação, snapshot, versão e adoção permanecem fora desta
+  subetapa.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -796,6 +828,23 @@ do Marco 5.
   pertencem à transação da mutação e registram somente IDs, revisões, estado e
   nomes dos campos alterados, sem taxas ou coleções completas.
 
+### Composição versionada — Marco 3C.1
+
+- `PUT /api/pricing/products/:productId/composition` representa o estado
+  completo editável. Componentes são recriados em posições contíguas derivadas
+  pelo backend; revisões anteriores permanecem preservadas pelas versões de
+  cálculo futuras, não por cópias editáveis da composição.
+- `OWNER`, `ADMIN` e `OPERATIONS` consultam e alteram composições; `FINANCE`
+  possui somente leitura interna; `VIEWER` não recebe o contrato de custos.
+- Locks seguem perfil por UUID e produtos por UUID, incluindo alvo e fontes de
+  catálogo. Relações externas ou inexistentes usam erros indistinguíveis e a
+  organização vem exclusivamente da sessão.
+- `storedUnitCost` é fonte apenas para `MANUAL` e `COPIED`. `CATALOG` resolve o
+  `Product.directCost` vigente e deixa `storedUnitCost` nulo; o custo efetivo só
+  será congelado pelo snapshot de uma versão no restante do Marco 3C.
+- Auditoria de alteração registra identidade, revisões e contagem de
+  componentes, sem duplicar custos internos. Um no-op semântico não gera evento.
+
 ### Diretrizes confirmadas na auditoria — 02/10/2026
 
 - Manter os contratos financeiros como strings decimais; `number` fica
@@ -839,7 +888,7 @@ para rastreabilidade, mas o motor puro não consulta nem valida posse no banco.
 | Motor puro — Marco 1                  | `margin-divisor-v1`, validação matemática, memória e erros tipados      | `apps/api/src/pricing/calculator/pricing-calculator.ts`, `pricing-calculator.types.ts`, `pricing-calculator.errors.ts`, `pricing-calculator.spec.ts`; adaptador `pricing-decimal.ts` somente se necessário                                                      |
 | Aplicação — Marco 3                   | Orquestrar configuração/perfis, composição, simulação, versões e adoção | Estrutura aprovada na ADR-007: `pricing.module.ts`, `contracts/`, `dto/`, `errors/`, `controllers/`, `services/` e `pricing-locks.ts`                                                                                                                           |
 | Configuração organizacional — Marco 2 | Parâmetros com vigência/origem e perfis organizacionais                 | Modelos implementados em `apps/api/prisma/schema.prisma`: `OrganizationPricingConfiguration`, revisões, `PricingSalesProfile`, revisões e `PricingDeduction`; services planejados na ADR-007                                                                    |
-| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis   | Modelos implementados `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion`, projeções e `PricingPriceAdoption`; referência opcional do produto implementada, casos de uso ainda pendentes                                               |
+| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis   | Modelos implementados `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion`, projeções e `PricingPriceAdoption`; API da composição concluída no Marco 3C.1; cálculo, versões, histórico e adoção pendentes                               |
 | Web — Marco 4                         | Contratos Zod, queries/mutations e formulários específicos              | `apps/web/src/features/pricing/pricing-api.ts`, `use-*-query.ts`, `use-*-mutation.ts`, `pricing-composition-form.tsx`, `pricing-configuration-form.tsx`, `pricing-history.tsx`; `apps/web/src/pages/product-pricing-page.tsx`, `pricing-configuration-page.tsx` |
 | Integração comercial — Marco 5        | Validar/capturar origem e copiar snapshot sem custos                    | Extensões localizadas em `apps/api/src/quotes/quotes.service.ts`, `apps/api/src/orders/orders.service.ts`, DTOs e `apps/web/src/features/quotes/`; sem alterações nos fluxos                                                                                    |
 | Validação posterior                   | Permissões, isolamento, imutabilidade, concorrência e não regressão     | `apps/api/test/pricing.e2e-spec.ts`, testes existentes de produtos/orçamentos/pedidos; specs web próximos às páginas/features                                                                                                                                   |
@@ -960,8 +1009,8 @@ Existem funcionalidades web equivalentes.
 O schema possui a fundação de precificação definida na ADR-006 e versionada no
 commit `9427866`. A migration correspondente foi aplicada somente ao banco local
 de desenvolvimento na validação de 04/10/2026; não há afirmação sobre outros
-ambientes. O módulo funcional, os services, os endpoints e a interface ainda não
-existem.
+ambientes. O módulo HTTP, a configuração, os perfis e a composição existem.
+Simulação, versões, histórico, adoção e interface ainda não existem.
 
 Produtos, orçamentos e pedidos existentes devem permanecer válidos após as
 migrations.
@@ -1808,3 +1857,24 @@ git status --short
   composição, cálculo ou snapshot; esses itens permanecem no Marco 3C.
 - Nenhum schema, migration, banco normal, dependência, calculador, fórmula,
   produto ou arquivo web foi alterado. Nenhum commit foi criado.
+
+### Marco 3C.1 concluído — 06/10/2026
+
+- Entrega: `GET` e `PUT` da composição de custos por produto, com substituição
+  completa, revisão esperada, no-op semântico, componentes ordenados e fontes
+  `MANUAL`, `COPIED` e `CATALOG` validadas sob locks determinísticos.
+- Evidência direcionada: 36 testes unitários em quatro arquivos e 43 testes E2E
+  em três arquivos, incluindo autorização, isolamento, validação e round-trip
+  decimal, catálogo, auditoria, ausência de efeitos em estoque/financeiro e
+  concorrência.
+  O runner aplicou as 16 migrations somente no banco PostgreSQL descartável
+  `pricing_configuration_e2e_2603d261c812448e` e o removeu no `finally`; a
+  prova separada de remoção após falha controlada também passou. A suíte
+  unitária completa da API aprovou 140 testes em 13 arquivos; typecheck, lint e
+  build passaram.
+- Limites: a composição guarda somente entradas editáveis. Não executa o motor,
+  não congela `effectiveUnitCost`, não cria snapshot ou versão e não altera o
+  preço comercial. Essas responsabilidades permanecem nas próximas subetapas do
+  Marco 3C e no Marco 3D.
+- Nenhum schema, migration, banco normal, dependência, fórmula, produto ou
+  arquivo web foi alterado. Nenhum commit foi criado.

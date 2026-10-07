@@ -152,6 +152,7 @@ async function main() {
           './vitest.config.e2e.ts',
           'test/pricing-configuration.e2e-spec.ts',
           'test/pricing-profiles.e2e-spec.ts',
+          'test/pricing-compositions.e2e-spec.ts',
         ],
         {
           DATABASE_URL: databaseUrl,

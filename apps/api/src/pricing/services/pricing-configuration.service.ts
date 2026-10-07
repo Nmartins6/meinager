@@ -12,6 +12,7 @@ import {
   PricingErrorCode,
   PricingHttpException,
 } from '../errors/pricing-http.exception.js';
+import { serializePricingDecimal } from '../pricing-decimal-serialization.js';
 
 const pricingConfigurationRevisionSelect = {
   id: true,
@@ -348,18 +349,32 @@ export class PricingConfigurationService {
     return {
       currency: current?.currency ?? 'BRL',
       fixedCostMode: current?.fixedCostMode ?? null,
-      fixedCostRate: current?.fixedCostRate?.toString() ?? null,
-      monthlyFixedCost: current?.monthlyFixedCost?.toString() ?? null,
-      averageMonthlyRevenue: current?.averageMonthlyRevenue?.toString() ?? null,
-      monthlyLaborCost: current?.monthlyLaborCost?.toString() ?? null,
-      productiveHours: current?.productiveHours?.toString() ?? null,
-      defaultDesiredMargin: current?.defaultDesiredMargin?.toString() ?? null,
+      fixedCostRate: current?.fixedCostRate
+        ? serializePricingDecimal(current.fixedCostRate)
+        : null,
+      monthlyFixedCost: current?.monthlyFixedCost
+        ? serializePricingDecimal(current.monthlyFixedCost)
+        : null,
+      averageMonthlyRevenue: current?.averageMonthlyRevenue
+        ? serializePricingDecimal(current.averageMonthlyRevenue)
+        : null,
+      monthlyLaborCost: current?.monthlyLaborCost
+        ? serializePricingDecimal(current.monthlyLaborCost)
+        : null,
+      productiveHours: current?.productiveHours
+        ? serializePricingDecimal(current.productiveHours)
+        : null,
+      defaultDesiredMargin: current?.defaultDesiredMargin
+        ? serializePricingDecimal(current.defaultDesiredMargin)
+        : null,
       parameterOrigins: this.readOrigins(current?.parameterOrigins),
     };
   }
 
   private canonicalDecimal(value: string | null): string | null {
-    return value === null ? null : new Prisma.Decimal(value).toString();
+    return value === null
+      ? null
+      : serializePricingDecimal(new Prisma.Decimal(value));
   }
 
   private normalizeAndValidateFixedCosts(
@@ -703,13 +718,25 @@ export class PricingConfigurationService {
         effectiveFrom: revision.effectiveFrom.toISOString(),
         currency: revision.currency,
         fixedCostMode: revision.fixedCostMode,
-        fixedCostRate: revision.fixedCostRate?.toString() ?? null,
-        monthlyFixedCost: revision.monthlyFixedCost?.toString() ?? null,
+        fixedCostRate: revision.fixedCostRate
+          ? serializePricingDecimal(revision.fixedCostRate)
+          : null,
+        monthlyFixedCost: revision.monthlyFixedCost
+          ? serializePricingDecimal(revision.monthlyFixedCost)
+          : null,
         averageMonthlyRevenue:
-          revision.averageMonthlyRevenue?.toString() ?? null,
-        monthlyLaborCost: revision.monthlyLaborCost?.toString() ?? null,
-        productiveHours: revision.productiveHours?.toString() ?? null,
-        defaultDesiredMargin: revision.defaultDesiredMargin?.toString() ?? null,
+          revision.averageMonthlyRevenue !== null
+            ? serializePricingDecimal(revision.averageMonthlyRevenue)
+            : null,
+        monthlyLaborCost: revision.monthlyLaborCost
+          ? serializePricingDecimal(revision.monthlyLaborCost)
+          : null,
+        productiveHours: revision.productiveHours
+          ? serializePricingDecimal(revision.productiveHours)
+          : null,
+        defaultDesiredMargin: revision.defaultDesiredMargin
+          ? serializePricingDecimal(revision.defaultDesiredMargin)
+          : null,
         parameterOrigins: revision.parameterOrigins,
         createdAt: revision.createdAt.toISOString(),
       },

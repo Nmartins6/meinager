@@ -112,12 +112,14 @@ somente ao banco local de desenvolvimento; a validação local mostrou 16
 migrations e banco atualizado. Não há confirmação sobre outros ambientes. O
 schema, as relações e os guards SQL existem. Os Marcos 3B.1 e 3B.2 implementaram
 o módulo HTTP, o contrato local de erros, a configuração organizacional e os
-perfis de venda com deduções versionadas. Essas entregas usam revisão esperada,
-locks, auditoria atômica, isolamento e strings decimais validadas.
+perfis de venda com deduções versionadas. O Marco 3C.1 acrescentou consulta e
+substituição completa da composição de custos de cada produto, com componentes
+manuais, copiados ou referenciados no catálogo. Essas entregas usam revisão
+esperada, locks, auditoria atômica, isolamento e strings decimais validadas.
 
 O contrato e a segurança da API foram definidos documentalmente no Marco 3A
-pela ADR-007. Composições, cálculos HTTP, snapshots runtime, versões, histórico
-de cálculos, adoções, integração com produtos e interface web continuam sem
+pela ADR-007. Cálculos HTTP, snapshots runtime, versões, histórico de cálculos,
+adoções, integração comercial com produtos e interface web continuam sem
 implementação.
 
 ## Processo de alteração

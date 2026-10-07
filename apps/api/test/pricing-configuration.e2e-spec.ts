@@ -632,6 +632,73 @@ describe('Pricing configuration (e2e)', () => {
     expect(stale.body.code).toBe('PRICING_REVISION_CONFLICT');
   });
 
+  it('round-trips the smallest rate without exponent, revision or extra audit', async () => {
+    const identity = await register('plain-decimal');
+    const input = validConfiguration(null);
+    input.fixedCostRate = '0.00000001';
+    input.defaultDesiredMargin = '0.00000001';
+
+    const created = await request(httpServer())
+      .patch('/api/pricing/configuration')
+      .set('Cookie', identity.cookie)
+      .send(input)
+      .expect(200);
+    expect(created.body.currentRevision.fixedCostRate).toBe('0.00000001');
+    expect(created.body.currentRevision.defaultDesiredMargin).toBe(
+      '0.00000001',
+    );
+    expect(JSON.stringify(created.body)).not.toMatch(/[eE]-8/);
+
+    const persisted =
+      await prisma.organizationPricingConfiguration.findUniqueOrThrow({
+        where: { organizationId: identity.organizationId },
+        include: { currentRevision: true },
+      });
+    expect(persisted.currentRevision?.fixedCostRate?.toFixed()).toBe(
+      '0.00000001',
+    );
+
+    const read = await request(httpServer())
+      .get('/api/pricing/configuration')
+      .set('Cookie', identity.cookie)
+      .expect(200);
+    expect(read.body.currentRevision.fixedCostRate).toBe('0.00000001');
+    const revisionsBefore =
+      await prisma.organizationPricingConfigurationRevision.count({
+        where: { organizationId: identity.organizationId },
+      });
+    const auditsBefore = await prisma.auditLog.count({
+      where: {
+        organizationId: identity.organizationId,
+        action: 'pricing_configuration.updated',
+      },
+    });
+
+    const resent = await request(httpServer())
+      .patch('/api/pricing/configuration')
+      .set('Cookie', identity.cookie)
+      .send({
+        expectedRevision: read.body.currentRevision.revision,
+        fixedCostRate: read.body.currentRevision.fixedCostRate,
+        defaultDesiredMargin: read.body.currentRevision.defaultDesiredMargin,
+      })
+      .expect(200);
+    expect(resent.body.currentRevision.id).toBe(read.body.currentRevision.id);
+    expect(
+      await prisma.organizationPricingConfigurationRevision.count({
+        where: { organizationId: identity.organizationId },
+      }),
+    ).toBe(revisionsBefore);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId: identity.organizationId,
+          action: 'pricing_configuration.updated',
+        },
+      }),
+    ).toBe(auditsBefore);
+  });
+
   it('serializes concurrent initial creation so exactly one request wins', async () => {
     const responses = await Promise.all([
       request(httpServer())
