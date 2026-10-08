@@ -79,7 +79,9 @@ fontes oficiais.
       06/10/2026).
 - [x] Implementar consulta e substituição completa da composição (Marco 3C.1,
       06/10/2026).
-- [ ] Implementar simulação e snapshot runtime.
+- [x] Implementar simulação autoritativa transitória (Marco 3C.2,
+      07/10/2026).
+- [ ] Implementar snapshot runtime para criação de versões.
 - [ ] Implementar versões, histórico e adoção de preço.
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
@@ -651,6 +653,31 @@ rastreabilidade; não representam o estado atual do marco.
   financeiro. Simulação, snapshot, versão e adoção permanecem fora desta
   subetapa.
 
+### Marco 3C.2 — Simulação autoritativa — 07/10/2026
+
+- `POST /api/pricing/products/:productId/simulations` executa o motor
+  `margin-divisor-v1` com entradas resolvidas pelo backend. O DTO usa a união
+  discriminada `source: "PERSISTED" | "DRAFT"`; `DRAFT` exige uma composição
+  completa com os mesmos campos editáveis do `PUT`, sem `expectedRevision`.
+- Toda a leitura ocorre em uma transação Prisma `REPEATABLE READ`, sem
+  `FOR UPDATE`: configuração e revisão atual, composição, perfil e deduções,
+  produto-alvo e produtos-fonte `CATALOG` pertencem à organização da sessão e
+  são observados na mesma visão. Um teste coordenado alterou `directCost`
+  durante a requisição e comprovou que a mudança só apareceu na execução
+  seguinte.
+- Custos `MANUAL`/`COPIED` vêm de `storedUnitCost`; `CATALOG` usa sempre o
+  `Product.directCost` atual, sem aceitar custo resolvido do cliente. A margem
+  da composição/rascunho precede a configuração, e a resposta identifica o
+  valor, a precedência e a origem efetivos.
+- A resposta contém referências e revisões utilizadas, entrada resolvida,
+  resultado completo, fórmula e análise de `adoptedPrice`. Decimais Prisma usam
+  `serializePricingDecimal`; o E2E confirmou `0.00000001` sem expoente e
+  reprodução autoritativa de EX-001 e EX-002.
+- A simulação não cria `PricingCalculationVersion`, snapshot persistido ou
+  `AuditLog`; não altera `Product.salePrice`, ponteiro de versão, composição,
+  estoque ou financeiro. O snapshot oficial v1 continua reservado para a
+  criação de versões.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -845,6 +872,18 @@ do Marco 5.
 - Auditoria de alteração registra identidade, revisões e contagem de
   componentes, sem duplicar custos internos. Um no-op semântico não gera evento.
 
+### Simulação autoritativa — Marco 3C.2
+
+- A fonte do cálculo é explicitada por `PERSISTED` ou `DRAFT`. O rascunho é
+  transitório e não aceita revisão, organização, ator, resultados, fórmula,
+  classificação, snapshot ou custo efetivo fornecido pelo cliente.
+- `OWNER`, `ADMIN` e `OPERATIONS` podem simular; `FINANCE` e `VIEWER` recebem
+  `PRICING_FORBIDDEN`. Recursos externos são filtrados pela organização da
+  sessão e usam os mesmos erros de recursos inexistentes.
+- Simulações usam `REPEATABLE READ` sem locks ou escrita. O resultado não é um
+  snapshot oficial nem uma versão histórica e não gera auditoria, conforme as
+  ADR-003 e ADR-007.
+
 ### Diretrizes confirmadas na auditoria — 02/10/2026
 
 - Manter os contratos financeiros como strings decimais; `number` fica
@@ -1009,8 +1048,9 @@ Existem funcionalidades web equivalentes.
 O schema possui a fundação de precificação definida na ADR-006 e versionada no
 commit `9427866`. A migration correspondente foi aplicada somente ao banco local
 de desenvolvimento na validação de 04/10/2026; não há afirmação sobre outros
-ambientes. O módulo HTTP, a configuração, os perfis e a composição existem.
-Simulação, versões, histórico, adoção e interface ainda não existem.
+ambientes. O módulo HTTP, a configuração, os perfis, a composição e a
+simulação autoritativa transitória existem. Snapshot oficial, versões,
+histórico, adoção e interface ainda não existem.
 
 Produtos, orçamentos e pedidos existentes devem permanecer válidos após as
 migrations.
@@ -1878,3 +1918,30 @@ git status --short
   Marco 3C e no Marco 3D.
 - Nenhum schema, migration, banco normal, dependência, fórmula, produto ou
   arquivo web foi alterado. Nenhum commit foi criado.
+
+### Marco 3C.2 concluído — 07/10/2026
+
+- Entrega: `POST /api/pricing/products/:productId/simulations`, com fonte
+  persistida ou rascunho, preço analisado opcional, resolução autoritativa de
+  configuração/perfil/catálogo e resultado integral do motor em strings
+  decimais simples.
+- Segurança: organização e ator vêm da sessão; somente `OWNER`, `ADMIN` e
+  `OPERATIONS` executam. Produto, perfil e catálogo externos são ocultados, e
+  campos calculados ou protegidos são rejeitados pelo DTO.
+- Consistência e efeitos: a leitura usa uma única transação `REPEATABLE READ`,
+  comprovada sob atualização concorrente de catálogo. Contagens antes/depois
+  confirmaram ausência de versão, auditoria, composição nova, estoque e
+  financeiro, além da preservação de `salePrice` e
+  `adoptedPricingVersionId`.
+- Evidência direcionada: 24 testes unitários em três arquivos e 54 testes E2E
+  de precificação em quatro arquivos. O runner aplicou as 16 migrations somente
+  no banco descartável `pricing_configuration_e2e_5f8bb41d60fb2758` e o
+  removeu; a prova de remoção após erro controlado também passou.
+- A suíte unitária completa da API aprovou 160 testes em 15 arquivos;
+  typecheck, lint e build também passaram.
+- Limites: não foi criado snapshot oficial, versão, histórico, adoção ou
+  interface. A próxima subetapa do Marco 3C deve criar e validar o snapshot v1
+  para versões persistidas sem reutilizar a resposta transitória como contrato
+  histórico.
+- Nenhum schema, migration, dependência, fórmula, preço de produto ou arquivo
+  web foi alterado. Nenhum commit foi criado.

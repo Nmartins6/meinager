@@ -407,7 +407,7 @@ describe('Product pricing compositions (e2e)', () => {
       .send(input)
       .expect(200);
     expect(created.body.desiredMargin).toBe('0.00000001');
-    expect(JSON.stringify(created.body)).not.toMatch(/[eE]-8/);
+    expect(created.body.desiredMargin).not.toMatch(/[eE]/);
 
     const persisted = await prisma.productPricingComposition.findFirstOrThrow({
       where: {

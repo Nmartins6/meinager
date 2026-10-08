@@ -153,6 +153,7 @@ async function main() {
           'test/pricing-configuration.e2e-spec.ts',
           'test/pricing-profiles.e2e-spec.ts',
           'test/pricing-compositions.e2e-spec.ts',
+          'test/pricing-simulations.e2e-spec.ts',
         ],
         {
           DATABASE_URL: databaseUrl,

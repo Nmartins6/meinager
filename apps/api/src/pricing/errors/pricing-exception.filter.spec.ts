@@ -75,4 +75,26 @@ describe('PricingExceptionFilter', () => {
     });
     expect(JSON.stringify(json.mock.calls)).not.toMatch(/P2004|constraint|SQL/);
   });
+
+  it('presents a generic P2028 as an internal error without Prisma details', () => {
+    const failure = Object.assign(
+      new Error('P2028 transaction closed while running secret SQL'),
+      {
+        code: 'P2028',
+        meta: { sql: 'SELECT pricing_secret' },
+      },
+    );
+
+    new PricingExceptionFilter().catch(failure, host);
+
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Não foi possível concluir a operação de precificação.',
+    });
+    expect(JSON.stringify(json.mock.calls)).not.toMatch(
+      /P2028|Prisma|stack|SQL|pricing_secret/,
+    );
+  });
 });

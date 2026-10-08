@@ -116,11 +116,15 @@ perfis de venda com deduções versionadas. O Marco 3C.1 acrescentou consulta e
 substituição completa da composição de custos de cada produto, com componentes
 manuais, copiados ou referenciados no catálogo. Essas entregas usam revisão
 esperada, locks, auditoria atômica, isolamento e strings decimais validadas.
+O Marco 3C.2 acrescentou a simulação autoritativa em
+`POST /api/pricing/products/:productId/simulations`: a API resolve configuração,
+perfil, composição ou rascunho e custos atuais do catálogo em uma única visão
+`REPEATABLE READ`, executa o motor puro e devolve a memória completa sem
+persistir versão ou alterar estado comercial.
 
 O contrato e a segurança da API foram definidos documentalmente no Marco 3A
-pela ADR-007. Cálculos HTTP, snapshots runtime, versões, histórico de cálculos,
-adoções, integração comercial com produtos e interface web continuam sem
-implementação.
+pela ADR-007. O snapshot oficial v1, versões, histórico de cálculos, adoções,
+integração comercial com produtos e interface web continuam sem implementação.
 
 ## Processo de alteração
 

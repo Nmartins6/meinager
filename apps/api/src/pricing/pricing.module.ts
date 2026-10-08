@@ -6,6 +6,7 @@ import { PricingProfilesController } from './controllers/pricing-profiles.contro
 import { ProductPricingController } from './controllers/product-pricing.controller.js';
 import { PricingConfigurationService } from './services/pricing-configuration.service.js';
 import { PricingCompositionsService } from './services/pricing-compositions.service.js';
+import { PricingCalculationsService } from './services/pricing-calculations.service.js';
 import { PricingProfilesService } from './services/pricing-profiles.service.js';
 
 @Module({
@@ -19,6 +20,7 @@ import { PricingProfilesService } from './services/pricing-profiles.service.js';
     PricingConfigurationService,
     PricingProfilesService,
     PricingCompositionsService,
+    PricingCalculationsService,
   ],
 })
 export class PricingModule {}
