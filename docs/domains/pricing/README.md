@@ -128,8 +128,13 @@ calculada novamente a partir da composição persistida, congela custos de
 catálogo, configuração, perfil, proveniências e resultado integral, cria
 projeções relacionais e passa de `BUILDING` para `FINALIZED` na mesma transação
 da auditoria. Leituras históricas validam e devolvem o snapshot congelado, sem
-recalcular dados atuais. Adoção, integração comercial com produtos e interface
-web continuam sem implementação.
+recalcular dados atuais. O Marco 3D.1 acrescentou a adoção atômica de versões
+finalizadas em `POST /api/pricing/products/:productId/adoptions`: o backend
+valida e reproduz somente o snapshot congelado, bloqueia o produto e grava
+preço, ponteiro, evento imutável e auditoria na mesma transação. A adoção abaixo
+do mínimo exige papel, confirmação e justificativa, e repetições do estado atual
+são idempotentes. Alteração manual do preço, resumo comercial e interface web
+continuam pendentes.
 
 ## Processo de alteração
 

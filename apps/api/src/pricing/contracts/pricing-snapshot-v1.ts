@@ -257,8 +257,9 @@ export class PricingSnapshotValidationError extends Error {
   }
 }
 
-const EXACT_DECIMAL = /^(?:0|-[1-9]\d*|[1-9]\d*)(?:\.\d*[1-9])?$/;
-const DISPLAY_DECIMAL = /^(?:0|-[1-9]\d*|[1-9]\d*)\.\d{2}$/;
+const EXACT_DECIMAL =
+  /^(?:(?:0|[1-9]\d*)(?:\.\d*[1-9])?|-(?:0\.\d*[1-9]|[1-9]\d*(?:\.\d*[1-9])?))$/;
+const DISPLAY_DECIMAL = /^-?(?:0|[1-9]\d*)\.\d{2}$/;
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ORIGINS = ['MANUAL', 'FINANCIAL_AGGREGATE', 'COPIED'] as const;

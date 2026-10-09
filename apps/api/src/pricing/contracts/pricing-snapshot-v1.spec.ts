@@ -214,4 +214,55 @@ describe('PricingSnapshotV1', () => {
     ).price = '1.00';
     expect(() => parsePricingSnapshotV1(value)).toThrow(/replay/);
   });
+
+  it('accepts canonical negative fractions produced below the minimum', () => {
+    const calculatorInput = {
+      currency: 'BRL' as const,
+      components: [
+        {
+          description: 'Material',
+          category: 'MATERIAL' as const,
+          unit: 'UN',
+          quantity: '1',
+          unitCost: '5',
+          origin: 'MANUAL' as const,
+        },
+      ],
+      fixedCosts: {
+        mode: 'RATE' as const,
+        rate: '0.1',
+        origin: 'MANUAL' as const,
+      },
+      desiredMargin: '0.25',
+      adoptedPrice: '5.50',
+    };
+    const base = snapshot();
+    const value: PricingSnapshotV1 = {
+      ...base,
+      input: materializePricingSnapshotInputV1(calculatorInput),
+      result: materializePricingSnapshotResultV1(
+        calculatePricing(calculatorInput),
+      ),
+      context: {
+        ...base.context,
+        componentOrigins: [
+          {
+            ...base.context.componentOrigins[0]!,
+            effectiveUnitCost: '5',
+          },
+        ],
+        effectiveDesiredMargin: {
+          ...base.context.effectiveDesiredMargin,
+          value: '0.25',
+        },
+        configuration: {
+          ...base.context.configuration,
+          fixedCosts: { mode: 'RATE', rate: '0.1' },
+        },
+      },
+    };
+    expect(value.result.analysis.profit.exact).toMatch(/^-0\./);
+    expect(value.result.analysis.profit.display).toMatch(/^-0\./);
+    expect(parsePricingSnapshotV1(value)).toEqual(value);
+  });
 });

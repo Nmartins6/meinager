@@ -62,6 +62,14 @@ concorrência cobertos. A validação aprovou 29 testes unitários direcionados,
 E2E em banco descartável e 189 testes em 18 arquivos na suíte unitária completa
 da API. Adoção, integração comercial e interface permanecem pendentes.
 
+Revisão do Marco 3D.1: 09/10/2026. A API adota versões finalizadas de forma
+atômica, valida exclusivamente o histórico congelado, aplica a matriz de papéis,
+registra evento e auditoria e garante idempotência sob lock do produto. A
+validação aprovou 40 testes unitários direcionados, 61 E2E em PostgreSQL
+descartável e 218 testes em 20 arquivos na suíte unitária completa da API.
+Alteração manual do preço, resumo comercial, compatibilidade de `directCost` e
+interface permanecem pendentes.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -102,6 +110,7 @@ A API possui módulos para:
 - composições de custos de produtos.
 - simulações autoritativas de precificação;
 - snapshots e versões históricas de cálculo.
+- adoção atômica de versões de precificação.
 
 A auditoria utiliza o modelo `AuditLog` e gravações nos services dos módulos;
 não existe módulo Nest específico de auditoria. `PricingConfigurationService`
@@ -263,11 +272,13 @@ endpoints, services e interface ainda estavam ausentes.
 
 ### Preço adotado
 
-| Critérios                     | Estado    | Base reutilizável                                                                                            | Implementação esperada                             |
-| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| `PREC-CA-029` a `PREC-CA-034` | `PARTIAL` | Produto possui preço/referência anulável; existe modelo imutável de adoção e análise no motor                | Service transacional, autorização, auditoria e API |
-| `PREC-RN-028` a `PREC-RN-031` | `PARTIAL` | Estruturas de versão/adoção e análise de preço/lucro/margem/desconto no motor; EX-003/EX-004/EX-005 testados | Executar adoção e vincular a versão                |
-| Preço abaixo do mínimo        | `PENDING` | Autorização e auditoria                                                                                      | Confirmação, justificativa e restrição             |
+| Critérios                     | Estado        | Base reutilizável                                                                                                     | Implementação esperada                        |
+| ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `PREC-CA-029` e `PREC-CA-031` | `IMPLEMENTED` | A versão sugerida ou personalizada é validada e adotada atomicamente; o produto recebe preço e ponteiro com auditoria | Comprovado por unitários e E2E do Marco 3D.1  |
+| `PREC-CA-030` e `PREC-CA-032` | `PARTIAL`     | Criação de versão recalcula preços personalizados; adoção usa sua análise e classificação congeladas                  | Exposição e adoção pela interface pendentes   |
+| `PREC-CA-033`                 | `IMPLEMENTED` | Somente OWNER/ADMIN confirmam preço abaixo do mínimo, com confirmação e justificativa; OPERATIONS recebe 403          | Comprovado por unitários e E2E                |
+| `PREC-CA-034`                 | `PARTIAL`     | Simulação e versão não alteram preço; somente adoção explícita escreve preço e ponteiro                               | Distinção completa depende do resumo e da web |
+| `PREC-RN-028` a `PREC-RN-031` | `PARTIAL`     | Backend analisa preço personalizado, congela a memória e adota exatamente `analyzedPrice`, inclusive abaixo do mínimo | Fluxo e alertas da interface pendentes        |
 
 ### Decomposição e explicação
 
@@ -279,19 +290,19 @@ endpoints, services e interface ainda estavam ausentes.
 
 ### Histórico e snapshots
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada                                     |
-| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças | Adoção não faz parte destes critérios                      |
-| `PREC-CA-038`                 | `PARTIAL`     | GET paginado e detalhe validado exibem versões finalizadas da mais recente para a mais antiga                                      | Identificação da versão do preço atual depende da adoção   |
-| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                             | Comprovado no Marco 3C.3                                   |
-| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo implementadas; snapshots comerciais de orçamento/pedido já existem                                  | Integração das referências e auditoria de adoção pendentes |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada                                   |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças | Adoção não faz parte destes critérios                    |
+| `PREC-CA-038`                 | `PARTIAL`     | GET paginado e detalhe validado exibem versões finalizadas da mais recente para a mais antiga                                      | Identificação da versão do preço atual depende da adoção |
+| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                             | Comprovado no Marco 3C.3                                 |
+| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo/adoção implementadas; snapshots comerciais de orçamento/pedido já existem                           | Integrar referências aos documentos comerciais           |
 
 ### Integração com produtos
 
-| Critérios     | Estado    | Base reutilizável                                                                                                | Implementação esperada                           |
-| ------------- | --------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `PREC-CA-039` | `PARTIAL` | Migration versionada preserva preços e adiciona referência anulável; aplicação comprovada somente no banco local | Integrar adoção e preço manual no service        |
-| `PREC-RN-042` | `PARTIAL` | `Product.adoptedPricingVersionId`, relações protegidas e service atual de produtos                               | Aplicar semântica da referência nos casos de uso |
+| Critérios     | Estado    | Base reutilizável                                                                                                | Implementação esperada                          |
+| ------------- | --------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `PREC-CA-039` | `PARTIAL` | A adoção atualiza `salePrice` e `adoptedPricingVersionId` atomicamente; preço manual continua no contrato legado | Implementar limpeza do ponteiro no preço manual |
+| `PREC-RN-042` | `PARTIAL` | Preço atual e versão de origem são vinculados na adoção e preservados por FK/guards                              | Concluir semântica do preço manual              |
 
 ### Integração com orçamentos
 
@@ -309,12 +320,12 @@ endpoints, services e interface ainda estavam ausentes.
 
 ### Integração com estoque e financeiro
 
-| Critérios                     | Estado        | Base reutilizável                                                                                        | Implementação esperada            |
-| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `PREC-CA-042`                 | `IMPLEMENTED` | E2E compara movimentações antes/depois da criação de versão e não encontra efeitos                       | Preservar nas etapas posteriores  |
-| `PREC-CA-043`                 | `IMPLEMENTED` | E2E compara lançamentos antes/depois da criação de versão e não encontra efeitos                         | Preservar nas etapas posteriores  |
-| `PREC-RN-039` a `PREC-RN-041` | `FUTURE`      | Módulos financeiros existentes                                                                           | Agregados financeiros posteriores |
-| `PREC-RN-043` e `PREC-RN-044` | `IMPLEMENTED` | E2E comprova ausência de efeitos de composição, simulação e criação de versão sobre estoque e financeiro | Preservar na adoção e interface   |
+| Critérios                     | Estado        | Base reutilizável                                                                                     | Implementação esperada            |
+| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `PREC-CA-042`                 | `IMPLEMENTED` | E2E compara movimentações antes/depois da criação e adoção de versão e não encontra efeitos           | Preservar nas etapas posteriores  |
+| `PREC-CA-043`                 | `IMPLEMENTED` | E2E compara lançamentos antes/depois da criação e adoção de versão e não encontra efeitos             | Preservar nas etapas posteriores  |
+| `PREC-RN-039` a `PREC-RN-041` | `FUTURE`      | Módulos financeiros existentes                                                                        | Agregados financeiros posteriores |
+| `PREC-RN-043` e `PREC-RN-044` | `IMPLEMENTED` | E2E comprova ausência de efeitos de composição, simulação, versão e adoção sobre estoque e financeiro | Preservar na interface            |
 
 ### Fluxos de pedidos
 
@@ -329,11 +340,11 @@ de pedidos comprovam o comportamento atual, mas não a integração futura.
 
 ### Permissões
 
-| Critérios                     | Estado    | Base reutilizável                                                                                               | Implementação esperada    |
-| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | E2E cobre matriz completa na criação e leitura de versões, além de configuração, perfis, composição e simulação | Resumo e adoção pendentes |
-| Acesso não autenticado        | `PARTIAL` | `401 AUTHENTICATION_REQUIRED` testado em criação, lista e detalhe de versões                                    | Cobrir resumo e adoção    |
-| Isolamento organizacional     | `PARTIAL` | Criação e histórico filtram produto, perfil, configuração, insumos e versão pela organização da sessão          | Adoção pendente           |
+| Critérios                     | Estado    | Base reutilizável                                                                                               | Implementação esperada          |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | E2E cobre matriz completa também na adoção normal e abaixo do mínimo                                            | Resumo e preço manual pendentes |
+| Acesso não autenticado        | `PARTIAL` | `401 AUTHENTICATION_REQUIRED` testado também no endpoint de adoção                                              | Cobrir resumo comercial         |
+| Isolamento organizacional     | `PARTIAL` | Adoção bloqueia produto e carrega versão pelo trio organização/produto/ID; E2E oculta produto e versão externos | Cobrir resumo e preço manual    |
 
 ### Precisão e arredondamento
 
@@ -344,21 +355,21 @@ de pedidos comprovam o comportamento atual, mas não a integração futura.
 
 ### Interface
 
-| Critérios                     | Estado    | Base reutilizável                                                                                         | Implementação esperada           |
-| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `PREC-CA-054` a `PREC-CA-057` | `PENDING` | Componentes e formulários existentes                                                                      | Fluxo de precificação do produto |
-| Recálculo local               | `PENDING` | React disponível                                                                                          | Prévia em até 100 ms             |
-| Validação autoritativa        | `PARTIAL` | Simulação e criação de versão resolvem entradas e recalculam no backend, rejeitando resultados do cliente | Adoção e interface pendentes     |
+| Critérios                     | Estado    | Base reutilizável                                                                                   | Implementação esperada           |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `PREC-CA-054` a `PREC-CA-057` | `PENDING` | Componentes e formulários existentes                                                                | Fluxo de precificação do produto |
+| Recálculo local               | `PENDING` | React disponível                                                                                    | Prévia em até 100 ms             |
+| Validação autoritativa        | `PARTIAL` | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente | Interface pendente               |
 
 ### Auditoria e segurança
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                    | Implementação esperada                   |
-| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração e perfis geram auditoria atômica testada; composição e criação de versão também auditam suas mutações   | Preservar nas próximas mutações          |
-| `PREC-CA-059`                 | `PARTIAL`     | Modelo imutável `PricingPriceAdoption` e guards SQL existem                                                          | Implementar adoção e AuditLog vinculados |
-| `PREC-CA-060`                 | `IMPLEMENTED` | DTOs de simulação e versão rejeitam resultados, fórmula, classificação, snapshot e projeções; backend recalcula tudo | Preservar na adoção                      |
-| `PREC-CA-061`                 | `PARTIAL`     | Criação e leitura de versão validam configuração, perfil, alvo, insumos e versão pela organização da sessão          | Adoção pendente                          |
-| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL`     | Erros tipados do motor são traduzidos pelo contrato HTTP, com campos e códigos estáveis                              | Mensagens e formulários web pendentes    |
+| Critérios                     | Estado        | Base reutilizável                                                                                                       | Implementação esperada                  |
+| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração e perfis geram auditoria atômica testada; composição e criação de versão também auditam suas mutações      | Preservar nas próximas mutações         |
+| `PREC-CA-059`                 | `IMPLEMENTED` | Evento imutável guarda a decisão e justificativa; AuditLog vinculado guarda organização, ator, produto, versão e preços | Comprovado por rollback e metadados E2E |
+| `PREC-CA-060`                 | `IMPLEMENTED` | DTO de adoção rejeita preço, classificação, fórmula, snapshot, IDs protegidos e resultados enviados pelo cliente        | Preservar nas próximas mutações         |
+| `PREC-CA-061`                 | `PARTIAL`     | Adoção deriva organização da sessão e valida produto/versão conjuntamente; E2E comprova isolamento                      | Resumo e preço manual pendentes         |
+| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL`     | Erros tipados do motor são traduzidos pelo contrato HTTP, com campos e códigos estáveis                                 | Mensagens e formulários web pendentes   |
 
 ## 6. Rotas atuais que devem ser preservadas
 

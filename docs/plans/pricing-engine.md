@@ -74,8 +74,8 @@ fontes oficiais.
 - [x] Implementar base HTTP, erros locais e configuração organizacional
       versionada (Marco 3B.1, 05/10/2026).
 - [ ] Implementar todos os services e endpoints da API de precificação (Marcos
-      3B a 3D; configuração, perfis, composição, simulação, versões e histórico
-      já concluídos).
+      3B a 3D; configuração, perfis, composição, simulação, versões, histórico e
+      adoção de versão já concluídos; preço manual e resumo ainda pendentes).
 - [x] Implementar perfis de deduções e concluir o Marco 3B (Marco 3B.2,
       06/10/2026).
 - [x] Implementar consulta e substituição completa da composição (Marco 3C.1,
@@ -86,11 +86,12 @@ fontes oficiais.
       08/10/2026).
 - [x] Implementar criação de versões e histórico de cálculos (Marco 3C.3,
       08/10/2026).
-- [ ] Implementar adoção de preço.
+- [x] Implementar adoção atômica de versão (Marco 3D.1, 09/10/2026).
+- [ ] Implementar alteração manual do preço e resumo comercial.
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
-- [x] Atualizar a matriz de rastreabilidade até as evidências do Marco 3C.3.
+- [x] Atualizar a matriz de rastreabilidade até as evidências do Marco 3D.1.
 - [ ] Registrar os resultados finais.
 
 ## Descobertas
@@ -709,6 +710,32 @@ rastreabilidade; não representam o estado atual do marco.
   `adoptedPricingVersionId`, estoque ou financeiro. A adoção permanece uma ação
   explícita do Marco 3D.
 
+### Marco 3D.1 — Adoção atômica — 09/10/2026
+
+- `POST /api/pricing/products/:productId/adoptions` aceita somente a versão,
+  confirmação e justificativa condicionais. Organização, ator, papel, preço e
+  classificação vêm do backend.
+- A operação bloqueia o produto por organização, carrega a versão pelo trio
+  organização/produto/ID e valida snapshot, replay, colunas-resumo e todas as
+  projeções. Nenhuma configuração, perfil, composição ou custo atual participa
+  da reinterpretação histórica.
+- Preço, ponteiro, evento imutável e `AuditLog` são gravados na mesma transação.
+  A justificativa fica somente em `PricingPriceAdoption`; a auditoria contém
+  IDs, classificação, confirmação, preços e ator.
+- A idempotência compara versão e valor decimal sob o lock. Repetir o estado
+  atual não escreve; uma transição intermediária torna a adoção seguinte uma
+  nova decisão. O E2E comprovou uma única transição para duas requisições
+  concorrentes.
+- O validador do snapshot passou a aceitar frações negativas canônicas exatas e
+  de exibição, necessárias para lucro abaixo de zero produzido pelo próprio
+  motor. A gramática continua rejeitando expoente e valores não canônicos; não
+  houve mudança de fórmula ou arredondamento.
+- A revisão de idempotência separou autorização de evidências: `OWNER` e
+  `ADMIN` podem repetir o estado `BELOW_MINIMUM` atual apenas com `versionId` e
+  recebem o evento existente, sem escrita; `OPERATIONS` continua bloqueado
+  antes da comparação idempotente. Confirmação e justificativa permanecem
+  obrigatórias para cada nova transição abaixo do mínimo.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -734,6 +761,14 @@ canônicos, proveniências acompanham exatamente seus itens e o resultado deve s
 idêntico ao replay do `margin-divisor-v1`. Versões são criadas como `BUILDING` e
 finalizadas com projeções e auditoria na mesma transação; registros finalizados
 permanecem protegidos pelos guards SQL do Marco 2.
+
+### Adoção atômica — Marco 3D.1
+
+A adoção usa exclusivamente uma versão `FINALIZED` validada e seu
+`analyzedPrice`. `OWNER`, `ADMIN` e `OPERATIONS` podem adotar preços iguais ou
+superiores ao mínimo; abaixo do mínimo somente `OWNER` e `ADMIN`, com confirmação
+explícita e justificativa. O produto permanece bloqueado até o commit e somente
+`P2034` é traduzido como conflito concorrente.
 
 ### Dados financeiros
 
@@ -2006,3 +2041,29 @@ git status --short
   comercial, integração com orçamentos/pedidos e interface continuam pendentes.
 - Nenhum schema, migration, banco normal, dependência, fórmula, adoção, preço de
   produto ou arquivo web foi alterado. Nenhum commit foi criado.
+
+### Marco 3D.1 concluído — 09/10/2026
+
+- Entrega: adoção explícita de uma versão finalizada em
+  `POST /api/pricing/products/:productId/adoptions`, com DTO protegido,
+  autorização por papel, validação integral do histórico congelado e limite
+  exato de `Product.salePrice` antes da conversão decimal.
+- Atomicidade e concorrência: o produto é bloqueado com `FOR UPDATE`; preço,
+  ponteiro, evento e auditoria pertencem à mesma transação. Retry sequencial ou
+  concorrente do estado atual retorna sucesso sem duplicar efeitos; A → B → A
+  cria três decisões. Somente `P2034` vira conflito conhecido.
+- Segurança: recursos externos são indistinguíveis dos inexistentes. Adoção
+  abaixo do mínimo exige `OWNER`/`ADMIN`, confirmação exata e justificativa. O
+  texto fica somente no evento; metadados de auditoria não incluem snapshot,
+  custos, componentes, deduções ou decomposição.
+- Evidência direcionada: 43 testes unitários em três arquivos. O runner aprovou
+  62 testes E2E em seis arquivos depois de aplicar as 16 migrations somente no
+  banco descartável `pricing_configuration_e2e_6c0d98ec2707ad19`; esse banco e
+  a prova separada de limpeza após erro foram removidos.
+- A suíte unitária completa da API aprovou 221 testes em 20 arquivos; typecheck,
+  lint e build também passaram.
+- Limites: alteração manual de `salePrice`, resumo comercial, restrição legada
+  de `directCost`, integração com orçamentos/pedidos e interface web continuam
+  pendentes.
+- Nenhum schema, migration, banco normal, dependência, fórmula, endpoint legado,
+  orçamento, pedido ou arquivo web foi alterado. Nenhum commit foi criado.

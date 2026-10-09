@@ -20,6 +20,7 @@ import { SessionAuthGuard } from '../../auth/session/session-auth.guard.js';
 import type { AuthenticatedRequest } from '../../auth/session/session.types.js';
 import { OrganizationRole } from '../../generated/prisma/enums.js';
 import { PutPricingCompositionDto } from '../dto/pricing-composition.dto.js';
+import { CreatePricingAdoptionDto } from '../dto/pricing-adoption.dto.js';
 import { CreatePricingSimulationDto } from '../dto/pricing-simulation.dto.js';
 import {
   CreatePricingVersionDto,
@@ -28,6 +29,7 @@ import {
 import { PricingExceptionFilter } from '../errors/pricing-exception.filter.js';
 import { PricingCompositionsService } from '../services/pricing-compositions.service.js';
 import { PricingCalculationsService } from '../services/pricing-calculations.service.js';
+import { PricingAdoptionsService } from '../services/pricing-adoptions.service.js';
 import { PricingVersionsService } from '../services/pricing-versions.service.js';
 
 const INTERNAL_READ_ROLES = [
@@ -45,7 +47,29 @@ export class ProductPricingController {
     private readonly compositions: PricingCompositionsService,
     private readonly calculations: PricingCalculationsService,
     private readonly versions: PricingVersionsService,
+    private readonly adoptions: PricingAdoptionsService,
   ) {}
+
+  @Post('adoptions')
+  @HttpCode(HttpStatus.OK)
+  @OrganizationRoles(
+    OrganizationRole.OWNER,
+    OrganizationRole.ADMIN,
+    OrganizationRole.OPERATIONS,
+  )
+  adopt(
+    @Param('productId', new ParseUUIDPipe({ version: '4' })) productId: string,
+    @Body() dto: CreatePricingAdoptionDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.adoptions.adopt(
+      request.auth.organization.id,
+      request.auth.user.id,
+      request.auth.organization.role,
+      productId,
+      dto,
+    );
+  }
 
   @Post('versions')
   @OrganizationRoles(
