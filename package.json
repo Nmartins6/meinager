@@ -4,7 +4,7 @@
   "private": "true",
   "description": "SaaS for managing small businesses",
   "type": "module",
-  "packageManager": "pnpm@11.13.0",
+  "packageManager": "pnpm@11.13.1",
   "engines": {
     "node": ">=24"
   },
