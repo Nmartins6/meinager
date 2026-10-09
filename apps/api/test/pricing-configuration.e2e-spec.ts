@@ -647,7 +647,10 @@ describe('Pricing configuration (e2e)', () => {
     expect(created.body.currentRevision.defaultDesiredMargin).toBe(
       '0.00000001',
     );
-    expect(JSON.stringify(created.body)).not.toMatch(/[eE]-8/);
+    expect(created.body.currentRevision.fixedCostRate).not.toMatch(/[eE]/);
+    expect(created.body.currentRevision.defaultDesiredMargin).not.toMatch(
+      /[eE]/,
+    );
 
     const persisted =
       await prisma.organizationPricingConfiguration.findUniqueOrThrow({

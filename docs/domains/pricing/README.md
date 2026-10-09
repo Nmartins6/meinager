@@ -122,9 +122,14 @@ perfil, composição ou rascunho e custos atuais do catálogo em uma única vis�
 `REPEATABLE READ`, executa o motor puro e devolve a memória completa sem
 persistir versão ou alterar estado comercial.
 
-O contrato e a segurança da API foram definidos documentalmente no Marco 3A
-pela ADR-007. O snapshot oficial v1, versões, histórico de cálculos, adoções,
-integração comercial com produtos e interface web continuam sem implementação.
+O Marco 3C.3 implementou o contrato e o validador runtime do snapshot oficial
+v1 e os endpoints de criação, listagem e detalhe das versões. Cada versão é
+calculada novamente a partir da composição persistida, congela custos de
+catálogo, configuração, perfil, proveniências e resultado integral, cria
+projeções relacionais e passa de `BUILDING` para `FINALIZED` na mesma transação
+da auditoria. Leituras históricas validam e devolvem o snapshot congelado, sem
+recalcular dados atuais. Adoção, integração comercial com produtos e interface
+web continuam sem implementação.
 
 ## Processo de alteração
 

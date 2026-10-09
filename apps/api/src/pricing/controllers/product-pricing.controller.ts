@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   Req,
   UseFilters,
   UseGuards,
@@ -20,9 +21,14 @@ import type { AuthenticatedRequest } from '../../auth/session/session.types.js';
 import { OrganizationRole } from '../../generated/prisma/enums.js';
 import { PutPricingCompositionDto } from '../dto/pricing-composition.dto.js';
 import { CreatePricingSimulationDto } from '../dto/pricing-simulation.dto.js';
+import {
+  CreatePricingVersionDto,
+  ListPricingVersionsQueryDto,
+} from '../dto/pricing-version.dto.js';
 import { PricingExceptionFilter } from '../errors/pricing-exception.filter.js';
 import { PricingCompositionsService } from '../services/pricing-compositions.service.js';
 import { PricingCalculationsService } from '../services/pricing-calculations.service.js';
+import { PricingVersionsService } from '../services/pricing-versions.service.js';
 
 const INTERNAL_READ_ROLES = [
   OrganizationRole.OWNER,
@@ -38,7 +44,55 @@ export class ProductPricingController {
   constructor(
     private readonly compositions: PricingCompositionsService,
     private readonly calculations: PricingCalculationsService,
+    private readonly versions: PricingVersionsService,
   ) {}
+
+  @Post('versions')
+  @OrganizationRoles(
+    OrganizationRole.OWNER,
+    OrganizationRole.ADMIN,
+    OrganizationRole.OPERATIONS,
+  )
+  createVersion(
+    @Param('productId', new ParseUUIDPipe({ version: '4' })) productId: string,
+    @Body() dto: CreatePricingVersionDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.versions.create(
+      request.auth.organization.id,
+      request.auth.user.id,
+      productId,
+      dto,
+    );
+  }
+
+  @Get('versions')
+  @OrganizationRoles(...INTERNAL_READ_ROLES)
+  findVersions(
+    @Param('productId', new ParseUUIDPipe({ version: '4' })) productId: string,
+    @Query() query: ListPricingVersionsQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.versions.findAll(
+      request.auth.organization.id,
+      productId,
+      query,
+    );
+  }
+
+  @Get('versions/:versionId')
+  @OrganizationRoles(...INTERNAL_READ_ROLES)
+  findVersion(
+    @Param('productId', new ParseUUIDPipe({ version: '4' })) productId: string,
+    @Param('versionId', new ParseUUIDPipe({ version: '4' })) versionId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.versions.findOne(
+      request.auth.organization.id,
+      productId,
+      versionId,
+    );
+  }
 
   @Post('simulations')
   @HttpCode(HttpStatus.OK)

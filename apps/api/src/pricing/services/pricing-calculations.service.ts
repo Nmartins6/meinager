@@ -35,6 +35,7 @@ const configurationSelect = {
     select: {
       id: true,
       revision: true,
+      effectiveFrom: true,
       currency: true,
       fixedCostMode: true,
       fixedCostRate: true,
@@ -73,12 +74,15 @@ const compositionSelect = {
       costSource: true,
       storedUnitCost: true,
       sourceProductId: true,
+      originDetails: true,
     },
   },
 } satisfies Prisma.ProductPricingCompositionSelect;
 
 const productSelect = {
   id: true,
+  type: true,
+  name: true,
   unit: true,
   directCost: true,
   isActive: true,
@@ -100,6 +104,7 @@ const profileSelect = {
           category: true,
           rate: true,
           origin: true,
+          originDetails: true,
         },
       },
     },
@@ -142,6 +147,20 @@ interface SimulationComponent {
   readonly costSource: PricingComponentCostSource;
   readonly storedUnitCost: string | null;
   readonly sourceProductId: string | null;
+  readonly originDetails: unknown;
+}
+
+export interface PricingPersistedCalculation {
+  readonly response: PricingSimulationResponse;
+  readonly records: {
+    readonly target: ProductRecord;
+    readonly configuration: ConfigurationRecord;
+    readonly composition: SimulationComposition & {
+      readonly id: string;
+      readonly revision: number;
+    };
+    readonly profile: ProfileRecord | null;
+  };
 }
 
 export interface PricingSimulationResponse {
@@ -221,6 +240,17 @@ export class PricingCalculationsService {
     productId: string,
     dto: CreatePricingSimulationDto,
   ): Promise<PricingSimulationResponse> {
+    if (dto.source === PricingSimulationSource.PERSISTED) {
+      return (
+        await this.resolvePersistedInTransaction(
+          transaction,
+          organizationId,
+          productId,
+          dto.adoptedPrice,
+        )
+      ).response;
+    }
+
     const target = await transaction.product.findFirst({
       where: { id: productId, organizationId },
       select: productSelect,
@@ -236,14 +266,7 @@ export class PricingCalculationsService {
       throw this.configurationRequired();
     }
 
-    const composition =
-      dto.source === PricingSimulationSource.PERSISTED
-        ? await this.readPersistedComposition(
-            transaction,
-            organizationId,
-            productId,
-          )
-        : this.fromDraft(dto.draft!);
+    const composition = this.fromDraft(dto.draft!);
     this.validateComposition(composition);
 
     const profile = composition.profileId
@@ -308,6 +331,116 @@ export class PricingCalculationsService {
     };
   }
 
+  async resolvePersistedInTransaction(
+    transaction: Prisma.TransactionClient,
+    organizationId: string,
+    productId: string,
+    adoptedPrice?: string,
+  ): Promise<PricingPersistedCalculation> {
+    const target = await transaction.product.findFirst({
+      where: { id: productId, organizationId },
+      select: productSelect,
+    });
+    if (!target) throw this.productNotFound();
+
+    const configuration =
+      await transaction.organizationPricingConfiguration.findUnique({
+        where: { organizationId },
+        select: configurationSelect,
+      });
+    if (!configuration?.isActive || configuration.currentRevision === null) {
+      throw this.configurationRequired();
+    }
+
+    const composition = await this.readPersistedComposition(
+      transaction,
+      organizationId,
+      productId,
+    );
+    this.validateComposition(composition);
+    const profile = composition.profileId
+      ? await this.readProfile(
+          transaction,
+          organizationId,
+          composition.profileId,
+        )
+      : null;
+    const products = await this.readCatalogProducts(
+      transaction,
+      organizationId,
+      productId,
+      composition.components,
+    );
+    const resolvedInput = this.buildInput(
+      configuration,
+      composition,
+      profile,
+      products,
+      adoptedPrice,
+    );
+    const result = calculatePricing(resolvedInput);
+    const marginPrecedence =
+      composition.desiredMargin === null ? 'CONFIGURATION' : 'COMPOSITION';
+    const marginOrigins =
+      composition.desiredMargin === null
+        ? configuration.currentRevision.parameterOrigins
+        : composition.parameterOrigins;
+    const response: PricingSimulationResponse = {
+      productId,
+      source: PricingSimulationSource.PERSISTED,
+      compositionRevision: composition.revision,
+      configuration: {
+        id: configuration.id,
+        revisionId: configuration.currentRevision.id,
+        revision: configuration.currentRevision.revision,
+      },
+      profile: profile?.currentRevision
+        ? {
+            id: profile.id,
+            revisionId: profile.currentRevision.id,
+            revision: profile.currentRevision.revision,
+            name: profile.currentRevision.name,
+          }
+        : null,
+      effectiveDesiredMargin: {
+        value: resolvedInput.desiredMargin,
+        precedence: marginPrecedence,
+        origin: this.readOrigin(
+          marginOrigins,
+          marginPrecedence === 'COMPOSITION'
+            ? 'desiredMargin'
+            : 'defaultDesiredMargin',
+        ),
+      },
+      resolvedInput,
+      result,
+      formulaVersion: result.formulaVersion,
+      adoptedPrice: result.adoptedPrice,
+    };
+    if (response.effectiveDesiredMargin.origin === null) {
+      throw this.invalidField(
+        `parameterOrigins.${
+          marginPrecedence === 'COMPOSITION'
+            ? 'desiredMargin'
+            : 'defaultDesiredMargin'
+        }`,
+        'A margem efetiva exige proveniência.',
+      );
+    }
+    return {
+      response,
+      records: {
+        target,
+        configuration,
+        composition: composition as SimulationComposition & {
+          id: string;
+          revision: number;
+        },
+        profile,
+      },
+    };
+  }
+
   private async readPersistedComposition(
     transaction: Prisma.TransactionClient,
     organizationId: string,
@@ -344,6 +477,7 @@ export class PricingCalculationsService {
         costSource: component.costSource,
         storedUnitCost: this.decimal(component.storedUnitCost),
         sourceProductId: component.sourceProductId,
+        originDetails: component.originDetails,
       })),
     };
   }
@@ -371,6 +505,7 @@ export class PricingCalculationsService {
         costSource: component.costSource,
         storedUnitCost: this.inputDecimal(component.storedUnitCost ?? null),
         sourceProductId: component.sourceProductId ?? null,
+        originDetails: component.originDetails ?? null,
       })),
     };
   }

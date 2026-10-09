@@ -74,19 +74,23 @@ fontes oficiais.
 - [x] Implementar base HTTP, erros locais e configuração organizacional
       versionada (Marco 3B.1, 05/10/2026).
 - [ ] Implementar todos os services e endpoints da API de precificação (Marcos
-      3B a 3D; configuração, perfis e composição já concluídos).
+      3B a 3D; configuração, perfis, composição, simulação, versões e histórico
+      já concluídos).
 - [x] Implementar perfis de deduções e concluir o Marco 3B (Marco 3B.2,
       06/10/2026).
 - [x] Implementar consulta e substituição completa da composição (Marco 3C.1,
       06/10/2026).
 - [x] Implementar simulação autoritativa transitória (Marco 3C.2,
       07/10/2026).
-- [ ] Implementar snapshot runtime para criação de versões.
-- [ ] Implementar versões, histórico e adoção de preço.
+- [x] Implementar snapshot runtime para criação de versões (Marco 3C.3,
+      08/10/2026).
+- [x] Implementar criação de versões e histórico de cálculos (Marco 3C.3,
+      08/10/2026).
+- [ ] Implementar adoção de preço.
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
-- [ ] Atualizar a matriz de rastreabilidade.
+- [x] Atualizar a matriz de rastreabilidade até as evidências do Marco 3C.3.
 - [ ] Registrar os resultados finais.
 
 ## Descobertas
@@ -678,6 +682,33 @@ rastreabilidade; não representam o estado atual do marco.
   estoque ou financeiro. O snapshot oficial v1 continua reservado para a
   criação de versões.
 
+### Marco 3C.3 — Snapshot e versões — 08/10/2026
+
+- O contrato `PricingSnapshotV1` possui tipos persistidos próprios e validador
+  runtime independente de Nest e Prisma. Ele exige conjunto exato de campos,
+  strings decimais canônicas sem expoente, posições positivas e contíguas,
+  proveniências ordenadas e correspondentes e referências versionadas.
+- A validação materializa opcionais como `null`, preserva a distinção entre
+  entrada de frete omitida e consumo normalizado e executa novamente o motor
+  para rejeitar qualquer resultado congelado divergente.
+- A criação de versão relê entradas autoritativas em `REPEATABLE READ`, usa a
+  ordem de locks da ADR-007, valida `expectedCompositionRevision`, congela
+  configuração, perfil, catálogo e origens e cria snapshot, projeções,
+  finalização e auditoria na mesma transação.
+- Duas requisições HTTP independentes para o mesmo produto comprovaram
+  numeração única sob concorrência. Conflitos `P2034` e somente o `P2002` do
+  índice `pricing_calculation_versions_org_product_number_key` têm repetição
+  limitada; outros `P2002` e falhas Prisma não classificadas continuam tratados
+  como erros inesperados. No Prisma 7.10.0 com `@prisma/adapter-pg`, o índice
+  vem em `meta.driverAdapterError.cause.constraint.index`; não há `meta.target`.
+- Lista e detalhe expõem somente versões `FINALIZED` da organização e do
+  produto autenticados. O detalhe valida o snapshot antes da resposta; mudanças
+  posteriores na composição, configuração, perfil ou catálogo não alteram o
+  histórico.
+- A criação de versão não altera `Product.salePrice`,
+  `adoptedPricingVersionId`, estoque ou financeiro. A adoção permanece uma ação
+  explícita do Marco 3D.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -694,6 +725,15 @@ arredondados para cima até o próximo centavo, conforme `ADR-002`.
 
 Cálculos salvos são versões imutáveis e documentos comerciais preservam
 snapshots, conforme `ADR-003`.
+
+### Snapshot runtime e versões — Marco 3C.3
+
+O snapshot v1 é um contrato persistido estrito, validado antes da gravação e na
+leitura detalhada. Entradas opcionais são materializadas, decimais permanecem
+canônicos, proveniências acompanham exatamente seus itens e o resultado deve ser
+idêntico ao replay do `margin-divisor-v1`. Versões são criadas como `BUILDING` e
+finalizadas com projeções e auditoria na mesma transação; registros finalizados
+permanecem protegidos pelos guards SQL do Marco 2.
 
 ### Dados financeiros
 
@@ -927,7 +967,7 @@ para rastreabilidade, mas o motor puro não consulta nem valida posse no banco.
 | Motor puro — Marco 1                  | `margin-divisor-v1`, validação matemática, memória e erros tipados      | `apps/api/src/pricing/calculator/pricing-calculator.ts`, `pricing-calculator.types.ts`, `pricing-calculator.errors.ts`, `pricing-calculator.spec.ts`; adaptador `pricing-decimal.ts` somente se necessário                                                      |
 | Aplicação — Marco 3                   | Orquestrar configuração/perfis, composição, simulação, versões e adoção | Estrutura aprovada na ADR-007: `pricing.module.ts`, `contracts/`, `dto/`, `errors/`, `controllers/`, `services/` e `pricing-locks.ts`                                                                                                                           |
 | Configuração organizacional — Marco 2 | Parâmetros com vigência/origem e perfis organizacionais                 | Modelos implementados em `apps/api/prisma/schema.prisma`: `OrganizationPricingConfiguration`, revisões, `PricingSalesProfile`, revisões e `PricingDeduction`; services planejados na ADR-007                                                                    |
-| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis   | Modelos implementados `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion`, projeções e `PricingPriceAdoption`; API da composição concluída no Marco 3C.1; cálculo, versões, histórico e adoção pendentes                               |
+| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis   | Modelos implementados `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion`, projeções e `PricingPriceAdoption`; composição, simulação, snapshot v1, versões e histórico concluídos nos Marcos 3C.1 a 3C.3; adoção pendente              |
 | Web — Marco 4                         | Contratos Zod, queries/mutations e formulários específicos              | `apps/web/src/features/pricing/pricing-api.ts`, `use-*-query.ts`, `use-*-mutation.ts`, `pricing-composition-form.tsx`, `pricing-configuration-form.tsx`, `pricing-history.tsx`; `apps/web/src/pages/product-pricing-page.tsx`, `pricing-configuration-page.tsx` |
 | Integração comercial — Marco 5        | Validar/capturar origem e copiar snapshot sem custos                    | Extensões localizadas em `apps/api/src/quotes/quotes.service.ts`, `apps/api/src/orders/orders.service.ts`, DTOs e `apps/web/src/features/quotes/`; sem alterações nos fluxos                                                                                    |
 | Validação posterior                   | Permissões, isolamento, imutabilidade, concorrência e não regressão     | `apps/api/test/pricing.e2e-spec.ts`, testes existentes de produtos/orçamentos/pedidos; specs web próximos às páginas/features                                                                                                                                   |
@@ -1945,3 +1985,24 @@ git status --short
   histórico.
 - Nenhum schema, migration, dependência, fórmula, preço de produto ou arquivo
   web foi alterado. Nenhum commit foi criado.
+
+### Marco 3C.3 concluído — 08/10/2026
+
+- Entrega: contrato e validador runtime do snapshot v1, criação autoritativa de
+  versões e listagem/detalhe do histórico em
+  `/api/pricing/products/:productId/versions`.
+- O arquivo E2E específico de versões comprova papéis, isolamento entre
+  organizações, DTO protegido, dependências inválidas, snapshot e projeções,
+  imutabilidade SQL, congelamento após mudanças, auditoria atômica, rollback e
+  numeração concorrente. As contagens antes/depois comprovam que a criação não
+  altera preço, ponteiro adotado, composição, estoque ou financeiro.
+- Validação direcionada: 29 testes unitários em três arquivos. O runner aprovou
+  57 testes E2E em cinco arquivos depois de aplicar as 16 migrations somente no
+  banco descartável `pricing_configuration_e2e_34d432bb5ad71235`; o banco e a
+  prova separada criada para validar limpeza após erro foram removidos.
+- A suíte unitária completa da API aprovou 189 testes em 18 arquivos; typecheck,
+  lint e build também passaram.
+- Limites: adoção e alteração manual do preço pertencem ao Marco 3D; resumo
+  comercial, integração com orçamentos/pedidos e interface continuam pendentes.
+- Nenhum schema, migration, banco normal, dependência, fórmula, adoção, preço de
+  produto ou arquivo web foi alterado. Nenhum commit foi criado.

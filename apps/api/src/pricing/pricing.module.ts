@@ -8,6 +8,7 @@ import { PricingConfigurationService } from './services/pricing-configuration.se
 import { PricingCompositionsService } from './services/pricing-compositions.service.js';
 import { PricingCalculationsService } from './services/pricing-calculations.service.js';
 import { PricingProfilesService } from './services/pricing-profiles.service.js';
+import { PricingVersionsService } from './services/pricing-versions.service.js';
 
 @Module({
   imports: [AuthModule],
@@ -21,6 +22,7 @@ import { PricingProfilesService } from './services/pricing-profiles.service.js';
     PricingProfilesService,
     PricingCompositionsService,
     PricingCalculationsService,
+    PricingVersionsService,
   ],
 })
 export class PricingModule {}

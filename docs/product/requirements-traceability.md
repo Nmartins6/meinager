@@ -49,6 +49,19 @@ nova revisão ou auditoria. A validação atual aprovou 36 testes unitários
 direcionados, 43 E2E e 140 testes em 13 arquivos na suíte unitária completa da
 API.
 
+Revisão do Marco 3C.2: 07/10/2026. A simulação autoritativa passou a resolver
+configuração, perfil, composição ou rascunho e catálogo em `REPEATABLE READ`,
+sem persistir versão ou alterar estado comercial. A validação aprovou 24 testes
+unitários direcionados, 54 E2E e 160 testes em 15 arquivos na suíte unitária
+completa da API.
+
+Revisão do Marco 3C.3: 08/10/2026. O snapshot v1 possui validação runtime e
+replay canônico; criação, lista e detalhe de versões possuem autorização,
+isolamento, imutabilidade, congelamento histórico, auditoria, rollback e
+concorrência cobertos. A validação aprovou 29 testes unitários direcionados, 57
+E2E em banco descartável e 189 testes em 18 arquivos na suíte unitária completa
+da API. Adoção, integração comercial e interface permanecem pendentes.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -87,6 +100,8 @@ A API possui módulos para:
 - configuração organizacional de precificação.
 - perfis de venda e deduções de precificação;
 - composições de custos de produtos.
+- simulações autoritativas de precificação;
+- snapshots e versões históricas de cálculo.
 
 A auditoria utiliza o modelo `AuditLog` e gravações nos services dos módulos;
 não existe módulo Nest específico de auditoria. `PricingConfigurationService`
@@ -192,58 +207,58 @@ ADR-005 registra precisão e limites técnicos. Não há migration neste marco.
 Evidência de execução em 03/10/2026: 77 de 77 testes do motor aprovados;
 suíte completa da API com 98 testes aprovados em 7 arquivos. O bloqueio foi
 removido após essas validações e a correção documental autorizada, sem alterar
-fórmulas ou arredondar valores intermediários. A fundação persistente foi
-adicionada depois; endpoints, services e interface continuam ausentes.
+fórmulas ou arredondar valores intermediários. Naquela validação, persistência,
+endpoints, services e interface ainda estavam ausentes.
 
 ### Configuração da organização
 
-| Critérios                     | Estado        | Base reutilizável                                                                                        | Implementação esperada                                                |
-| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `PREC-CA-001` a `PREC-CA-004` | `IMPLEMENTED` | `PricingConfigurationService`, controller e E2E de criação, revisão, isolamento e faturamento zero       | Interface ainda pendente; cálculo derivado pertence à etapa posterior |
-| `PREC-CA-005`                 | `PARTIAL`     | Valores mensais são persistidos e o motor sabe derivar a taxa                                            | Exposição do percentual derivado pela API e interface pendente        |
-| `PREC-RN-001`                 | `PARTIAL`     | Filtro pela organização da sessão, relações compostas e E2E da configuração com duas organizações        | Comprovar isolamento nos demais recursos da API                       |
-| `PREC-RN-002` e `PREC-RN-003` | `PARTIAL`     | Patch parcial de proveniência testado, com origem por valor alterado e confirmador derivado da sessão    | Perfis, integração financeira e uso no snapshot pendentes             |
-| `PREC-RN-004`                 | `IMPLEMENTED` | Vigência definida pelo backend, revisões imutáveis e preservação dos snapshots comerciais por guards SQL | Reutilizar a revisão vigente nas versões do Marco 3C                  |
-| `PREC-RN-005`                 | `PARTIAL`     | Faturamento zero é rejeitado e a proveniência aceita período e origem                                    | Garantir janela e origem do faturamento na configuração ou snapshot   |
+| Critérios                     | Estado        | Base reutilizável                                                                                          | Implementação esperada                                                |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `PREC-CA-001` a `PREC-CA-004` | `IMPLEMENTED` | `PricingConfigurationService`, controller e E2E de criação, revisão, isolamento e faturamento zero         | Interface ainda pendente; cálculo derivado pertence à etapa posterior |
+| `PREC-CA-005`                 | `PARTIAL`     | Valores mensais são persistidos e o motor sabe derivar a taxa                                              | Exposição do percentual derivado pela API e interface pendente        |
+| `PREC-RN-001`                 | `PARTIAL`     | Filtro pela organização da sessão, relações compostas e E2E da configuração com duas organizações          | Comprovar isolamento nos demais recursos da API                       |
+| `PREC-RN-002` e `PREC-RN-003` | `PARTIAL`     | Patch parcial de proveniência testado; versões congelam origens e confirmadores da configuração utilizada  | Integração automática com agregados financeiros permanece pendente    |
+| `PREC-RN-004`                 | `IMPLEMENTED` | Vigência definida pelo backend; a versão referencia e congela a revisão vigente, preservada por guards SQL | Comprovado na criação e leitura histórica do Marco 3C.3               |
+| `PREC-RN-005`                 | `PARTIAL`     | Faturamento zero é rejeitado e a proveniência aceita período e origem                                      | Garantir janela e origem do faturamento na configuração ou snapshot   |
 
 ### Perfis de deduções
 
-| Critérios                     | Estado        | Base reutilizável                                                                                            | Implementação esperada                            |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `PREC-CA-006` a `PREC-CA-008` | `IMPLEMENTED` | Criação, nomes não vazios, deduções extensíveis, revisão e desativação comprovadas por unitários/E2E         | Interface web pendente, sem invalidar a API       |
-| `PREC-CA-009`                 | `IMPLEMENTED` | Perfis externos são ocultados como inexistentes; composição e simulação rejeitam perfil de outra organização | Preservar a regra na criação de versão            |
-| `PREC-RN-021`                 | `PARTIAL`     | A simulação autoritativa aplica as deduções individualizadas e ordenadas do perfil atual                     | Congelar o perfil e as deduções no snapshot       |
-| `PREC-RN-022`                 | `IMPLEMENTED` | Perfis organizacionais versionados para canais, com nomes e percentuais configuráveis                        | Interface web pendente                            |
-| `PREC-RN-023`                 | `PARTIAL`     | Revisões preservam cada dedução; a simulação retorna cada item utilizado e a soma calculada pelo motor       | Congelar as deduções efetivas no snapshot oficial |
+| Critérios                     | Estado        | Base reutilizável                                                                                        | Implementação esperada                           |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `PREC-CA-006` a `PREC-CA-008` | `IMPLEMENTED` | Criação, nomes não vazios, deduções extensíveis, revisão e desativação comprovadas por unitários/E2E     | Interface web pendente, sem invalidar a API      |
+| `PREC-CA-009`                 | `IMPLEMENTED` | Perfis externos são ocultados; composição, simulação e criação de versão validam o perfil da organização | Regra comprovada também no fluxo persistente     |
+| `PREC-RN-021`                 | `IMPLEMENTED` | Versões congelam as deduções individualizadas e ordenadas do perfil atual no snapshot e nas projeções    | Interface web pendente                           |
+| `PREC-RN-022`                 | `IMPLEMENTED` | Perfis organizacionais versionados para canais, com nomes e percentuais configuráveis                    | Interface web pendente                           |
+| `PREC-RN-023`                 | `IMPLEMENTED` | Snapshot e projeções preservam cada dedução, taxa, origem, valor calculado e ordem                       | Comprovado por validação runtime e E2E histórico |
 
 ### Composição de custos
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                     | Implementação esperada                                  |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `PREC-CA-010` e `PREC-CA-011` | `IMPLEMENTED` | API cria e substitui composição completa; E2E cobre as oito categorias, coleção ordenada e componentes `MANUAL`, `COPIED` e `CATALOG` | Interface web pendente                                  |
-| `PREC-CA-012` a `PREC-CA-016` | `PARTIAL`     | Simulação resolve `MANUAL`, `COPIED` e custo `CATALOG` atual, preserva ordem/ID e rejeita fontes inválidas                            | Congelar o custo efetivo no snapshot e provar histórico |
-| `PREC-RN-006` a `PREC-RN-011` | `PARTIAL`     | Cálculo autoritativo usa componentes opcionais e ordenados, valida catálogo e não aceita custo efetivo do cliente                     | Criar versão e snapshot imutável                        |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                                     | Implementação esperada |
+| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `PREC-CA-010` e `PREC-CA-011` | `IMPLEMENTED` | API cria e substitui composição completa; E2E cobre as oito categorias, coleção ordenada e componentes `MANUAL`, `COPIED` e `CATALOG`                 | Interface web pendente |
+| `PREC-CA-012` a `PREC-CA-016` | `IMPLEMENTED` | Criação de versão resolve `MANUAL`, `COPIED` e custo `CATALOG`, congela ordem, ID e custo efetivo; E2E altera depois o catálogo sem mudar o histórico | Interface web pendente |
+| `PREC-RN-006` a `PREC-RN-011` | `IMPLEMENTED` | Motor único e backend autoritativo validam componentes, quantidades, custos e catálogo; snapshot imutável preserva a execução                         | Interface web pendente |
 
 ### Mão de obra
 
 | Critérios                     | Estado    | Base reutilizável                                                                                                                   | Implementação esperada                    |
 | ----------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | `PREC-CA-017` a `PREC-CA-019` | `PARTIAL` | Simulação resolve configuração e tempo, calcula a memória de mão de obra e retorna erro estável quando os parâmetros estão ausentes | Conversão de campos da interface pendente |
-| `PREC-RN-012` a `PREC-RN-015` | `PARTIAL` | Service omite mão de obra desabilitada e resolve custo mensal, horas e minutos quando habilitada                                    | Snapshot runtime e interface pendentes    |
+| `PREC-RN-012` a `PREC-RN-015` | `PARTIAL` | Service resolve a mão de obra habilitada e o snapshot v1 congela parâmetros, tempo e memória calculada                              | Interface web pendente                    |
 
 ### Frete
 
-| Critérios                     | Estado    | Base reutilizável                                                                                  | Implementação esperada              |
-| ----------------------------- | --------- | -------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `PREC-CA-020` a `PREC-CA-022` | `PARTIAL` | API autoritativa cobre frete ausente, manual e rateado, incluindo quantidade zero e consumo padrão | Interface pendente                  |
-| `PREC-RN-016` e `PREC-RN-017` | `PARTIAL` | Service adapta os modos aprovados e o motor devolve origem/modo e memória do frete                 | Congelar o modo no snapshot oficial |
+| Critérios                     | Estado    | Base reutilizável                                                                                                  | Implementação esperada |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------- |
+| `PREC-CA-020` a `PREC-CA-022` | `PARTIAL` | API autoritativa cobre frete ausente, manual e rateado, incluindo quantidade zero e consumo padrão                 | Interface pendente     |
+| `PREC-RN-016` e `PREC-RN-017` | `PARTIAL` | Service adapta os modos e o snapshot v1 congela entrada e resultado do frete, inclusive consumo padrão normalizado | Interface web pendente |
 
 ### Motor de cálculo
 
 | Critérios                     | Estado        | Base reutilizável                                                                                                     | Implementação esperada                                    |
 | ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `PREC-CA-023` a `PREC-CA-028` | `PARTIAL`     | Simulação HTTP reproduz EX-001/EX-002, recalcula entradas no backend, retorna decomposição e rejeita divisor inválido | Interface e fluxo de salvar versão pendentes              |
-| `PREC-RN-018` a `PREC-RN-027` | `PARTIAL`     | Service monta taxa fixa direta/derivada, deduções, margem e custos para o motor `margin-divisor-v1`                   | Congelar a execução no snapshot e expor na interface      |
+| `PREC-CA-023` a `PREC-CA-028` | `PARTIAL`     | Simulação e criação de versão recalculam pelo backend, preservam resultado e decomposição e rejeitam divisor inválido | Interface web pendente                                    |
+| `PREC-RN-018` a `PREC-RN-027` | `PARTIAL`     | Versão congela taxa fixa, deduções, margem, custos e resultado do `margin-divisor-v1`                                 | Exposição na interface pendente                           |
 | `EX-001` a `EX-012`           | `IMPLEMENTED` | 12 testes aprovados, nomeados por exemplo em `calculator/pricing-calculator.spec.ts`                                  | Cenários matemáticos aprovados; sem integração de domínio |
 
 ### Preço adotado
@@ -256,17 +271,20 @@ adicionada depois; endpoints, services e interface continuam ausentes.
 
 ### Decomposição e explicação
 
-| Critérios                     | Estado    | Base reutilizável                                                                | Implementação esperada                  |
-| ----------------------------- | --------- | -------------------------------------------------------------------------------- | --------------------------------------- |
-| `PREC-CA-026`                 | `PARTIAL` | Simulação HTTP expõe decomposição completa em strings e ordem determinística     | Interface pendente                      |
-| `PREC-RN-032` a `PREC-RN-034` | `PARTIAL` | Resposta transitória preserva entradas resolvidas, resultado, fórmula e contexto | Snapshot oficial e prévia web pendentes |
+| Critérios                     | Estado        | Base reutilizável                                                                                 | Implementação esperada                |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `PREC-CA-026`                 | `PARTIAL`     | Simulação e detalhe histórico expõem decomposição completa em strings e ordem determinística      | Interface pendente                    |
+| `PREC-RN-032` e `PREC-RN-033` | `IMPLEMENTED` | Snapshot v1 validado preserva entradas, resultado integral, configuração, fórmula, autoria e data | Interface web pendente                |
+| `PREC-RN-034`                 | `PARTIAL`     | Simulação transitória e persistência explícita são separadas na API                               | Recálculo local da interface pendente |
 
 ### Histórico e snapshots
 
-| Critérios                     | Estado    | Base reutilizável                                                                                   | Implementação esperada                                |
-| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `PREC-CA-035` a `PREC-CA-038` | `PENDING` | Modelos de versões/projeções e guards de imutabilidade; auditoria e snapshots comerciais existentes | Service, snapshot v1 runtime, API e testes funcionais |
-| `PREC-RN-035` a `PREC-RN-038` | `PARTIAL` | Fundação de versões/adoções; itens de orçamentos e pedidos preservam dados                          | Criar versões e relacioná-las aos fluxos comerciais   |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada                                     |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças | Adoção não faz parte destes critérios                      |
+| `PREC-CA-038`                 | `PARTIAL`     | GET paginado e detalhe validado exibem versões finalizadas da mais recente para a mais antiga                                      | Identificação da versão do preço atual depende da adoção   |
+| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                             | Comprovado no Marco 3C.3                                   |
+| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo implementadas; snapshots comerciais de orçamento/pedido já existem                                  | Integração das referências e auditoria de adoção pendentes |
 
 ### Integração com produtos
 
@@ -291,12 +309,12 @@ adicionada depois; endpoints, services e interface continuam ausentes.
 
 ### Integração com estoque e financeiro
 
-| Critérios                     | Estado    | Base reutilizável                                                                     | Implementação esperada                 |
-| ----------------------------- | --------- | ------------------------------------------------------------------------------------- | -------------------------------------- |
-| `PREC-CA-042`                 | `PARTIAL` | E2E compara movimentações antes/depois da simulação e não encontra efeitos            | Repetir a prova ao salvar versão       |
-| `PREC-CA-043`                 | `PARTIAL` | E2E compara lançamentos antes/depois da simulação e não encontra efeitos              | Repetir a prova ao salvar versão       |
-| `PREC-RN-039` a `PREC-RN-041` | `FUTURE`  | Módulos financeiros existentes                                                        | Agregados financeiros posteriores      |
-| `PREC-RN-043` e `PREC-RN-044` | `PARTIAL` | E2E comprova ausência de efeitos de composição e simulação sobre estoque e financeiro | Repetir a prova para criação de versão |
+| Critérios                     | Estado        | Base reutilizável                                                                                        | Implementação esperada            |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `PREC-CA-042`                 | `IMPLEMENTED` | E2E compara movimentações antes/depois da criação de versão e não encontra efeitos                       | Preservar nas etapas posteriores  |
+| `PREC-CA-043`                 | `IMPLEMENTED` | E2E compara lançamentos antes/depois da criação de versão e não encontra efeitos                         | Preservar nas etapas posteriores  |
+| `PREC-RN-039` a `PREC-RN-041` | `FUTURE`      | Módulos financeiros existentes                                                                           | Agregados financeiros posteriores |
+| `PREC-RN-043` e `PREC-RN-044` | `IMPLEMENTED` | E2E comprova ausência de efeitos de composição, simulação e criação de versão sobre estoque e financeiro | Preservar na adoção e interface   |
 
 ### Fluxos de pedidos
 
@@ -305,42 +323,42 @@ adicionada depois; endpoints, services e interface continuam ausentes.
 | `PREC-CA-044` | `PARTIAL` | `apps/api/src/order-workflows/order-workflows.service.ts` e `apps/api/test/orders.e2e-spec.ts` | Validar preservação dos fluxos após implementar precificação |
 | `PREC-RN-045` | `PARTIAL` | `order-workflows`; `OrdersService.createFromQuote` copia snapshots sem motor                   | Preservar a separação ao integrar precificação               |
 
-A existência de fluxos fornece uma base parcial. A composição e a simulação já
-possuem testes próprios de ausência de efeitos, mas a criação de versão ainda
-deve repetir a prova para `PREC-CA-042` e `PREC-CA-043`. Os testes existentes de
-pedidos comprovam o comportamento atual, mas não a integração futura.
+A existência de fluxos fornece uma base parcial. Composição, simulação e criação
+de versão possuem testes próprios de ausência de efeitos. Os testes existentes
+de pedidos comprovam o comportamento atual, mas não a integração futura.
 
 ### Permissões
 
-| Critérios                     | Estado    | Base reutilizável                                                                       | Implementação esperada                         |
-| ----------------------------- | --------- | --------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | Simulação comprova OWNER/ADMIN/OPERATIONS permitidos e FINANCE/VIEWER proibidos por E2E | Aplicar a matriz a versões, histórico e adoção |
-| Acesso não autenticado        | `PARTIAL` | `401 AUTHENTICATION_REQUIRED` testado também na simulação                               | Cobrir os endpoints posteriores                |
-| Isolamento organizacional     | `PARTIAL` | Simulação oculta produto, perfil e catálogo externos e deriva organização da sessão     | Testar versões, histórico e adoção             |
+| Critérios                     | Estado    | Base reutilizável                                                                                               | Implementação esperada    |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | E2E cobre matriz completa na criação e leitura de versões, além de configuração, perfis, composição e simulação | Resumo e adoção pendentes |
+| Acesso não autenticado        | `PARTIAL` | `401 AUTHENTICATION_REQUIRED` testado em criação, lista e detalhe de versões                                    | Cobrir resumo e adoção    |
+| Isolamento organizacional     | `PARTIAL` | Criação e histórico filtram produto, perfil, configuração, insumos e versão pela organização da sessão          | Adoção pendente           |
 
 ### Precisão e arredondamento
 
-| Critérios                     | Estado    | Base reutilizável                                                                            | Implementação esperada            |
-| ----------------------------- | --------- | -------------------------------------------------------------------------------------------- | --------------------------------- |
-| `PREC-CA-050` a `PREC-CA-053` | `PARTIAL` | API devolve memória decimal completa e `0.00000001` sem expoente; motor cobre arredondamento | Exibir na web                     |
-| `ADR-002`                     | `PARTIAL` | Motor, persistência e simulação HTTP usam strings decimais e serialização canônica           | Snapshot histórico e exibição web |
+| Critérios                     | Estado    | Base reutilizável                                                                                | Implementação esperada |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
+| `PREC-CA-050` a `PREC-CA-053` | `PARTIAL` | API devolve memória decimal completa e `0.00000001` sem expoente; motor cobre arredondamento     | Exibir na web          |
+| `ADR-002`                     | `PARTIAL` | Motor, persistência, simulação e snapshot histórico usam strings decimais canônicas sem expoente | Exibição web pendente  |
 
 ### Interface
 
-| Critérios                     | Estado    | Base reutilizável                                                                   | Implementação esperada           |
-| ----------------------------- | --------- | ----------------------------------------------------------------------------------- | -------------------------------- |
-| `PREC-CA-054` a `PREC-CA-057` | `PENDING` | Componentes e formulários existentes                                                | Fluxo de precificação do produto |
-| Recálculo local               | `PENDING` | React disponível                                                                    | Prévia em até 100 ms             |
-| Validação autoritativa        | `PARTIAL` | Simulação resolve entradas e recalcula no backend, rejeitando resultados do cliente | Repetir na criação de versão     |
+| Critérios                     | Estado    | Base reutilizável                                                                                         | Implementação esperada           |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `PREC-CA-054` a `PREC-CA-057` | `PENDING` | Componentes e formulários existentes                                                                      | Fluxo de precificação do produto |
+| Recálculo local               | `PENDING` | React disponível                                                                                          | Prévia em até 100 ms             |
+| Validação autoritativa        | `PARTIAL` | Simulação e criação de versão resolvem entradas e recalculam no backend, rejeitando resultados do cliente | Adoção e interface pendentes     |
 
 ### Auditoria e segurança
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                      | Implementação esperada                 |
-| ----------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `PREC-CA-058` e `PREC-CA-059` | `PARTIAL` | Configuração, perfis e composição geram auditoria atômica testada; modelo imutável `PricingPriceAdoption` e guards SQL | Criar adoção/AuditLog vinculados       |
-| `PREC-CA-060`                 | `PARTIAL` | DTO da simulação rejeita totais, fórmula, classificação e snapshot; service recalcula pelo motor                       | Repetir a garantia ao persistir versão |
-| `PREC-CA-061`                 | `PARTIAL` | Simulação valida configuração, perfil, alvo e insumos pela organização da sessão                                       | Validar versão na criação e adoção     |
-| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL` | Erros tipados do motor são traduzidos pelo contrato HTTP, com campos e códigos estáveis                                | Mensagens e formulários web pendentes  |
+| Critérios                     | Estado        | Base reutilizável                                                                                                    | Implementação esperada                   |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração e perfis geram auditoria atômica testada; composição e criação de versão também auditam suas mutações   | Preservar nas próximas mutações          |
+| `PREC-CA-059`                 | `PARTIAL`     | Modelo imutável `PricingPriceAdoption` e guards SQL existem                                                          | Implementar adoção e AuditLog vinculados |
+| `PREC-CA-060`                 | `IMPLEMENTED` | DTOs de simulação e versão rejeitam resultados, fórmula, classificação, snapshot e projeções; backend recalcula tudo | Preservar na adoção                      |
+| `PREC-CA-061`                 | `PARTIAL`     | Criação e leitura de versão validam configuração, perfil, alvo, insumos e versão pela organização da sessão          | Adoção pendente                          |
+| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL`     | Erros tipados do motor são traduzidos pelo contrato HTTP, com campos e códigos estáveis                              | Mensagens e formulários web pendentes    |
 
 ## 6. Rotas atuais que devem ser preservadas
 

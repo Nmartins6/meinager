@@ -314,7 +314,7 @@ describe('Pricing sales profiles (e2e)', () => {
       .send({ name: `Tiny ${randomUUID()}`, deductions: [deduction] })
       .expect(201);
     expect(created.body.currentRevision.deductions[0].rate).toBe('0.00000001');
-    expect(JSON.stringify(created.body)).not.toMatch(/[eE]-8/);
+    expect(created.body.currentRevision.deductions[0].rate).not.toMatch(/[eE]/);
 
     const persisted = await prisma.pricingDeduction.findFirstOrThrow({
       where: {
