@@ -14,6 +14,7 @@ import {
   ProductType,
 } from '../src/generated/prisma/enums.js';
 import { PricingAdoptionsService } from '../src/pricing/services/pricing-adoptions.service.js';
+import { ProductsService } from '../src/products/products.service.js';
 
 interface Identity {
   cookie: string;
@@ -196,6 +197,23 @@ describe('Pricing price adoptions (e2e)', () => {
       .post(`/api/pricing/products/${productId}/adoptions`)
       .set('Cookie', identity.cookie)
       .send({ versionId, ...extra });
+  }
+
+  function updateProduct(
+    identity: Identity,
+    productId: string,
+    body: Record<string, unknown>,
+  ) {
+    return request(server())
+      .patch(`/api/products/${productId}`)
+      .set('Cookie', identity.cookie)
+      .send(body);
+  }
+
+  function summary(identity: Identity, productId: string) {
+    return request(server())
+      .get(`/api/pricing/products/${productId}/summary`)
+      .set('Cookie', identity.cookie);
   }
 
   async function counts(productId: string) {
@@ -596,5 +614,277 @@ describe('Pricing price adoptions (e2e)', () => {
       code: 'INTERNAL_ERROR',
       message: 'Não foi possível concluir a operação de precificação.',
     });
+  });
+
+  it('applies the manual-price role matrix and preserves an adopted price when salePrice is omitted', async () => {
+    const { product, revision } = await createPricedProduct();
+    const version = await createVersion(product.id, revision);
+    await adopt(owner, product.id, version.id).expect(200);
+    const adopted = await counts(product.id);
+
+    await request(server())
+      .patch(`/api/products/${product.id}`)
+      .send({ salePrice: '60.00' })
+      .expect(401);
+
+    const operationsUpdate = await updateProduct(operations, product.id, {
+      name: `${product.name} updated`,
+    }).expect(200);
+    expect(operationsUpdate.body.name).toBe(`${product.name} updated`);
+    expect(await counts(product.id)).toEqual(adopted);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId: owner.organizationId,
+          entityId: product.id,
+          action: 'product_price.manually_changed',
+        },
+      }),
+    ).toBe(0);
+
+    for (const salePrice of ['60.00', null]) {
+      const forbidden = await updateProduct(operations, product.id, {
+        salePrice,
+      }).expect(403);
+      expect(forbidden.body.code).toBe('PRICING_FORBIDDEN');
+    }
+    await updateProduct(finance, product.id, { salePrice: '60.00' }).expect(
+      403,
+    );
+    await updateProduct(viewer, product.id, { salePrice: '60.00' }).expect(403);
+
+    const ownerUpdate = await updateProduct(owner, product.id, {
+      salePrice: '60.00',
+    }).expect(200);
+    expect(ownerUpdate.body.salePrice).toBe('60');
+    let state = await counts(product.id);
+    expect(state.adoptedPricingVersionId).toBeNull();
+    expect(state.events).toBe(adopted.events);
+
+    const adminUpdate = await updateProduct(admin, product.id, {
+      salePrice: null,
+    }).expect(200);
+    expect(adminUpdate.body.salePrice).toBeNull();
+    state = await counts(product.id);
+    expect(state.salePrice).toBeNull();
+    expect(state.adoptedPricingVersionId).toBeNull();
+    expect(state.events).toBe(adopted.events);
+
+    const audits = await prisma.auditLog.findMany({
+      where: {
+        organizationId: owner.organizationId,
+        entityId: product.id,
+        action: 'product_price.manually_changed',
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(audits).toHaveLength(2);
+    expect(audits[0]?.metadata).toEqual({
+      productId: product.id,
+      previousPrice: adopted.salePrice,
+      newPrice: '60',
+      previousVersionId: version.id,
+      pointerCleared: true,
+      actorUserId: owner.userId,
+    });
+    expect(audits[1]?.metadata).toEqual({
+      productId: product.id,
+      previousPrice: '60',
+      newPrice: null,
+      previousVersionId: null,
+      pointerCleared: false,
+      actorUserId: admin.userId,
+    });
+    expect(JSON.stringify(audits.map((audit) => audit.metadata))).not.toMatch(
+      /directCost|snapshot|component|deduction|cost/i,
+    );
+  });
+
+  it('audits an equal manual price and rolls back the full PATCH when auditing fails', async () => {
+    const { product, revision } = await createPricedProduct();
+    const version = await createVersion(product.id, revision);
+    await adopt(owner, product.id, version.id).expect(200);
+    const adopted = await counts(product.id);
+
+    await updateProduct(admin, product.id, {
+      salePrice: adopted.salePrice,
+    }).expect(200);
+    const manual = await counts(product.id);
+    expect(manual.salePrice).toBe(adopted.salePrice);
+    expect(manual.adoptedPricingVersionId).toBeNull();
+    expect(manual.events).toBe(adopted.events);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId: owner.organizationId,
+          entityId: product.id,
+          action: 'product_price.manually_changed',
+        },
+      }),
+    ).toBe(1);
+
+    const productBeforeFailure = await prisma.product.findUniqueOrThrow({
+      where: { id: product.id },
+      select: { name: true, salePrice: true, adoptedPricingVersionId: true },
+    });
+    const service = app.get(ProductsService) as unknown as {
+      auditManualPrice: (...args: unknown[]) => Promise<unknown>;
+    };
+    const auditSpy = vi
+      .spyOn(service, 'auditManualPrice')
+      .mockRejectedValueOnce(new Error('forced manual audit failure'));
+    try {
+      await updateProduct(owner, product.id, {
+        name: 'Must roll back',
+        salePrice: '88.00',
+      }).expect(500);
+    } finally {
+      auditSpy.mockRestore();
+    }
+    const productAfterFailure = await prisma.product.findUniqueOrThrow({
+      where: { id: product.id },
+      select: { name: true, salePrice: true, adoptedPricingVersionId: true },
+    });
+    expect(productAfterFailure).toEqual(productBeforeFailure);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId: owner.organizationId,
+          entityId: product.id,
+          action: 'product_price.manually_changed',
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it('serializes concurrent adoption and manual pricing without an incoherent price/version pair', async () => {
+    const { product, revision } = await createPricedProduct();
+    const version = await createVersion(product.id, revision);
+    const before = await counts(product.id);
+
+    const [adoptionResponse, manualResponse] = await Promise.all([
+      adopt(owner, product.id, version.id),
+      updateProduct(admin, product.id, { salePrice: '77.00' }),
+    ]);
+    expect(adoptionResponse.status).toBe(200);
+    expect(manualResponse.status).toBe(200);
+
+    const after = await counts(product.id);
+    const versionPrice = version.analyzedPrice.replace(/\.00$/, '');
+    expect(
+      (after.adoptedPricingVersionId === version.id &&
+        after.salePrice === versionPrice) ||
+        (after.adoptedPricingVersionId === null && after.salePrice === '77'),
+    ).toBe(true);
+    expect(after.events).toBe(before.events + 1);
+    expect(after.audits).toBe(before.audits + 1);
+    expect(after.stock).toBe(before.stock);
+    expect(after.financial).toBe(before.financial);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          organizationId: owner.organizationId,
+          entityId: product.id,
+          action: 'product_price.manually_changed',
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it('returns the exact commercial summary for every role without leaking internal data', async () => {
+    const { product, revision } = await createPricedProduct();
+    const expectedKeys = [
+      'currency',
+      'hasComposition',
+      'priceOrigin',
+      'productId',
+      'salePrice',
+    ];
+
+    for (const identity of [owner, admin, operations, finance, viewer]) {
+      const response = await summary(identity, product.id).expect(200);
+      expect(Object.keys(response.body).sort()).toEqual(expectedKeys);
+      expect(response.body).toEqual({
+        productId: product.id,
+        currency: 'BRL',
+        salePrice: '40',
+        priceOrigin: 'MANUAL',
+        hasComposition: true,
+      });
+    }
+    await request(server())
+      .get(`/api/pricing/products/${product.id}/summary`)
+      .expect(401);
+    expect((await summary(foreign, product.id).expect(404)).body.code).toBe(
+      'PRODUCT_NOT_FOUND',
+    );
+    expect((await summary(owner, randomUUID()).expect(404)).body.code).toBe(
+      'PRODUCT_NOT_FOUND',
+    );
+
+    const version = await createVersion(product.id, revision);
+    await adopt(owner, product.id, version.id).expect(200);
+    const adoptedSummary = await summary(viewer, product.id).expect(200);
+    expect(Object.keys(adoptedSummary.body).sort()).toEqual(expectedKeys);
+    expect(adoptedSummary.body.priceOrigin).toBe('PRICING_VERSION');
+    expect(adoptedSummary.body.salePrice).toBe(
+      version.analyzedPrice.replace(/\.00$/, ''),
+    );
+
+    await updateProduct(owner, product.id, { salePrice: null }).expect(200);
+    expect((await summary(viewer, product.id).expect(200)).body).toEqual({
+      productId: product.id,
+      currency: 'BRL',
+      salePrice: null,
+      priceOrigin: 'MANUAL',
+      hasComposition: true,
+    });
+
+    const noCompositionName = `No composition ${randomUUID()}`;
+    const noComposition = await prisma.product.create({
+      data: {
+        organizationId: owner.organizationId,
+        name: noCompositionName,
+        normalizedName: noCompositionName.toLowerCase(),
+        unit: 'UN',
+      },
+    });
+    expect((await summary(owner, noComposition.id).expect(200)).body).toEqual({
+      productId: noComposition.id,
+      currency: 'BRL',
+      salePrice: null,
+      priceOrigin: 'MANUAL',
+      hasComposition: false,
+    });
+  });
+
+  it('omits directCost from VIEWER product reads while retaining it for internal roles', async () => {
+    const { product } = await createPricedProduct();
+
+    for (const identity of [owner, admin, operations, finance]) {
+      const detail = await request(server())
+        .get(`/api/products/${product.id}`)
+        .set('Cookie', identity.cookie)
+        .expect(200);
+      expect(detail.body.directCost).toBe('50');
+      const list = await request(server())
+        .get(`/api/products?search=${encodeURIComponent(product.name)}`)
+        .set('Cookie', identity.cookie)
+        .expect(200);
+      expect(list.body.data).toHaveLength(1);
+      expect(list.body.data[0].directCost).toBe('50');
+    }
+
+    const viewerDetail = await request(server())
+      .get(`/api/products/${product.id}`)
+      .set('Cookie', viewer.cookie)
+      .expect(200);
+    expect(viewerDetail.body).not.toHaveProperty('directCost');
+    const viewerList = await request(server())
+      .get(`/api/products?search=${encodeURIComponent(product.name)}`)
+      .set('Cookie', viewer.cookie)
+      .expect(200);
+    expect(viewerList.body.data).toHaveLength(1);
+    expect(viewerList.body.data[0]).not.toHaveProperty('directCost');
   });
 });

@@ -30,6 +30,7 @@ import { PricingExceptionFilter } from '../errors/pricing-exception.filter.js';
 import { PricingCompositionsService } from '../services/pricing-compositions.service.js';
 import { PricingCalculationsService } from '../services/pricing-calculations.service.js';
 import { PricingAdoptionsService } from '../services/pricing-adoptions.service.js';
+import { PricingProductSummaryService } from '../services/pricing-product-summary.service.js';
 import { PricingVersionsService } from '../services/pricing-versions.service.js';
 
 const INTERNAL_READ_ROLES = [
@@ -48,7 +49,23 @@ export class ProductPricingController {
     private readonly calculations: PricingCalculationsService,
     private readonly versions: PricingVersionsService,
     private readonly adoptions: PricingAdoptionsService,
+    private readonly summary: PricingProductSummaryService,
   ) {}
+
+  @Get('summary')
+  @OrganizationRoles(
+    OrganizationRole.OWNER,
+    OrganizationRole.ADMIN,
+    OrganizationRole.OPERATIONS,
+    OrganizationRole.FINANCE,
+    OrganizationRole.VIEWER,
+  )
+  findSummary(
+    @Param('productId', new ParseUUIDPipe({ version: '4' })) productId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.summary.findOne(request.auth.organization.id, productId);
+  }
 
   @Post('adoptions')
   @HttpCode(HttpStatus.OK)

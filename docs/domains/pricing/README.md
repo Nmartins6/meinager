@@ -133,8 +133,13 @@ finalizadas em `POST /api/pricing/products/:productId/adoptions`: o backend
 valida e reproduz somente o snapshot congelado, bloqueia o produto e grava
 preço, ponteiro, evento imutável e auditoria na mesma transação. A adoção abaixo
 do mínimo exige papel, confirmação e justificativa, e repetições do estado atual
-são idempotentes. Alteração manual do preço, resumo comercial e interface web
-continuam pendentes.
+são idempotentes. O Marco 3D.2 concluiu a alteração manual pelo `PATCH` legado
+de produto, o resumo comercial e a restrição de `directCost` para `VIEWER`.
+Preço manual explícito é exclusivo de `OWNER`/`ADMIN`, limpa o vínculo com a
+versão e gera auditoria atômica; a omissão preserva preço e origem. O resumo
+expõe somente preço, origem manual ou versionada e existência de composição aos
+cinco papéis autenticados. Interface web e integração da origem comercial com
+orçamentos e pedidos continuam pendentes.
 
 ## Processo de alteração
 

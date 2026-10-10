@@ -1,26 +1,31 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { ProductType } from '../generated/prisma/enums.js';
+import { OrganizationRole, ProductType } from '../generated/prisma/enums.js';
+import {
+  PricingErrorCode,
+  PricingHttpException,
+} from '../pricing/errors/pricing-http.exception.js';
+import { serializePricingDecimal } from '../pricing/pricing-decimal-serialization.js';
 import type { CreateProductDto } from './dto/create-product.dto.js';
 import type { ListProductsQueryDto } from './dto/list-products-query.dto.js';
 import type { UpdateProductDto } from './dto/update-product.dto.js';
 import { lockProduct } from './lock-product.js';
 
-const productSelect = {
+const productSelectWithoutDirectCost = {
   id: true,
   type: true,
   name: true,
   sku: true,
   barcode: true,
   unit: true,
-  directCost: true,
   salePrice: true,
   trackInventory: true,
   minimumStock: true,
@@ -30,9 +35,26 @@ const productSelect = {
   updatedAt: true,
 } satisfies Prisma.ProductSelect;
 
-export type ProductResponse = Prisma.ProductGetPayload<{
-  select: typeof productSelect;
+const productSelectWithDirectCost = {
+  ...productSelectWithoutDirectCost,
+  directCost: true,
+} satisfies Prisma.ProductSelect;
+
+const productMutationSelect = {
+  ...productSelectWithDirectCost,
+  adoptedPricingVersionId: true,
+} satisfies Prisma.ProductSelect;
+
+type ProductWithoutDirectCostResponse = Prisma.ProductGetPayload<{
+  select: typeof productSelectWithoutDirectCost;
 }>;
+
+type ProductWithDirectCostResponse = Prisma.ProductGetPayload<{
+  select: typeof productSelectWithDirectCost;
+}>;
+
+export type ProductResponse =
+  ProductWithoutDirectCostResponse | ProductWithDirectCostResponse;
 
 export interface PaginatedProductsResponse {
   data: ProductResponse[];
@@ -76,7 +98,7 @@ export class ProductsService {
             minimumStock,
             notes: dto.notes ?? null,
           },
-          select: productSelect,
+          select: productSelectWithDirectCost,
         });
 
         await transaction.auditLog.create({
@@ -104,15 +126,19 @@ export class ProductsService {
 
   async findOne(
     organizationId: string,
+    role: OrganizationRole,
     productId: string,
   ): Promise<ProductResponse> {
-    const product = await this.prisma.product.findFirst({
-      where: {
-        id: productId,
-        organizationId,
-      },
-      select: productSelect,
-    });
+    const product =
+      role === OrganizationRole.VIEWER
+        ? await this.prisma.product.findFirst({
+            where: { id: productId, organizationId },
+            select: productSelectWithoutDirectCost,
+          })
+        : await this.prisma.product.findFirst({
+            where: { id: productId, organizationId },
+            select: productSelectWithDirectCost,
+          });
 
     if (!product) {
       throw new NotFoundException('Produto não encontrado.');
@@ -123,6 +149,7 @@ export class ProductsService {
 
   async findAll(
     organizationId: string,
+    role: OrganizationRole,
     query: ListProductsQueryDto,
   ): Promise<PaginatedProductsResponse> {
     const page = query.page ?? 1;
@@ -159,18 +186,29 @@ export class ProductsService {
       ...(searchFilters.length > 0 ? { OR: searchFilters } : {}),
     };
 
-    const [products, total] = await this.prisma.$transaction([
-      this.prisma.product.findMany({
-        where,
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        select: productSelect,
-      }),
-      this.prisma.product.count({
-        where,
-      }),
-    ]);
+    const pagination = {
+      where,
+      orderBy: [{ name: 'asc' as const }, { id: 'asc' as const }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    };
+    const count = this.prisma.product.count({ where });
+    const [products, total] =
+      role === OrganizationRole.VIEWER
+        ? await this.prisma.$transaction([
+            this.prisma.product.findMany({
+              ...pagination,
+              select: productSelectWithoutDirectCost,
+            }),
+            count,
+          ])
+        : await this.prisma.$transaction([
+            this.prisma.product.findMany({
+              ...pagination,
+              select: productSelectWithDirectCost,
+            }),
+            count,
+          ]);
 
     return {
       data: products,
@@ -186,6 +224,7 @@ export class ProductsService {
   async update(
     organizationId: string,
     actorUserId: string,
+    role: OrganizationRole,
     productId: string,
     dto: UpdateProductDto,
   ): Promise<ProductResponse> {
@@ -194,6 +233,20 @@ export class ProductsService {
     if (!hasChanges) {
       throw new BadRequestException(
         'Informe ao menos um campo para atualizar.',
+      );
+    }
+
+    const changesSalePrice = dto.salePrice !== undefined;
+
+    if (
+      changesSalePrice &&
+      role !== OrganizationRole.OWNER &&
+      role !== OrganizationRole.ADMIN
+    ) {
+      throw new PricingHttpException(
+        HttpStatus.FORBIDDEN,
+        PricingErrorCode.PRICING_FORBIDDEN,
+        'Seu papel não permite alterar o preço de venda manualmente.',
       );
     }
 
@@ -206,7 +259,7 @@ export class ProductsService {
             id: productId,
             organizationId,
           },
-          select: productSelect,
+          select: productMutationSelect,
         });
 
         if (!existingProduct) {
@@ -278,26 +331,40 @@ export class ProductsService {
             ...(dto.directCost !== undefined
               ? { directCost: dto.directCost }
               : {}),
-            ...(dto.salePrice !== undefined
-              ? { salePrice: dto.salePrice }
+            ...(changesSalePrice
+              ? {
+                  salePrice: dto.salePrice,
+                  adoptedPricingVersionId: null,
+                }
               : {}),
             trackInventory,
             minimumStock,
             ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
             ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
           },
-          select: productSelect,
+          select: productSelectWithDirectCost,
         });
 
-        await transaction.auditLog.create({
-          data: {
+        if (changesSalePrice) {
+          await this.auditManualPrice(transaction, {
             organizationId,
             actorUserId,
-            action: 'product.updated',
-            entityType: 'product',
-            entityId: product.id,
-          },
-        });
+            productId,
+            previousPrice: existingProduct.salePrice,
+            newPrice: product.salePrice,
+            previousVersionId: existingProduct.adoptedPricingVersionId,
+          });
+        } else {
+          await transaction.auditLog.create({
+            data: {
+              organizationId,
+              actorUserId,
+              action: 'product.updated',
+              entityType: 'product',
+              entityId: product.id,
+            },
+          });
+        }
 
         return product;
       });
@@ -326,6 +393,42 @@ export class ProductsService {
         'O estoque mínimo exige que o controle de estoque esteja habilitado.',
       );
     }
+  }
+
+  private auditManualPrice(
+    transaction: Prisma.TransactionClient,
+    data: {
+      organizationId: string;
+      actorUserId: string;
+      productId: string;
+      previousPrice: Prisma.Decimal | null;
+      newPrice: Prisma.Decimal | null;
+      previousVersionId: string | null;
+    },
+  ) {
+    return transaction.auditLog.create({
+      data: {
+        organizationId: data.organizationId,
+        actorUserId: data.actorUserId,
+        action: 'product_price.manually_changed',
+        entityType: 'product',
+        entityId: data.productId,
+        metadata: {
+          productId: data.productId,
+          previousPrice:
+            data.previousPrice === null
+              ? null
+              : serializePricingDecimal(data.previousPrice),
+          newPrice:
+            data.newPrice === null
+              ? null
+              : serializePricingDecimal(data.newPrice),
+          previousVersionId: data.previousVersionId,
+          pointerCleared: data.previousVersionId !== null,
+          actorUserId: data.actorUserId,
+        },
+      },
+    });
   }
 
   private normalizeName(name: string): string {

@@ -31,7 +31,11 @@ export class ProductsController {
     @Query() query: ListProductsQueryDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    return this.productsService.findAll(request.auth.organization.id, query);
+    return this.productsService.findAll(
+      request.auth.organization.id,
+      request.auth.organization.role,
+      query,
+    );
   }
 
   @Get(':productId')
@@ -42,6 +46,7 @@ export class ProductsController {
   ) {
     return this.productsService.findOne(
       request.auth.organization.id,
+      request.auth.organization.role,
       productId,
     );
   }
@@ -75,6 +80,7 @@ export class ProductsController {
     return this.productsService.update(
       request.auth.organization.id,
       request.auth.user.id,
+      request.auth.organization.role,
       productId,
       dto,
     );

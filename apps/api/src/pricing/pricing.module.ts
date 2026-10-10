@@ -9,6 +9,7 @@ import { PricingCompositionsService } from './services/pricing-compositions.serv
 import { PricingCalculationsService } from './services/pricing-calculations.service.js';
 import { PricingAdoptionsService } from './services/pricing-adoptions.service.js';
 import { PricingProfilesService } from './services/pricing-profiles.service.js';
+import { PricingProductSummaryService } from './services/pricing-product-summary.service.js';
 import { PricingVersionsService } from './services/pricing-versions.service.js';
 
 @Module({
@@ -25,6 +26,7 @@ import { PricingVersionsService } from './services/pricing-versions.service.js';
     PricingCalculationsService,
     PricingVersionsService,
     PricingAdoptionsService,
+    PricingProductSummaryService,
   ],
 })
 export class PricingModule {}

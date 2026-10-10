@@ -285,12 +285,20 @@ describe('Products (e2e)', () => {
       where: {
         organizationId,
         actorUserId: userId,
-        action: 'product.updated',
+        action: 'product_price.manually_changed',
         entityId: productId,
       },
     });
 
     expect(auditLog.entityType).toBe('product');
+    expect(auditLog.metadata).toMatchObject({
+      productId,
+      previousPrice: '24.9',
+      newPrice: null,
+      previousVersionId: null,
+      pointerCleared: false,
+      actorUserId: userId,
+    });
   });
 
   it('PATCH should reject an empty payload', async () => {

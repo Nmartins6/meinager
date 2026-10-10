@@ -73,9 +73,9 @@ fontes oficiais.
       somente documentação).
 - [x] Implementar base HTTP, erros locais e configuração organizacional
       versionada (Marco 3B.1, 05/10/2026).
-- [ ] Implementar todos os services e endpoints da API de precificação (Marcos
-      3B a 3D; configuração, perfis, composição, simulação, versões, histórico e
-      adoção de versão já concluídos; preço manual e resumo ainda pendentes).
+- [x] Implementar os services e endpoints da API de precificação previstos nos
+      Marcos 3B a 3D (configuração, perfis, composição, simulação, versões,
+      histórico, adoção, preço manual e resumo comercial concluídos).
 - [x] Implementar perfis de deduções e concluir o Marco 3B (Marco 3B.2,
       06/10/2026).
 - [x] Implementar consulta e substituição completa da composição (Marco 3C.1,
@@ -87,11 +87,12 @@ fontes oficiais.
 - [x] Implementar criação de versões e histórico de cálculos (Marco 3C.3,
       08/10/2026).
 - [x] Implementar adoção atômica de versão (Marco 3D.1, 09/10/2026).
-- [ ] Implementar alteração manual do preço e resumo comercial.
+- [x] Implementar alteração manual do preço, resumo comercial e restrição de
+      `directCost` para `VIEWER` (Marco 3D.2, 09/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
-- [x] Atualizar a matriz de rastreabilidade até as evidências do Marco 3D.1.
+- [x] Atualizar a matriz de rastreabilidade até as evidências do Marco 3D.2.
 - [ ] Registrar os resultados finais.
 
 ## Descobertas
@@ -736,6 +737,25 @@ rastreabilidade; não representam o estado atual do marco.
   antes da comparação idempotente. Confirmação e justificativa permanecem
   obrigatórias para cada nova transição abaixo do mínimo.
 
+### Marco 3D.2 — Preço manual e projeção comercial — 09/10/2026
+
+- O `PATCH /api/products/:productId` já distinguia omissão de `salePrice` de
+  `null`. A integração preservou esse contrato: omissão mantém preço e ponteiro;
+  string, `null` e valor igual são decisões manuais de `OWNER`/`ADMIN`, limpam o
+  ponteiro e criam exatamente um `product_price.manually_changed`.
+- O lock de produto já compartilhado com a adoção permite serializar os dois
+  comandos. Os guards SQL aceitaram a transição manual sem
+  `PricingPriceAdoption`, desde que preço e ponteiro fossem gravados na mesma
+  transação. O E2E comprovou rollback em falha de auditoria e ausência de par
+  incoerente sob concorrência real.
+- `GET /api/pricing/products/:productId/summary` pode derivar a origem comercial
+  apenas do ponteiro anulável e verificar a existência da composição com uma
+  projeção mínima. O contrato retorna exatamente cinco propriedades e não
+  expõe versão, custo ou memória de cálculo.
+- A proteção de `directCost` exige selects distintos nos endpoints legados de
+  lista e detalhe. O campo não é consultado para `VIEWER`; os outros quatro
+  papéis mantêm o contrato anterior.
+
 ## Decisões tomadas
 
 ### Custos fixos
@@ -769,6 +789,16 @@ A adoção usa exclusivamente uma versão `FINALIZED` validada e seu
 superiores ao mínimo; abaixo do mínimo somente `OWNER` e `ADMIN`, com confirmação
 explícita e justificativa. O produto permanece bloqueado até o commit e somente
 `P2034` é traduzido como conflito concorrente.
+
+### Preço manual e projeções por papel — Marco 3D.2
+
+Preço manual explícito no `PATCH` de produto é permitido somente para `OWNER` e
+`ADMIN`, inclusive quando `null` ou numericamente igual ao atual. A decisão
+limpa `adoptedPricingVersionId` e audita preços, versão anterior e ator na mesma
+transação; omissão preserva preço e ponteiro. O resumo comercial usa o ponteiro
+somente para derivar `MANUAL` ou `PRICING_VERSION` e não o expõe. Consultas
+legadas de produto selecionam `directCost` para `OWNER`, `ADMIN`, `OPERATIONS` e
+`FINANCE`, e usam uma projeção sem esse campo para `VIEWER`.
 
 ### Dados financeiros
 
@@ -997,15 +1027,15 @@ consolidados; autenticação, organização, carga de insumos/configuração e
 transações pertencem à aplicação. Identificadores podem acompanhar entradas
 para rastreabilidade, mas o motor puro não consulta nem valida posse no banco.
 
-| Limite                                | Responsabilidade                                                        | Caminhos atuais ou planejados                                                                                                                                                                                                                                   |
-| ------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Motor puro — Marco 1                  | `margin-divisor-v1`, validação matemática, memória e erros tipados      | `apps/api/src/pricing/calculator/pricing-calculator.ts`, `pricing-calculator.types.ts`, `pricing-calculator.errors.ts`, `pricing-calculator.spec.ts`; adaptador `pricing-decimal.ts` somente se necessário                                                      |
-| Aplicação — Marco 3                   | Orquestrar configuração/perfis, composição, simulação, versões e adoção | Estrutura aprovada na ADR-007: `pricing.module.ts`, `contracts/`, `dto/`, `errors/`, `controllers/`, `services/` e `pricing-locks.ts`                                                                                                                           |
-| Configuração organizacional — Marco 2 | Parâmetros com vigência/origem e perfis organizacionais                 | Modelos implementados em `apps/api/prisma/schema.prisma`: `OrganizationPricingConfiguration`, revisões, `PricingSalesProfile`, revisões e `PricingDeduction`; services planejados na ADR-007                                                                    |
-| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis   | Modelos implementados `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion`, projeções e `PricingPriceAdoption`; composição, simulação, snapshot v1, versões e histórico concluídos nos Marcos 3C.1 a 3C.3; adoção pendente              |
-| Web — Marco 4                         | Contratos Zod, queries/mutations e formulários específicos              | `apps/web/src/features/pricing/pricing-api.ts`, `use-*-query.ts`, `use-*-mutation.ts`, `pricing-composition-form.tsx`, `pricing-configuration-form.tsx`, `pricing-history.tsx`; `apps/web/src/pages/product-pricing-page.tsx`, `pricing-configuration-page.tsx` |
-| Integração comercial — Marco 5        | Validar/capturar origem e copiar snapshot sem custos                    | Extensões localizadas em `apps/api/src/quotes/quotes.service.ts`, `apps/api/src/orders/orders.service.ts`, DTOs e `apps/web/src/features/quotes/`; sem alterações nos fluxos                                                                                    |
-| Validação posterior                   | Permissões, isolamento, imutabilidade, concorrência e não regressão     | `apps/api/test/pricing.e2e-spec.ts`, testes existentes de produtos/orçamentos/pedidos; specs web próximos às páginas/features                                                                                                                                   |
+| Limite                                | Responsabilidade                                                      | Caminhos atuais ou planejados                                                                                                                                                                                                                                   |
+| ------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Motor puro — Marco 1                  | `margin-divisor-v1`, validação matemática, memória e erros tipados    | `apps/api/src/pricing/calculator/pricing-calculator.ts`, `pricing-calculator.types.ts`, `pricing-calculator.errors.ts`, `pricing-calculator.spec.ts`; adaptador `pricing-decimal.ts` somente se necessário                                                      |
+| Aplicação — Marco 3                   | Orquestrar configuração, composição, cálculo, histórico e preço       | Estrutura implementada conforme ADR-007 em `pricing.module.ts`, `contracts/`, `dto/`, `errors/`, `controllers/`, `services/` e `pricing-locks.ts`; Marcos 3B a 3D concluídos                                                                                    |
+| Configuração organizacional — Marco 2 | Parâmetros com vigência/origem e perfis organizacionais               | Modelos em `apps/api/prisma/schema.prisma` e services/controllers versionados de configuração, perfis e deduções concluídos nos Marcos 3B.1 e 3B.2                                                                                                              |
+| Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis | `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion`, projeções e `PricingPriceAdoption`; composição, simulação, snapshot, versões, histórico e adoção concluídos nos Marcos 3C e 3D.1; resumo e preço manual concluídos no Marco 3D.2  |
+| Web — Marco 4                         | Contratos Zod, queries/mutations e formulários específicos            | `apps/web/src/features/pricing/pricing-api.ts`, `use-*-query.ts`, `use-*-mutation.ts`, `pricing-composition-form.tsx`, `pricing-configuration-form.tsx`, `pricing-history.tsx`; `apps/web/src/pages/product-pricing-page.tsx`, `pricing-configuration-page.tsx` |
+| Integração comercial — Marco 5        | Validar/capturar origem e copiar snapshot sem custos                  | Extensões localizadas em `apps/api/src/quotes/quotes.service.ts`, `apps/api/src/orders/orders.service.ts`, DTOs e `apps/web/src/features/quotes/`; sem alterações nos fluxos                                                                                    |
+| Validação posterior                   | Permissões, isolamento, imutabilidade, concorrência e não regressão   | Specs em `apps/api/test/pricing-*.e2e-spec.ts`, `products.e2e-spec.ts` e runner PostgreSQL descartável; testes de orçamentos/pedidos e specs web permanecem para seus respectivos marcos                                                                        |
 
 Configuração deve ser recurso de precificação associado à organização, com
 vigência, origem, ator e data; não acrescentar parâmetros financeiros soltos
@@ -2067,3 +2097,28 @@ git status --short
   pendentes.
 - Nenhum schema, migration, banco normal, dependência, fórmula, endpoint legado,
   orçamento, pedido ou arquivo web foi alterado. Nenhum commit foi criado.
+
+### Marco 3D.2 concluído — 09/10/2026
+
+- Entrega: o `PATCH /api/products/:productId` preserva preço e ponteiro quando
+  `salePrice` é omitido. Uma string, `null` ou valor igual exige `OWNER`/`ADMIN`,
+  limpa o ponteiro e cria exatamente uma auditoria
+  `product_price.manually_changed`; `OPERATIONS` permanece autorizado para os
+  outros campos.
+- O resumo em `GET /api/pricing/products/:productId/summary` retorna somente
+  `productId`, `currency`, `salePrice`, `priceOrigin` e `hasComposition` aos
+  cinco papéis autenticados. Lista e detalhe legados usam selects sem
+  `directCost` para `VIEWER` e mantêm o campo para os demais papéis.
+- Atomicidade e concorrência: produto, preço, ponteiro, demais campos e auditoria
+  manual pertencem à mesma transação sob `FOR UPDATE`. E2E comprovou rollback em
+  falha forçada, ausência de evento de adoção manual e serialização coerente
+  entre adoção e alteração manual, sem efeitos em estoque ou financeiro.
+- Evidência direcionada: 29 testes unitários em dois arquivos. O runner aprovou
+  79 testes E2E em sete arquivos depois de aplicar as 16 migrations somente no
+  banco descartável `pricing_configuration_e2e_d33d97bc9e2acf0b`; esse banco e
+  a prova `pricing_configuration_e2e_cleanup_d33d97bc9e2acf0b` foram removidos.
+- A suíte unitária completa da API aprovou 241 testes em 21 arquivos; typecheck,
+  lint e build também passaram.
+- Limites: interface web e integração da origem comercial com orçamentos e
+  pedidos permanecem pendentes. Nenhum schema, migration, dependência, fórmula,
+  snapshot, banco normal ou arquivo web foi alterado. Nenhum commit foi criado.

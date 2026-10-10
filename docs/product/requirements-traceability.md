@@ -70,6 +70,14 @@ descartável e 218 testes em 20 arquivos na suíte unitária completa da API.
 Alteração manual do preço, resumo comercial, compatibilidade de `directCost` e
 interface permanecem pendentes.
 
+Revisão do Marco 3D.2: 09/10/2026. O preço manual explícito agora limpa a
+versão adotada e audita a decisão atomicamente; omissão preserva preço e origem.
+O resumo comercial expõe somente cinco campos, e os endpoints legados de
+produto não consultam nem retornam `directCost` para `VIEWER`. A validação
+aprovou 29 testes unitários direcionados, 79 E2E em PostgreSQL descartável e
+241 testes em 21 arquivos na suíte unitária completa da API. Interface web e
+integração da origem comercial com orçamentos e pedidos permanecem pendentes.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -111,6 +119,7 @@ A API possui módulos para:
 - simulações autoritativas de precificação;
 - snapshots e versões históricas de cálculo.
 - adoção atômica de versões de precificação.
+- alteração manual auditada e resumo comercial de precificação.
 
 A auditoria utiliza o modelo `AuditLog` e gravações nos services dos módulos;
 não existe módulo Nest específico de auditoria. `PricingConfigurationService`
@@ -208,7 +217,7 @@ ADR-005 registra precisão e limites técnicos. Não há migration neste marco.
 | PREC-CA-019 e PREC-CA-021 | `IMPLEMENTED` | Testes EX-009/EX-010 e denominadores ativos com numerador zero                                                                                                        | Validação condicional dos modos utilizados                              |
 | PREC-CA-023 e PREC-CA-024 | `IMPLEMENTED` | `calculator/pricing-calculator.spec.ts`, testes EX-001 e EX-002 aprovados contra os resultados oficiais corrigidos                                                    | Cálculo simples e completo no motor puro                                |
 | PREC-CA-025               | `IMPLEMENTED` | EX-006/EX-007 e divisor mínimo inválido com custo zero                                                                                                                | Erro tipado com mensagem, nenhum preço retornado                        |
-| PREC-CA-030 e PREC-CA-032 | `PARTIAL`     | A simulação aceita `adoptedPrice` e expõe lucro, margem, classificação e avisos recalculados pelo backend                                                             | Interface e adoção transacional pendentes                               |
+| PREC-CA-030 e PREC-CA-032 | `PARTIAL`     | Simulação, versão e adoção preservam lucro, margem, classificação e avisos calculados pelo backend                                                                    | Exposição e adoção pela interface pendentes                             |
 | PREC-CA-051 e PREC-CA-053 | `IMPLEMENTED` | EX-011, mínimo para cima, fronteiras de centavo e lucro residual                                                                                                      | Arredondamento e recálculo decimal no motor                             |
 | PREC-CA-050               | `IMPLEMENTED` | EX-001 a EX-012 aprovados em `calculator/pricing-calculator.spec.ts`; precisão, grandes quantidades e divisores próximos de zero testados                             | Reprodução decimal dos exemplos no motor puro                           |
 | PREC-CA-052               | `PARTIAL`     | `PricingMoney.display`, teste de half-up sem realimentar cálculo                                                                                                      | Formatação retornada pelo motor; exibição web pendente                  |
@@ -272,13 +281,13 @@ endpoints, services e interface ainda estavam ausentes.
 
 ### Preço adotado
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                     | Implementação esperada                        |
-| ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `PREC-CA-029` e `PREC-CA-031` | `IMPLEMENTED` | A versão sugerida ou personalizada é validada e adotada atomicamente; o produto recebe preço e ponteiro com auditoria | Comprovado por unitários e E2E do Marco 3D.1  |
-| `PREC-CA-030` e `PREC-CA-032` | `PARTIAL`     | Criação de versão recalcula preços personalizados; adoção usa sua análise e classificação congeladas                  | Exposição e adoção pela interface pendentes   |
-| `PREC-CA-033`                 | `IMPLEMENTED` | Somente OWNER/ADMIN confirmam preço abaixo do mínimo, com confirmação e justificativa; OPERATIONS recebe 403          | Comprovado por unitários e E2E                |
-| `PREC-CA-034`                 | `PARTIAL`     | Simulação e versão não alteram preço; somente adoção explícita escreve preço e ponteiro                               | Distinção completa depende do resumo e da web |
-| `PREC-RN-028` a `PREC-RN-031` | `PARTIAL`     | Backend analisa preço personalizado, congela a memória e adota exatamente `analyzedPrice`, inclusive abaixo do mínimo | Fluxo e alertas da interface pendentes        |
+| Critérios                     | Estado        | Base reutilizável                                                                                                     | Implementação esperada                       |
+| ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `PREC-CA-029` e `PREC-CA-031` | `IMPLEMENTED` | A versão sugerida ou personalizada é validada e adotada atomicamente; o produto recebe preço e ponteiro com auditoria | Comprovado por unitários e E2E do Marco 3D.1 |
+| `PREC-CA-030` e `PREC-CA-032` | `PARTIAL`     | Criação de versão recalcula preços personalizados; adoção usa sua análise e classificação congeladas                  | Exposição e adoção pela interface pendentes  |
+| `PREC-CA-033`                 | `IMPLEMENTED` | Somente OWNER/ADMIN confirmam preço abaixo do mínimo, com confirmação e justificativa; OPERATIONS recebe 403          | Comprovado por unitários e E2E               |
+| `PREC-CA-034`                 | `PARTIAL`     | Simulação e versão não alteram preço; adoção e preço manual explícitos têm origens distintas no resumo comercial      | Exposição na interface web pendente          |
+| `PREC-RN-028` a `PREC-RN-031` | `PARTIAL`     | Backend analisa preço personalizado, congela a memória e adota exatamente `analyzedPrice`, inclusive abaixo do mínimo | Fluxo e alertas da interface pendentes       |
 
 ### Decomposição e explicação
 
@@ -299,10 +308,10 @@ endpoints, services e interface ainda estavam ausentes.
 
 ### Integração com produtos
 
-| Critérios     | Estado    | Base reutilizável                                                                                                | Implementação esperada                          |
-| ------------- | --------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `PREC-CA-039` | `PARTIAL` | A adoção atualiza `salePrice` e `adoptedPricingVersionId` atomicamente; preço manual continua no contrato legado | Implementar limpeza do ponteiro no preço manual |
-| `PREC-RN-042` | `PARTIAL` | Preço atual e versão de origem são vinculados na adoção e preservados por FK/guards                              | Concluir semântica do preço manual              |
+| Critérios     | Estado        | Base reutilizável                                                                                                     | Implementação esperada                     |
+| ------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `PREC-CA-039` | `IMPLEMENTED` | Produtos sem composição preservam o preço legado; resumo, preço manual e E2E comprovam uso sem versão de precificação | Interface web pendente                     |
+| `PREC-RN-042` | `IMPLEMENTED` | Adoção vincula preço e versão; alteração manual limpa o ponteiro; ambas são atômicas e preservam o preço do catálogo  | Integração com orçamentos/pedidos pendente |
 
 ### Integração com orçamentos
 
@@ -340,11 +349,16 @@ de pedidos comprovam o comportamento atual, mas não a integração futura.
 
 ### Permissões
 
-| Critérios                     | Estado    | Base reutilizável                                                                                               | Implementação esperada          |
-| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `PREC-CA-045` a `PREC-CA-049` | `PARTIAL` | E2E cobre matriz completa também na adoção normal e abaixo do mínimo                                            | Resumo e preço manual pendentes |
-| Acesso não autenticado        | `PARTIAL` | `401 AUTHENTICATION_REQUIRED` testado também no endpoint de adoção                                              | Cobrir resumo comercial         |
-| Isolamento organizacional     | `PARTIAL` | Adoção bloqueia produto e carrega versão pelo trio organização/produto/ID; E2E oculta produto e versão externos | Cobrir resumo e preço manual    |
+| Critérios                     | Estado        | Base reutilizável                                                                                                          | Implementação esperada                   |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `PREC-CA-045` a `PREC-CA-049` | `IMPLEMENTED` | E2E cobre configuração, perfis, composição, simulação, versões, adoção, preço manual, resumo e leitura comercial por papel | Interface deve consumir a mesma política |
+| Acesso não autenticado        | `IMPLEMENTED` | Endpoints de precificação, inclusive adoção e resumo comercial, rejeitam ausência de sessão com `401`                      | Preservar nos endpoints futuros          |
+| Isolamento organizacional     | `IMPLEMENTED` | Services filtram pela organização da sessão; E2E oculta recursos externos também no preço manual e no resumo               | Preservar nas integrações futuras        |
+
+O contrato legado de produtos possui E2E específico de não vazamento:
+`OWNER`, `ADMIN`, `OPERATIONS` e `FINANCE` continuam recebendo `directCost` em
+lista e detalhe, enquanto a projeção Prisma usada para `VIEWER` não seleciona
+nem retorna a propriedade.
 
 ### Precisão e arredondamento
 
@@ -365,10 +379,10 @@ de pedidos comprovam o comportamento atual, mas não a integração futura.
 
 | Critérios                     | Estado        | Base reutilizável                                                                                                       | Implementação esperada                  |
 | ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração e perfis geram auditoria atômica testada; composição e criação de versão também auditam suas mutações      | Preservar nas próximas mutações         |
+| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração, perfis, composição, versão, adoção e preço manual geram auditorias atômicas testadas                      | Preservar nas integrações futuras       |
 | `PREC-CA-059`                 | `IMPLEMENTED` | Evento imutável guarda a decisão e justificativa; AuditLog vinculado guarda organização, ator, produto, versão e preços | Comprovado por rollback e metadados E2E |
 | `PREC-CA-060`                 | `IMPLEMENTED` | DTO de adoção rejeita preço, classificação, fórmula, snapshot, IDs protegidos e resultados enviados pelo cliente        | Preservar nas próximas mutações         |
-| `PREC-CA-061`                 | `PARTIAL`     | Adoção deriva organização da sessão e valida produto/versão conjuntamente; E2E comprova isolamento                      | Resumo e preço manual pendentes         |
+| `PREC-CA-061`                 | `IMPLEMENTED` | Organização e ator vêm da sessão em todos os casos de uso; E2E cobre também preço manual, resumo e recursos externos    | Preservar nas integrações futuras       |
 | `PREC-RN-046` a `PREC-RN-048` | `PARTIAL`     | Erros tipados do motor são traduzidos pelo contrato HTTP, com campos e códigos estáveis                                 | Mensagens e formulários web pendentes   |
 
 ## 6. Rotas atuais que devem ser preservadas
