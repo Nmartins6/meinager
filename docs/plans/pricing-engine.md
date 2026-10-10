@@ -89,6 +89,8 @@ fontes oficiais.
 - [x] Implementar adoção atômica de versão (Marco 3D.1, 09/10/2026).
 - [x] Implementar alteração manual do preço, resumo comercial e restrição de
       `directCost` para `VIEWER` (Marco 3D.2, 09/10/2026).
+- [x] Auditar o frontend e definir a arquitetura da interface de precificação
+      (Marco 4A, 10/10/2026; ADR-008, somente documentação).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -106,6 +108,37 @@ Cada descoberta deve conter:
 - descrição;
 - evidência;
 - impacto no plano.
+
+### Marco 4A — Auditoria da interface web — 10/10/2026
+
+- A aplicação React já possui a estrutura necessária para o novo domínio:
+  rotas lazy sob `ProtectedRoute`, layout autenticado, papéis na sessão,
+  TanStack Query, React Hook Form, Zod, `useFieldArray`, componentes básicos e
+  testes Vitest/Testing Library. Não é necessário um refactor estrutural antes
+  do Marco 4B.1.
+- O cliente HTTP atual preserva apenas mensagem e status. O Marco 4B.2 deverá
+  manter também `code`, `field` e `details` dos erros estáveis de precificação
+  para distinguir campo, conflito, ausência, permissão e erro interno.
+- O schema web de produto exige `directCost`, enquanto a API implementada o
+  omite para `VIEWER`. Além disso, a edição atual sempre reenvia `salePrice`:
+  isso falha para `OPERATIONS` e, para `OWNER`/`ADMIN`, cria uma decisão manual
+  mesmo sem intenção. O Marco 4B.2 deve aceitar a projeção por papel, omitir
+  `salePrice` em edições comuns e oferecer preço manual em ação explícita.
+- O workspace já inclui `packages/*`, mas não há pacote compartilhado. O motor
+  puro usa clone local de `decimal.js`; os helpers `bigint` de orçamento não
+  representam a fórmula de margem divisora. A ADR-008 aprova prévia híbrida com
+  extração incremental do motor para um pacote puro compartilhado no Marco
+  4B.1.
+- Os contratos reais dos Marcos 3B a 3D.2 correspondem à ADR-007. A listagem e
+  o detalhe de versões, porém, não informam qual versão é a origem atual do
+  preço e o resumo comercial deliberadamente não expõe o identificador. A
+  revisão humana aprovou `isAdopted: boolean` nos contratos internos; sua
+  implementação pequena e seus testes precederão a interface de histórico do
+  Marco 4D.
+- Não existe hoje diálogo próprio, toast ou proteção contra saída com formulário
+  sujo. Um diálogo acessível pode reutilizar `@base-ui/react`, já instalado;
+  feedback inline e os padrões atuais de `role="status"`/`role="alert"` evitam
+  nova dependência no primeiro incremento.
 
 ### Auditoria técnica — 02/10/2026
 
@@ -808,6 +841,28 @@ durante a fórmula, conforme `ADR-004`.
 Novas decisões estruturais devem ser registradas em ADR antes de serem
 aplicadas.
 
+### Arquitetura da interface web — Marco 4A
+
+A [ADR-008](../architecture/decisions/ADR-008-pricing-web-architecture.md)
+foi aceita em 10/10/2026 e integra a precificação às rotas e páginas de Produtos.
+A entrega será dividida em 4B.1 (pacote do motor), 4B.2 (fundação e produtos),
+4B.3 (configuração), 4B.4 (perfis), 4C (composição), 4D (simulação, versões e
+adoção) e 4E (acabamento e validação integral). A prévia será híbrida: cálculo
+local pelo mesmo motor puro compartilhado e confirmação autoritativa pela API.
+Strings decimais canônicas continuam sendo a fronteira; rascunho, cache
+persistido e simulação permanecem separados.
+
+O Marco 4B.1 moverá o motor e a única suíte canônica completa de 77 testes para
+`packages/pricing-calculator`, mantendo na API reexports temporários e testes
+mínimos de integração. O Marco 4B.2 corrigirá ausência de `directCost` para
+`VIEWER` e omissão de `salePrice` em edições comuns.
+
+A extensão interna `isAdopted: boolean` foi aprovada para lista e detalhe de
+versões. É uma projeção dinâmica calculada pela comparação entre o ponteiro
+atual do produto e a versão, sem persistência, schema ou migration. O resumo
+comercial permanece sem identificador ou snapshot. A implementação e os testes
+próprios precederão a interface de histórico do Marco 4D.
+
 ### Representação do motor puro — Marco 1
 
 `docs/architecture/decisions/ADR-005-pure-pricing-decimal.md` registra a escolha
@@ -881,10 +936,12 @@ Marco 1 e resolvem os pontos correspondentes da auditoria histórica:
   custos/margens/lucro/decomposição/histórico interno. Abaixo do mínimo somente
   `OWNER`/`ADMIN`, com confirmação e justificativa.
 
-O contrato atual de `Product` ainda expõe `directCost` ao `VIEWER`. A ADR-007
-aprovou sua restrição explícita no Marco 3, com selects por autorização e testes
-de não vazamento. Origem comercial de itens, prévia web e integrações financeiras
-futuras continuam abertas nos marcos correspondentes.
+Na auditoria do Marco 0, o contrato de `Product` ainda expunha `directCost` ao
+`VIEWER`. A ADR-007 aprovou a restrição e o Marco 3D.2 a implementou com selects
+por autorização e testes de não vazamento. A web ainda precisa aceitar a
+ausência do campo. Origem comercial de itens e integrações financeiras futuras
+continuam abertas nos marcos correspondentes; a estratégia da prévia web está
+proposta na ADR-008.
 
 ### Contrato e segurança da API — Marco 3A
 
@@ -1076,12 +1133,11 @@ reabre nem significa implementação.
    cliente gerado inteiro não é uma dependência puramente matemática.
    Não importar arquivos internos gerados como atalho. Não houve
    instalação nem escolha definitiva de biblioteca nesta auditoria.
-3. **Prévia local única:** a web não possui biblioteca decimal própria nem
+3. **Prévia local única — resolvida no Marco 4A:** a web não possuía biblioteca decimal própria nem
    pacote compartilhado existente. Os helpers `bigint` de orçamento são
    adequados ao contrato atual, mas não substituem o motor de margem divisora.
-   Antes do Marco 4, decidir extração do motor para pacote puro ou estratégia
-   equivalente testada, preservando `PREC-CA-027` (100 ms) e sem manter duas
-   fórmulas manuais. Não criar pacote compartilhado antecipadamente.
+   A ADR-008 aprovou a extração do motor para pacote puro e a prévia híbrida,
+   preservando `PREC-CA-027` (100 ms) sem manter duas fórmulas manuais.
 4. **Limite do preço adotado:** novos resultados podem exceder os 12 dígitos
    inteiros de `Product.salePrice`/itens comerciais. Definir rejeição explícita
    por faixa na adoção ou migration justificada posterior; nunca truncar,
@@ -1129,6 +1185,10 @@ depende delas. Não bloqueiam a conclusão da auditoria; nenhuma foi resolvida
 por alteração funcional. Decisões estruturais novas exigem ADR antes de
 aplicação, conforme a regra deste plano.
 
+O item 3 foi resolvido documentalmente no Marco 4A pela ADR-008: a direção é
+prévia híbrida, com motor puro compartilhado e API autoritativa. A extração e
+suas alterações de dependência permanecem trabalho revisável do Marco 4B.1.
+
 ## Estado atual do repositório
 
 A API NestJS está localizada em `apps/api`.
@@ -1153,9 +1213,10 @@ Existem funcionalidades web equivalentes.
 O schema possui a fundação de precificação definida na ADR-006 e versionada no
 commit `9427866`. A migration correspondente foi aplicada somente ao banco local
 de desenvolvimento na validação de 04/10/2026; não há afirmação sobre outros
-ambientes. O módulo HTTP, a configuração, os perfis, a composição e a
-simulação autoritativa transitória existem. Snapshot oficial, versões,
-histórico, adoção e interface ainda não existem.
+ambientes. O módulo HTTP, a configuração, os perfis, a composição, a simulação
+autoritativa, o snapshot oficial, as versões, o histórico, a adoção, o preço
+manual e o resumo comercial existem. A interface de precificação ainda não
+existe; sua arquitetura está proposta na ADR-008.
 
 Produtos, orçamentos e pedidos existentes devem permanecer válidos após as
 migrations.
@@ -1533,6 +1594,34 @@ pnpm --filter @meinager/api build
 
 Permitir o uso da precificação a partir do domínio de produtos.
 
+### Marco 4A — Auditoria e arquitetura
+
+Concluído e aprovado documentalmente em 10/10/2026. A ADR-008 registra rotas,
+permissões, contratos web, estado, decimais, erros, componentes e testes.
+Nenhuma interface ou dependência foi implementada.
+
+### Divisão de execução
+
+- **Marco 4B.1 — Pacote compartilhado do motor:** criar o package ESM puro,
+  mover motor e sua única suíte canônica de 77 testes, manter reexports
+  temporários na API, configurar scripts do Turbo e provar equivalência; sem
+  interface.
+- **Marco 4B.2 — Fundação web e produtos:** contratos Zod, erros estruturados,
+  query keys, permissões, compatibilidade de `directCost`/`salePrice`, ação
+  manual explícita, resumo comercial, navegação e rotas-base.
+- **Marco 4B.3 — Configuração:** consulta/formulário, leitura e escrita por
+  papel, `expectedRevision`, proveniências e estados de página/conflito.
+- **Marco 4B.4 — Perfis:** lista, paginação, detalhe, criação, edição,
+  desativação, deduções ordenadas, proveniências, permissões e conflitos.
+- **Marco 4C — Composição:** perfil, componentes ordenados, catálogo, mão de
+  obra, frete, proveniências, revisão esperada e prévia local.
+- **Marco 4D — Simulação, versões e adoção:** confirmação autoritativa, criação
+  e detalhe de versão, histórico, adoção, confirmação abaixo do mínimo e preço
+  manual explícito, usando `isAdopted` após a etapa pequena de implementação e
+  testes da extensão interna aprovada.
+- **Marco 4E — Acabamento e validação:** responsividade, acessibilidade, estados,
+  teste visual e fluxo integral por papel.
+
 ### Experiência esperada
 
 A interface deverá possuir:
@@ -1564,15 +1653,20 @@ Produtos sem composição devem continuar editáveis e utilizáveis.
 
 ### Cálculo local
 
-A prévia local pode reutilizar uma implementação compartilhada ou equivalente
-ao motor, desde que:
+A decisão aprovada na ADR-008 é uma solução híbrida: prévia local com o mesmo
+motor puro extraído incrementalmente para `packages/pricing-calculator`, seguida
+de confirmação autoritativa pela API. A migração preservará os imports atuais
+por reexports e moverá a única suíte canônica completa de 77 testes, incluindo
+EX-001 a EX-012, para o pacote. A API manterá apenas testes mínimos de
+compatibilidade e integração. A implementação deve:
 
-- produza os mesmos resultados;
-- não substitua a validação do backend;
-- possua testes;
-- não use `number` como fonte financeira.
+- produzir os mesmos resultados;
+- preservar a validação do backend;
+- possuir testes;
+- manter `number` fora da fonte financeira.
 
-Evite manter duas fórmulas manuais divergentes.
+Não criar uma segunda fórmula no frontend. Não alterar `formulaVersion`,
+snapshot ou arredondamento durante a extração.
 
 ### Permissões
 
@@ -1599,6 +1693,12 @@ Cubra:
 - papéis;
 - erro da API;
 - acessibilidade básica.
+
+Acrescente contratos e serialização decimal, query keys/invalidações,
+componentes dinâmicos, ausência de vazamento para `VIEWER`, conflito de revisão,
+responsividade e equivalência local de EX-001 a EX-012. O Marco 4E mantém teste
+visual manual obrigatório; automação de navegador exige decisão separada antes
+de adicionar dependência.
 
 ### Validação do marco
 
@@ -1948,9 +2048,10 @@ git status --short
 - Simulação usa `REPEATABLE READ` sem locks de escrita. Criação de versão observa
   configuração, perfil, produto-alvo e fontes `CATALOG` de forma consistente,
   com produtos bloqueados por UUID e releitura da composição/revisão.
-- Nenhuma decisão essencial permanece aberta para o Marco 3. A prévia
-  compartilhada bloqueia somente o Marco 4, e a origem comercial dos itens,
-  somente o Marco 5.
+- Nenhuma decisão essencial permanecia aberta para o Marco 3. Naquele estado
+  histórico, a prévia compartilhada bloqueava somente o Marco 4; a ADR-008
+  resolveu essa decisão em 10/10/2026. A origem comercial dos itens continua
+  pertencendo ao Marco 5.
 
 ### Marco 3B.1 concluído — 05/10/2026
 
@@ -2122,3 +2223,21 @@ git status --short
 - Limites: interface web e integração da origem comercial com orçamentos e
   pedidos permanecem pendentes. Nenhum schema, migration, dependência, fórmula,
   snapshot, banco normal ou arquivo web foi alterado. Nenhum commit foi criado.
+
+### Marco 4A concluído documentalmente — 10/10/2026
+
+- A auditoria confirmou que React Router, TanStack Query, React Hook Form, Zod,
+  Tailwind, `@base-ui/react` e Vitest/Testing Library suportam a interface sem
+  refactor estrutural ou dependência imediata.
+- A ADR-008 aprovada define rotas integradas a Produtos, divisão 4B.1–4E e uma
+  prévia híbrida com pacote compartilhado, strings decimais canônicas, query keys,
+  invalidações, permissões, componentes, erros e testes.
+- O baseline web aprovou typecheck, lint, 68 testes em 22 arquivos e build de
+  produção. A documentação completa passou no Prettier e em `git diff --check`.
+- A revisão humana aprovou `isAdopted: boolean` nos contratos internos de lista
+  e detalhe de versões. A projeção dinâmica não é persistida e sua implementação
+  com testes próprios precederá a interface de histórico do Marco 4D.
+- Nenhum código funcional ou contrato HTTP implementado, dependência, schema,
+  migration, banco, fórmula ou exemplo foi alterado. A extensão futura
+  `isAdopted` foi apenas documentada. A interface continua pendente e nenhum
+  requisito de interface foi promovido na rastreabilidade.

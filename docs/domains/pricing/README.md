@@ -49,6 +49,9 @@ Os documentos oficiais deste domínio são:
   modelo persistente, invariantes e histórico.
 - [ADR-007 — Contrato e segurança da API](../../architecture/decisions/ADR-007-pricing-api-contract.md):
   endpoints, autorização, snapshot v1, erros e concorrência do Marco 3.
+- [ADR-008 — Arquitetura da interface web](../../architecture/decisions/ADR-008-pricing-web-architecture.md):
+  direção aprovada de rotas, prévia decimal, estado, permissões, componentes e
+  etapas do Marco 4.
 
 Quando houver divergência entre esses documentos e materiais preliminares,
 prevalecem os documentos oficiais, observadas as decisões arquiteturais
@@ -140,6 +143,18 @@ versão e gera auditoria atômica; a omissão preserva preço e origem. O resumo
 expõe somente preço, origem manual ou versionada e existência de composição aos
 cinco papéis autenticados. Interface web e integração da origem comercial com
 orçamentos e pedidos continuam pendentes.
+
+O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
+10/10/2026 sem implementar código. A precificação será integrada a Produtos e
+dividida em 4B.1 (pacote puro do motor), 4B.2 (fundação e compatibilidade de
+produtos), 4B.3 (configuração), 4B.4 (perfis), 4C (composição/prévia), 4D
+(simulação/versões/adoção) e 4E (acabamento). A prévia combina o motor puro
+compartilhado no navegador com a API como autoridade.
+
+Também foi aprovado `isAdopted: boolean` somente na lista e no detalhe internos
+de versões. O backend o calculará do ponteiro atual do produto, sem persistência
+ou alteração do snapshot; `VIEWER` e o resumo comercial não receberão o campo.
+A implementação e os testes próprios precederão a interface de histórico.
 
 ## Processo de alteração
 

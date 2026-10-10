@@ -78,6 +78,13 @@ aprovou 29 testes unitários direcionados, 79 E2E em PostgreSQL descartável e
 241 testes em 21 arquivos na suíte unitária completa da API. Interface web e
 integração da origem comercial com orçamentos e pedidos permanecem pendentes.
 
+Revisão documental do Marco 4A: 10/10/2026. A ADR-008 foi aprovada com a
+arquitetura da interface, a divisão 4B.1–4E e a prévia híbrida com motor
+compartilhado e API autoritativa. A extensão `isAdopted: boolean` também foi
+aprovada somente para lista e detalhe internos de versões; sua implementação e
+testes permanecem pendentes antes do histórico web. Nenhum estado de requisito
+de interface foi promovido.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -228,6 +235,12 @@ removido após essas validações e a correção documental autorizada, sem alte
 fórmulas ou arredondar valores intermediários. Naquela validação, persistência,
 endpoints, services e interface ainda estavam ausentes.
 
+A ADR-008 aprova mover, no Marco 4B.1, o motor e esses 77 testes para
+`packages/pricing-calculator`, mantendo EX-001 a EX-012 na única suíte canônica
+completa. Até essa implementação, os caminhos acima continuam sendo a evidência
+real. A API ficará com reexports temporários e testes mínimos de compatibilidade
+e integração; pacote, API e web serão executados no pipeline.
+
 ### Configuração da organização
 
 | Critérios                     | Estado        | Base reutilizável                                                                                          | Implementação esperada                                                |
@@ -299,12 +312,12 @@ endpoints, services e interface ainda estavam ausentes.
 
 ### Histórico e snapshots
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada                                   |
-| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças | Adoção não faz parte destes critérios                    |
-| `PREC-CA-038`                 | `PARTIAL`     | GET paginado e detalhe validado exibem versões finalizadas da mais recente para a mais antiga                                      | Identificação da versão do preço atual depende da adoção |
-| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                             | Comprovado no Marco 3C.3                                 |
-| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo/adoção implementadas; snapshots comerciais de orçamento/pedido já existem                           | Integrar referências aos documentos comerciais           |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada                                       |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças | Adoção não faz parte destes critérios                        |
+| `PREC-CA-038`                 | `PARTIAL`     | GET paginado e detalhe validado exibem versões finalizadas da mais recente para a mais antiga                                      | Implementar e testar `isAdopted` aprovado antes da interface |
+| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                             | Comprovado no Marco 3C.3                                     |
+| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo/adoção implementadas; snapshots comerciais de orçamento/pedido já existem                           | Integrar referências aos documentos comerciais               |
 
 ### Integração com produtos
 
@@ -369,11 +382,11 @@ nem retorna a propriedade.
 
 ### Interface
 
-| Critérios                     | Estado    | Base reutilizável                                                                                   | Implementação esperada           |
-| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `PREC-CA-054` a `PREC-CA-057` | `PENDING` | Componentes e formulários existentes                                                                | Fluxo de precificação do produto |
-| Recálculo local               | `PENDING` | React disponível                                                                                    | Prévia em até 100 ms             |
-| Validação autoritativa        | `PARTIAL` | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente | Interface pendente               |
+| Critérios                     | Estado    | Base reutilizável                                                                                   | Implementação esperada                           |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `PREC-CA-054` a `PREC-CA-057` | `PENDING` | Componentes e formulários existentes                                                                | Fluxo de precificação do produto                 |
+| Recálculo local               | `PENDING` | ADR-008 aprova pacote compartilhado e confirmação autoritativa, sem implementação                   | Pacote no 4B.1; prévia em até 100 ms no Marco 4C |
+| Validação autoritativa        | `PARTIAL` | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente | Interface pendente                               |
 
 ### Auditoria e segurança
 
