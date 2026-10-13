@@ -103,10 +103,14 @@ existentes.
 A estrutura funcional de produtos, estoque, financeiro, clientes, orçamentos,
 pedidos e fluxos de pedidos já existe.
 
-O motor puro `margin-divisor-v1` foi entregue no Marco 1 em
-`apps/api/src/pricing/calculator/`, com 77 testes próprios e 98 testes unitários
-da API aprovados na validação desse marco. O motor não depende da persistência,
-HTTP ou interface.
+O motor puro `margin-divisor-v1` foi entregue no Marco 1 e extraído no Marco
+4B.1 para `packages/pricing-calculator/`. O pacote privado
+`@meinager/pricing-calculator` é a fonte única da fórmula, possui `decimal.js`
+como dependência direta e mantém a única suíte canônica completa com 77 testes,
+incluindo EX-001 a EX-012. O motor não depende de persistência, HTTP, NestJS,
+Prisma, React ou APIs exclusivas de Node. Os caminhos antigos em
+`apps/api/src/pricing/calculator/` são reexports temporários com testes mínimos
+de compatibilidade.
 
 A direção arquitetural do Marco 2 está registrada na ADR-006. O commit `9427866`
 versionou a fundação persistente e a migration
@@ -145,11 +149,12 @@ cinco papéis autenticados. Interface web e integração da origem comercial com
 orçamentos e pedidos continuam pendentes.
 
 O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
-10/10/2026 sem implementar código. A precificação será integrada a Produtos e
-dividida em 4B.1 (pacote puro do motor), 4B.2 (fundação e compatibilidade de
-produtos), 4B.3 (configuração), 4B.4 (perfis), 4C (composição/prévia), 4D
-(simulação/versões/adoção) e 4E (acabamento). A prévia combina o motor puro
-compartilhado no navegador com a API como autoridade.
+10/10/2026 sem implementar código. O Marco 4B.1 concluiu o pacote puro do motor,
+sem adicionar dependência ou código à web. A precificação será integrada a
+Produtos nas etapas 4B.2 (fundação e compatibilidade de produtos), 4B.3
+(configuração), 4B.4 (perfis), 4C (composição/prévia), 4D
+(simulação/versões/adoção) e 4E (acabamento). A futura prévia combinará o motor
+puro compartilhado no navegador com a API como autoridade.
 
 Também foi aprovado `isAdopted: boolean` somente na lista e no detalhe internos
 de versões. O backend o calculará do ponteiro atual do produto, sem persistência

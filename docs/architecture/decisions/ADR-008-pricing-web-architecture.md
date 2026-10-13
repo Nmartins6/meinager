@@ -4,8 +4,14 @@
 
 Aceita como direção para o Marco 4.
 
-Aprovação humana registrada em 10/10/2026. Nenhuma interface, dependência ou
-alteração de contrato foi implementada nesta decisão.
+Aprovação humana registrada em 10/10/2026. Na data dessa aprovação, nenhuma
+interface, dependência ou alteração de contrato havia sido implementada.
+
+O Marco 4B.1 implementou a fundação compartilhada definida nesta ADR:
+`@meinager/pricing-calculator` é um pacote ESM privado, compatível com Node e
+navegador, fonte única da fórmula e dono de `decimal.js`. A API depende do
+pacote pelo workspace e conserva reexports temporários. A web ainda não depende
+do pacote, e o recálculo local e toda a interface permanecem pendentes.
 
 ## Contexto
 
@@ -136,14 +142,16 @@ papéis recebem orientação sem ação indevida.
 
 #### Marco 4B.1 — Pacote compartilhado do motor
 
-- criar `packages/pricing-calculator` com a fronteira pura definida nesta ADR;
-- mover o motor e sua única suíte canônica completa de 77 testes;
-- preservar EX-001 a EX-012 nessa suíte;
-- manter reexports temporários na API;
-- configurar package, exports ESM, TypeScript e scripts de build, typecheck,
-  lint e testes compatíveis com Turbo;
-- comprovar equivalência integral de resultados e `formulaVersion`, sem criar
-  interface.
+- concluído em 10/10/2026 em `packages/pricing-calculator` com a fronteira pura
+  definida nesta ADR;
+- motor e única suíte canônica completa de 77 testes movidos sem alteração das
+  fórmulas ou expectativas;
+- EX-001 a EX-012 preservados e aprovados nessa suíte;
+- reexports temporários e três testes mínimos de compatibilidade mantidos na
+  API;
+- package, exports ESM, tipos gerados e scripts de build, typecheck, lint e
+  teste integrados ao workspace e ao Turbo;
+- equivalência de resultados e `formulaVersion` comprovada sem código web.
 
 #### Marco 4B.2 — Fundação web e compatibilidade de produtos
 
@@ -228,12 +236,13 @@ ou services da API. `serializePricingDecimal(Prisma.Decimal)` continuará em
 sobre o `Decimal.js` privado do motor ou sobre resultados textuais produzidos
 pelo próprio motor, sem importar tipos Prisma.
 
-`decimal.js` será dependência direta do pacote compartilhado. API e web
-dependerão desse pacote pelo workspace. O pacote terá `package.json`, exports
-ESM, `tsconfig` e scripts de build, typecheck, lint e testes compatíveis com
-Turbo. O bundle do navegador não poderá receber dependências exclusivas de
-Node. O clone decimal continuará local e nenhuma fórmula, limite,
-arredondamento ou `formulaVersion` será alterado.
+`decimal.js` é dependência direta do pacote compartilhado. A API depende desse
+pacote pelo workspace; a web passará a depender dele somente quando usar a
+prévia local. O pacote possui `package.json`, exports ESM, `tsconfig` e scripts
+de build, typecheck, lint e testes compatíveis com Turbo. O bundle do navegador
+não poderá receber dependências exclusivas de Node. O clone decimal continua
+local e nenhuma fórmula, limite, arredondamento ou `formulaVersion` será
+alterado.
 
 A migração será incremental:
 
@@ -251,6 +260,10 @@ A migração será incremental:
 
 A migração pode passar temporariamente por etapas, mas o estado final não
 manterá duas cópias completas dos 77 testes.
+
+O Marco 4B.1 concluiu os passos 1 a 4 e a validação de pacote, API e web do
+passo 6. A migração opcional dos imports internos e o consumo pela web
+permanecem nos passos 5 e 7.
 
 ### Representação decimal na web
 

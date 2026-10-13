@@ -85,6 +85,16 @@ aprovada somente para lista e detalhe internos de versões; sua implementação 
 testes permanecem pendentes antes do histórico web. Nenhum estado de requisito
 de interface foi promovido.
 
+Revisão do Marco 4B.1: 10/10/2026. O motor `margin-divisor-v1` e sua única
+suíte canônica completa de 77 testes foram extraídos para o pacote privado ESM
+`@meinager/pricing-calculator`. A API preserva reexports temporários e três
+testes mínimos de compatibilidade; `decimal.js` pertence ao pacote. Essa entrega
+comprova somente a fundação compartilhada: a web ainda não depende do pacote,
+e recálculo local, prévia e demais requisitos de interface continuam pendentes.
+A validação aprovou 77 testes no pacote, 167 em 21 arquivos da API, 79 E2E em
+sete arquivos no PostgreSQL descartável e 68 testes em 22 arquivos da web; os
+pipelines raiz de typecheck, lint, teste e build passaram.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -206,14 +216,15 @@ composição.
 
 ## 5. Rastreabilidade da precificação
 
-### Evidências do motor puro — Marco 1
+### Evidências do motor puro — Marcos 1 e 4B.1
 
-Os caminhos `calculator/pricing-calculator.ts` e
-`calculator/pricing-calculator.spec.ts` abaixo são relativos a
-`apps/api/src/pricing/`. A especificação de tipos está em
-`calculator/pricing-calculator.types.ts`; validação/representação decimal em
-`calculator/pricing-decimal.ts`; erros em `calculator/pricing-calculator.errors.ts`.
-ADR-005 registra precisão e limites técnicos. Não há migration neste marco.
+Os caminhos abaixo são relativos a `packages/pricing-calculator/src/`, fonte
+única da implementação desde o Marco 4B.1. A especificação de tipos está em
+`pricing-calculator.types.ts`; validação/representação decimal em
+`pricing-decimal.ts`; erros em `pricing-calculator.errors.ts`; e a suíte
+canônica completa em `pricing-calculator.spec.ts`. ADR-005 registra precisão e
+limites técnicos. Os arquivos correspondentes em
+`apps/api/src/pricing/calculator/` são somente reexports temporários.
 
 | Requisito                 | Estado        | Evidência de código e teste                                                                                                                                           | Limite da entrega                                                       |
 | ------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -235,11 +246,10 @@ removido após essas validações e a correção documental autorizada, sem alte
 fórmulas ou arredondar valores intermediários. Naquela validação, persistência,
 endpoints, services e interface ainda estavam ausentes.
 
-A ADR-008 aprova mover, no Marco 4B.1, o motor e esses 77 testes para
-`packages/pricing-calculator`, mantendo EX-001 a EX-012 na única suíte canônica
-completa. Até essa implementação, os caminhos acima continuam sendo a evidência
-real. A API ficará com reexports temporários e testes mínimos de compatibilidade
-e integração; pacote, API e web serão executados no pipeline.
+Evidência de execução do Marco 4B.1 em 10/10/2026: os 77 testes passaram no
+pacote, com EX-001 a EX-012 preservados; a API aprovou 167 testes em 21 arquivos
+com os reexports temporários. O pacote gerou JavaScript ESM e declarações de
+tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Configuração da organização
 
@@ -290,7 +300,7 @@ e integração; pacote, API e web serão executados no pipeline.
 | ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `PREC-CA-023` a `PREC-CA-028` | `PARTIAL`     | Simulação e criação de versão recalculam pelo backend, preservam resultado e decomposição e rejeitam divisor inválido | Interface web pendente                                    |
 | `PREC-RN-018` a `PREC-RN-027` | `PARTIAL`     | Versão congela taxa fixa, deduções, margem, custos e resultado do `margin-divisor-v1`                                 | Exposição na interface pendente                           |
-| `EX-001` a `EX-012`           | `IMPLEMENTED` | 12 testes aprovados, nomeados por exemplo em `calculator/pricing-calculator.spec.ts`                                  | Cenários matemáticos aprovados; sem integração de domínio |
+| `EX-001` a `EX-012`           | `IMPLEMENTED` | 12 testes aprovados, nomeados por exemplo em `packages/pricing-calculator/src/pricing-calculator.spec.ts`             | Cenários matemáticos aprovados; sem integração de domínio |
 
 ### Preço adotado
 
@@ -382,11 +392,11 @@ nem retorna a propriedade.
 
 ### Interface
 
-| Critérios                     | Estado    | Base reutilizável                                                                                   | Implementação esperada                           |
-| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `PREC-CA-054` a `PREC-CA-057` | `PENDING` | Componentes e formulários existentes                                                                | Fluxo de precificação do produto                 |
-| Recálculo local               | `PENDING` | ADR-008 aprova pacote compartilhado e confirmação autoritativa, sem implementação                   | Pacote no 4B.1; prévia em até 100 ms no Marco 4C |
-| Validação autoritativa        | `PARTIAL` | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente | Interface pendente                               |
+| Critérios                     | Estado    | Base reutilizável                                                                                   | Implementação esperada           |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `PREC-CA-054` a `PREC-CA-057` | `PENDING` | Componentes e formulários existentes                                                                | Fluxo de precificação do produto |
+| Recálculo local               | `PENDING` | Pacote compartilhado implementado e validado; a web ainda não o consome                             | Prévia em até 100 ms no Marco 4C |
+| Validação autoritativa        | `PARTIAL` | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente | Interface pendente               |
 
 ### Auditoria e segurança
 

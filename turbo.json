@@ -6,7 +6,9 @@
       "outputs": ["dist/**"]
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
+      "passThroughEnv": ["PORT"],
       "persistent": true
     },
     "typecheck": {

@@ -112,6 +112,8 @@ async function withDisposableDatabase(admin, name, callback) {
 }
 
 async function main() {
+  run('pnpm', ['--filter', '@meinager/pricing-calculator', 'build']);
+
   const maintenanceUrl = new URL(normalUrl);
   maintenanceUrl.pathname = '/postgres';
   const admin = new Client({

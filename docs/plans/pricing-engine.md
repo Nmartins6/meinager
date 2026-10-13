@@ -91,10 +91,14 @@ fontes oficiais.
       `directCost` para `VIEWER` (Marco 3D.2, 09/10/2026).
 - [x] Auditar o frontend e definir a arquitetura da interface de precificação
       (Marco 4A, 10/10/2026; ADR-008, somente documentação).
+- [x] Extrair o motor puro para `@meinager/pricing-calculator`, com a única
+      suíte canônica de 77 testes e reexports temporários na API (Marco 4B.1,
+      10/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
-- [x] Atualizar a matriz de rastreabilidade até as evidências do Marco 3D.2.
+- [x] Atualizar a matriz de rastreabilidade até a fundação compartilhada do
+      Marco 4B.1.
 - [ ] Registrar os resultados finais.
 
 ## Descobertas
@@ -108,6 +112,36 @@ Cada descoberta deve conter:
 - descrição;
 - evidência;
 - impacto no plano.
+
+### Marco 4B.1 — Pacote compartilhado do motor — 10/10/2026
+
+- A implementação matemática, os tipos, os erros e o clone decimal eram puros e
+  puderam ser movidos sem importar Prisma, NestJS, React, HTTP, banco ou APIs
+  exclusivas de Node. `packages/pricing-calculator/` passou a ser a fonte única
+  de `margin-divisor-v1` e da suíte canônica completa.
+- `decimal.js` era usado diretamente somente pelos arquivos puros extraídos.
+  Sua dependência direta foi transferida de `@meinager/api` para
+  `@meinager/pricing-calculator`; a serialização de `Prisma.Decimal` permaneceu
+  na API.
+- Os comandos diretos de typecheck, teste e build da API resolvem o pacote em
+  clone limpo por lifecycle scripts mínimos. No pipeline Turbo, a dependência
+  de workspace estabelece a ordem, e o `tsc -b` incremental evita recompilar
+  artefatos já atualizados.
+- A API passou de 241 para 167 testes unitários porque os 77 testes canônicos
+  foram movidos e somente três testes mínimos de reexport e integração ficaram
+  no consumidor. O total da cobertura matemática permanece 77 no pacote, sem
+  uma segunda cópia da suíte.
+- A revisão de bootstrap em 13/10/2026 encontrou duas entradas que ainda podiam
+  depender de um `dist` deixado por validação anterior: `pnpm dev` não preparava
+  dependências de workspace, e o runner PostgreSQL chamava Vitest por `exec`,
+  fora do lifecycle `pretest`. O task `dev` passou a depender de `^build`, o
+  pacote ganhou compilação em watch e o runner passou a construir o pacote
+  antes de criar qualquer banco descartável.
+- A prova começou duas vezes com `dist/index.js` ausente. `pnpm dev` preparou o
+  pacote antes da API, iniciou Vite e Nest e recompilou após uma mudança de mtime
+  em `src/index.ts`; o encerramento controlado não deixou processos nem portas.
+  Depois de nova limpeza, o runner imprimiu o build do pacote antes de criar os
+  bancos e aprovou os 79 E2E sem typecheck, teste ou build anterior.
 
 ### Marco 4A — Auditoria da interface web — 10/10/2026
 
@@ -852,10 +886,10 @@ local pelo mesmo motor puro compartilhado e confirmação autoritativa pela API.
 Strings decimais canônicas continuam sendo a fronteira; rascunho, cache
 persistido e simulação permanecem separados.
 
-O Marco 4B.1 moverá o motor e a única suíte canônica completa de 77 testes para
-`packages/pricing-calculator`, mantendo na API reexports temporários e testes
-mínimos de integração. O Marco 4B.2 corrigirá ausência de `directCost` para
-`VIEWER` e omissão de `salePrice` em edições comuns.
+O Marco 4B.1 moveu o motor e a única suíte canônica completa de 77 testes para
+`packages/pricing-calculator`, mantendo na API reexports temporários e três
+testes mínimos de integração. O Marco 4B.2 corrigirá ausência de `directCost`
+para `VIEWER` e omissão de `salePrice` em edições comuns.
 
 A extensão interna `isAdopted: boolean` foi aprovada para lista e detalhe de
 versões. É uma projeção dinâmica calculada pela comparação entre o ponteiro
@@ -1086,7 +1120,7 @@ para rastreabilidade, mas o motor puro não consulta nem valida posse no banco.
 
 | Limite                                | Responsabilidade                                                      | Caminhos atuais ou planejados                                                                                                                                                                                                                                   |
 | ------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Motor puro — Marco 1                  | `margin-divisor-v1`, validação matemática, memória e erros tipados    | `apps/api/src/pricing/calculator/pricing-calculator.ts`, `pricing-calculator.types.ts`, `pricing-calculator.errors.ts`, `pricing-calculator.spec.ts`; adaptador `pricing-decimal.ts` somente se necessário                                                      |
+| Motor puro — Marcos 1 e 4B.1          | `margin-divisor-v1`, validação matemática, memória e erros tipados    | Fonte única e suíte canônica em `packages/pricing-calculator/src/`; reexports temporários em `apps/api/src/pricing/calculator/`                                                                                                                                 |
 | Aplicação — Marco 3                   | Orquestrar configuração, composição, cálculo, histórico e preço       | Estrutura implementada conforme ADR-007 em `pricing.module.ts`, `contracts/`, `dto/`, `errors/`, `controllers/`, `services/` e `pricing-locks.ts`; Marcos 3B a 3D concluídos                                                                                    |
 | Configuração organizacional — Marco 2 | Parâmetros com vigência/origem e perfis organizacionais               | Modelos em `apps/api/prisma/schema.prisma` e services/controllers versionados de configuração, perfis e deduções concluídos nos Marcos 3B.1 e 3B.2                                                                                                              |
 | Composição e histórico — Marco 2      | Composição editável, componentes e versões autossuficientes/imutáveis | `ProductPricingComposition`, `PricingComponent`, `PricingCalculationVersion`, projeções e `PricingPriceAdoption`; composição, simulação, snapshot, versões, histórico e adoção concluídos nos Marcos 3C e 3D.1; resumo e preço manual concluídos no Marco 3D.2  |
@@ -1602,10 +1636,10 @@ Nenhuma interface ou dependência foi implementada.
 
 ### Divisão de execução
 
-- **Marco 4B.1 — Pacote compartilhado do motor:** criar o package ESM puro,
-  mover motor e sua única suíte canônica de 77 testes, manter reexports
-  temporários na API, configurar scripts do Turbo e provar equivalência; sem
-  interface.
+- **Marco 4B.1 — Pacote compartilhado do motor (concluído em 10/10/2026):**
+  package ESM puro criado, motor e sua única suíte canônica de 77 testes
+  movidos, reexports temporários mantidos na API e scripts integrados ao Turbo;
+  sem interface.
 - **Marco 4B.2 — Fundação web e produtos:** contratos Zod, erros estruturados,
   query keys, permissões, compatibilidade de `directCost`/`salePrice`, ação
   manual explícita, resumo comercial, navegação e rotas-base.
@@ -1654,11 +1688,11 @@ Produtos sem composição devem continuar editáveis e utilizáveis.
 ### Cálculo local
 
 A decisão aprovada na ADR-008 é uma solução híbrida: prévia local com o mesmo
-motor puro extraído incrementalmente para `packages/pricing-calculator`, seguida
-de confirmação autoritativa pela API. A migração preservará os imports atuais
-por reexports e moverá a única suíte canônica completa de 77 testes, incluindo
-EX-001 a EX-012, para o pacote. A API manterá apenas testes mínimos de
-compatibilidade e integração. A implementação deve:
+motor puro agora disponível em `packages/pricing-calculator`, seguida de
+confirmação autoritativa pela API. O Marco 4B.1 preservou os imports atuais por
+reexports e moveu a única suíte canônica completa de 77 testes, incluindo
+EX-001 a EX-012, para o pacote. A API mantém apenas testes mínimos de
+compatibilidade e integração. A futura integração web deve:
 
 - produzir os mesmos resultados;
 - preservar a validação do backend;
@@ -2241,3 +2275,60 @@ git status --short
   migration, banco, fórmula ou exemplo foi alterado. A extensão futura
   `isAdopted` foi apenas documentada. A interface continua pendente e nenhum
   requisito de interface foi promovido na rastreabilidade.
+
+### Marco 4B.1 concluído — 10/10/2026
+
+- Entrega: `@meinager/pricing-calculator` foi criado como pacote ESM privado e
+  compatível com Node e navegador. É a fonte única da fórmula
+  `margin-divisor-v1`, dos tipos, dos erros e dos helpers decimais puros; gera
+  JavaScript e declarações TypeScript em `dist`, que permanece ignorado.
+- A única suíte canônica completa está em
+  `packages/pricing-calculator/src/pricing-calculator.spec.ts`: 77 de 77 testes
+  passaram. Uma execução nominal separada aprovou EX-001 a EX-012 sem mudança
+  de expectativa, fórmula, precisão ou arredondamento.
+- A API conserva reexports finos em `apps/api/src/pricing/calculator/` e três
+  testes mínimos de identidade, tipos, `formulaVersion`, resultado e erro. Seus
+  comandos diretos de typecheck, teste e build constroem incrementalmente o
+  pacote antes de consumir seus exports; 167 testes em 21 arquivos passaram.
+- `decimal.js` 10.6.0 passou a pertencer diretamente ao pacote compartilhado.
+  A busca não encontrou import direto restante na API; o adaptador de
+  `Prisma.Decimal` não foi movido.
+- O runner PostgreSQL descartável aplicou as 16 migrations e aprovou 79 testes
+  E2E em sete arquivos. Os bancos
+  `pricing_configuration_e2e_f0df9c75e7a14b54` e
+  `pricing_configuration_e2e_cleanup_f0df9c75e7a14b54` foram removidos, assim
+  como o contêiner efêmero; o banco normal não foi usado.
+- Os pipelines raiz de typecheck, lint, teste e build passaram nos três
+  packages. As suítes executadas somam 312 testes: 77 do pacote, 167 da API e
+  68 da web. O build confirmou a ordem de workspace entre o pacote e a API.
+- Limites: a web ainda não depende do pacote; recálculo local, prévia,
+  interface, `isAdopted` e integrações com orçamentos e pedidos permanecem para
+  os marcos aprovados seguintes. Nenhum código web, contrato HTTP, snapshot,
+  schema, migration, banco normal ou fórmula foi alterado, e nenhum commit foi
+  criado.
+
+### Correção do bootstrap do Marco 4B.1 — 13/10/2026
+
+- `turbo.json` passou a fazer `dev` depender do build das dependências de
+  workspace. `@meinager/pricing-calculator` possui um task `dev` com
+  `tsc -b --watch`, mantendo `dist` sincronizado durante o desenvolvimento.
+- O runner `configuration-e2e-postgres.cjs` executa o build do pacote antes de
+  abrir a conexão administrativa e criar seus bancos. Assim, a chamada direta
+  a Vitest não depende do lifecycle `pretest` nem de artefato residual.
+- Prova de desenvolvimento: depois do clean oficial, `dist/index.js` estava
+  ausente; o grafo seco mostrou `api#dev` dependente de
+  `pricing-calculator#build`; `pnpm dev` iniciou Vite, o watcher e Nest em
+  `PORT=3100`. O watcher detectou o toque em `src/index.ts`, recompilou sem erro,
+  e todos os processos foram encerrados por `Ctrl+C` sem órfãos.
+- Prova E2E independente: uma segunda limpeza confirmou novamente a ausência de
+  `dist/index.js`. O runner construiu o pacote como sua primeira ação, aplicou
+  as 16 migrations somente no banco descartável e aprovou 79 testes em sete
+  arquivos. Os bancos `pricing_configuration_e2e_31e8b1e658d53993` e
+  `pricing_configuration_e2e_cleanup_31e8b1e658d53993`, além do contêiner em
+  tmpfs, foram removidos.
+- Regressão: 77 testes do pacote, três testes de compatibilidade e 167 testes em
+  21 arquivos da API passaram. Typecheck, lint e build passaram tanto nos
+  comandos diretos da API quanto nos três packages pelo Turbo.
+- `dist`, `.turbo`, `node_modules` e `*.tsbuildinfo` continuam ignorados. A
+  correção não alterou fórmula, testes canônicos, contrato HTTP, snapshot,
+  schema, migration, banco normal, interface ou estados da rastreabilidade.

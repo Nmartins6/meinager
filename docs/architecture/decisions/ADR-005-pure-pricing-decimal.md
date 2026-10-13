@@ -14,11 +14,15 @@ não representam custos fracionários nem divisões periódicas.
 
 `decimal.js` 10.6.0 já estava no lockfile transitivamente. A versão possui
 export ESM e tipos TypeScript, conforme seu `package.json` e `decimal.d.ts`.
-A tarefa autoriza declará-la diretamente na API e usar clone local.
+No Marco 1, a biblioteca foi declarada diretamente na API para suportar o
+primeiro local do motor. O Marco 4B.1 transferiu essa dependência para o pacote
+puro que passou a ser dono da implementação.
 
 ## Decisão
 
-- Declarar `decimal.js` 10.6.0 como dependência direta de `@meinager/api`.
+- Declarar `decimal.js` 10.6.0 como dependência direta do pacote que contém o
+  motor. Desde o Marco 4B.1, esse pacote é `@meinager/pricing-calculator`; a API
+  depende dele por `workspace:*` e não importa `decimal.js` diretamente.
 - Usar um clone novo e privado por execução, com `defaults: true`, precisão
   de **160 dígitos significativos** e `ROUND_HALF_UP` explícito. Não chamar
   `Decimal.set` ou expor instâncias decimais nos resultados. Configurações
@@ -95,7 +99,10 @@ preço manual ou compartilhamento com a web. Não altera as fórmulas oficiais.
 
 ## Validação
 
-`apps/api/src/pricing/calculator/pricing-calculator.spec.ts` cobre EX-001 a
-EX-012 e casos adicionais de precisão, arredondamento, ausência tipada,
-entradas inválidas, ordem, independência da configuração global e memória
-de cálculo sem referências mutáveis às entradas.
+`packages/pricing-calculator/src/pricing-calculator.spec.ts` é a única suíte
+canônica completa: seus 77 testes cobrem EX-001 a EX-012 e casos adicionais de
+precisão, arredondamento, ausência tipada, entradas inválidas, ordem,
+independência da configuração global e memória de cálculo sem referências
+mutáveis às entradas. Os arquivos em `apps/api/src/pricing/calculator/` são
+reexports temporários; a API mantém somente testes mínimos de compatibilidade e
+integração.
