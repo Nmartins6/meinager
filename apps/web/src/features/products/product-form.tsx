@@ -85,12 +85,14 @@ interface ProductFormProps {
   submitLabel: string;
   pendingLabel: string;
   initialValues?: ProductFormData;
+  showSalePrice?: boolean;
   onSubmit: (data: ProductFormData) => void;
   onCancel: () => void;
 }
 
 export function ProductForm({
   initialValues = defaultValues,
+  showSalePrice = true,
   isPending,
   errorMessage,
   submitLabel,
@@ -215,23 +217,25 @@ export function ProductForm({
           )}
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="product-sale-price">Preço de venda opcional</Label>
-          <Input
-            id="product-sale-price"
-            type="text"
-            inputMode="decimal"
-            placeholder="0.00"
-            aria-invalid={Boolean(errors.salePrice)}
-            {...register('salePrice')}
-          />
-          <p className="text-xs text-muted-foreground">
-            Valor sugerido ao adicionar este item em um orçamento.
-          </p>
-          {errors.salePrice && (
-            <p className="text-sm text-destructive">{errors.salePrice.message}</p>
-          )}
-        </div>
+        {showSalePrice && (
+          <div className="space-y-2">
+            <Label htmlFor="product-sale-price">Preço de venda opcional</Label>
+            <Input
+              id="product-sale-price"
+              type="text"
+              inputMode="decimal"
+              placeholder="0.00"
+              aria-invalid={Boolean(errors.salePrice)}
+              {...register('salePrice')}
+            />
+            <p className="text-xs text-muted-foreground">
+              Valor sugerido ao adicionar este item em um orçamento.
+            </p>
+            {errors.salePrice && (
+              <p className="text-sm text-destructive">{errors.salePrice.message}</p>
+            )}
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="product-minimum-stock">Estoque mínimo opcional</Label>

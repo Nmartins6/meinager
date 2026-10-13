@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+import {
+  pricingErrorResponseSchema,
+  type PricingErrorCode,
+} from '@/features/pricing/pricing-contracts';
+
 const healthResponseSchema = z.object({
   status: z.literal('ok'),
   service: z.literal('meinager-api'),
@@ -21,7 +26,7 @@ const authResponseSchema = z.object({
   }),
 });
 
-const apiErrorSchema = z.object({
+const legacyApiErrorSchema = z.object({
   message: z.union([z.string(), z.array(z.string())]),
 });
 
@@ -44,12 +49,52 @@ export interface RegisterInput {
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly statusCode: number;
+  readonly code?: PricingErrorCode;
+  readonly field?: string;
+  readonly details?: Readonly<Record<string, string | number | boolean | null>>;
 
-  constructor(message: string, status: number) {
+  constructor(
+    message: string,
+    status: number,
+    structured?: {
+      statusCode: number;
+      code: PricingErrorCode;
+      field?: string;
+      details?: Record<string, string | number | boolean | null>;
+    },
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.statusCode = structured?.statusCode ?? status;
+    this.code = structured?.code;
+    this.field = structured?.field;
+    this.details = structured?.details;
   }
+}
+
+const genericApiErrorMessage = 'Não foi possível concluir a solicitação.';
+
+export function parseApiError(body: unknown, status: number): ApiError {
+  const structured = pricingErrorResponseSchema.safeParse(body);
+
+  if (structured.success) {
+    return new ApiError(structured.data.message, status, structured.data);
+  }
+
+  if (typeof body === 'object' && body !== null && 'code' in body) {
+    return new ApiError(genericApiErrorMessage, status);
+  }
+
+  const legacy = legacyApiErrorSchema.safeParse(body);
+  const message = legacy.success
+    ? Array.isArray(legacy.data.message)
+      ? legacy.data.message.join(' ')
+      : legacy.data.message
+    : genericApiErrorMessage;
+
+  return new ApiError(message, status);
 }
 
 const apiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, '');
@@ -70,15 +115,7 @@ export async function apiRequest(path: string, init?: RequestInit): Promise<Resp
 
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
-    const parsedError = apiErrorSchema.safeParse(body);
-
-    const message = parsedError.success
-      ? Array.isArray(parsedError.data.message)
-        ? parsedError.data.message.join(' ')
-        : parsedError.data.message
-      : 'Não foi possível concluir a solicitação.';
-
-    throw new ApiError(message, response.status);
+    throw parseApiError(body, response.status);
   }
 
   return response;

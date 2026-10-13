@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ProductType } from '@/features/products/products-api';
 import { useProductsQuery } from '@/features/products/use-products-query';
+import { getPricingPermissions } from '@/features/pricing/pricing-permissions';
 
 type StatusFilter = 'active' | 'inactive' | 'all';
 type TypeFilter = ProductType | 'all';
@@ -18,8 +19,8 @@ type InventoryFilter = 'tracked' | 'untracked' | 'all';
 const selectClassName =
   'h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
 
-function formatCurrency(value: string | null): string {
-  if (value === null) {
+function formatCurrency(value: string | null | undefined): string {
+  if (value === null || value === undefined) {
     return 'Não informado';
   }
 
@@ -40,6 +41,7 @@ export function ProductsPage() {
   const currentUserQuery = useCurrentUserQuery();
   const role = currentUserQuery.data?.organization.role;
   const canManage = role === 'OWNER' || role === 'ADMIN' || role === 'OPERATIONS';
+  const canViewDirectCost = getPricingPermissions(role).viewInternalPricing;
   const [page, setPage] = useState(1);
 
   const productsQuery = useProductsQuery({
@@ -64,7 +66,9 @@ export function ProductsPage() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Produtos e serviços</h1>
         <p className="mt-2 text-muted-foreground">
-          Consulte seu catálogo, custos diretos e configurações de estoque.
+          {canViewDirectCost
+            ? 'Consulte seu catálogo, custos diretos e configurações de estoque.'
+            : 'Consulte seu catálogo e as configurações de estoque.'}
         </p>
       </div>
 
@@ -220,9 +224,11 @@ export function ProductsPage() {
                     <th scope="col" className="px-4 py-3 font-medium">
                       Unidade
                     </th>
-                    <th scope="col" className="px-4 py-3 font-medium">
-                      Custo direto
-                    </th>
+                    {canViewDirectCost && (
+                      <th scope="col" className="px-4 py-3 font-medium">
+                        Custo direto
+                      </th>
+                    )}
                     <th scope="col" className="px-4 py-3 font-medium">
                       Preço de venda
                     </th>
@@ -253,9 +259,11 @@ export function ProductsPage() {
                         {product.sku ?? 'Não informado'}
                       </td>
                       <td className="px-4 py-3">{product.unit}</td>
-                      <td className="whitespace-nowrap px-4 py-3 tabular-nums">
-                        {formatCurrency(product.directCost)}
-                      </td>
+                      {canViewDirectCost && (
+                        <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                          {formatCurrency(product.directCost)}
+                        </td>
+                      )}
                       <td className="whitespace-nowrap px-4 py-3 tabular-nums">
                         {formatCurrency(product.salePrice)}
                       </td>

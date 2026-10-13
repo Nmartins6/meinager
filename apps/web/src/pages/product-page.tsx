@@ -8,6 +8,7 @@ import { ProductForm, type ProductFormData } from '@/features/products/product-f
 import { useProductQuery } from '@/features/products/use-product-query';
 import { useUpdateProductMutation } from '@/features/products/use-update-product-mutation';
 import { ProductInventory } from '@/features/inventory/product-inventory';
+import { ProductCommercialSummary } from '@/features/pricing/product-commercial-summary';
 
 export function ProductPage() {
   const navigate = useNavigate();
@@ -33,7 +34,6 @@ export function ProductPage() {
           barcode: data.barcode.trim() || null,
           unit: data.unit.trim().toUpperCase(),
           directCost: data.directCost.trim() || null,
-          salePrice: data.salePrice.trim() || null,
           trackInventory,
           minimumStock: trackInventory ? data.minimumStock.trim() || null : null,
           notes: data.notes.trim() || null,
@@ -137,13 +137,14 @@ export function ProductPage() {
                   barcode: product.barcode ?? '',
                   unit: product.unit,
                   directCost: product.directCost ?? '',
-                  salePrice: product.salePrice ?? '',
+                  salePrice: '',
                   trackInventory: product.trackInventory,
                   minimumStock: product.minimumStock ?? '',
                   notes: product.notes ?? '',
                 }}
                 submitLabel="Salvar alterações"
                 pendingLabel="Salvando..."
+                showSalePrice={false}
                 isPending={updateProductMutation.isPending}
                 errorMessage={updateProductMutation.error?.message}
                 onSubmit={handleSubmit}
@@ -188,6 +189,15 @@ export function ProductPage() {
           </CardContent>
         </Card>
       )}
+
+      <ProductCommercialSummary productId={productId} role={role} />
+
+      <Link
+        to={`/app/produtos/${productId}/precificacao`}
+        className="mt-4 inline-flex text-sm font-medium text-primary hover:underline"
+      >
+        Abrir área de precificação
+      </Link>
 
       {product.type === 'PRODUCT' && product.trackInventory ? (
         <ProductInventory

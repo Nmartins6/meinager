@@ -94,6 +94,8 @@ fontes oficiais.
 - [x] Extrair o motor puro para `@meinager/pricing-calculator`, com a única
       suíte canônica de 77 testes e reexports temporários na API (Marco 4B.1,
       10/10/2026).
+- [x] Implementar a fundação web, compatibilidade de Produtos, resumo comercial
+      e preço manual explícito (Marco 4B.2, 13/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -142,6 +144,36 @@ Cada descoberta deve conter:
   em `src/index.ts`; o encerramento controlado não deixou processos nem portas.
   Depois de nova limpeza, o runner imprimiu o build do pacote antes de criar os
   bancos e aprovou os 79 E2E sem typecheck, teste ou build anterior.
+
+### Marco 4B.2 — Fundação web e Produtos — 13/10/2026
+
+- O contrato legado de Produtos exigia `directCost` e a listagem sempre criava
+  a coluna de custo. O schema agora preserva a ausência da propriedade, e a
+  tabela usa a política autenticada antes de renderizar título, valor ou texto
+  relacionado a custo para `VIEWER`.
+- `salePrice` participava do formulário e do tipo do PATCH comum. A edição
+  agora oculta o campo, remove a propriedade do contrato de atualização e
+  constrói o corpo sem ela; o preço manual usa uma mutation separada, exclusiva
+  de `OWNER` e `ADMIN`, que envia somente string decimal ou `null`.
+- A web passou a validar o resumo comercial e erros estruturados com Zod,
+  preservando somente a mensagem e o status das respostas legadas sem `code`.
+  Uma resposta com `code` só é aceita quando satisfaz integralmente o contrato
+  estruturado; nesses corpos, código desconhecido, propriedades internas ou
+  detalhes fora da forma aprovada recebem fallback genérico. Propriedades
+  extras de respostas legadas são descartadas, sem transportar stack, SQL ou
+  dados Prisma.
+- A entrada do preço manual permanece textual durante a edição e é
+  canonicalizada textualmente apenas no envio. A conversão aceita ponto ou uma
+  vírgula, remove zeros irrelevantes, não arredonda e rejeita valores fora de
+  `Decimal(14,2)` sem usar `number`, `parseFloat`, `parseInt` ou `Intl` como
+  fonte.
+- As quatro rotas aprovadas foram registradas. Somente a rota do produto entrega
+  conteúdo funcional neste marco; configuração e perfis mostram explicitamente
+  um estado de fundação e não possuem links de navegação nem queries dos
+  recursos ainda pendentes.
+- A rota do produto e o detalhe legado consultam somente o resumo comercial para
+  `VIEWER`. Testes comprovam ausência de queries internas, de `directCost` e de
+  conteúdo financeiro interno nessa projeção.
 
 ### Marco 4A — Auditoria da interface web — 10/10/2026
 
@@ -1640,9 +1672,10 @@ Nenhuma interface ou dependência foi implementada.
   package ESM puro criado, motor e sua única suíte canônica de 77 testes
   movidos, reexports temporários mantidos na API e scripts integrados ao Turbo;
   sem interface.
-- **Marco 4B.2 — Fundação web e produtos:** contratos Zod, erros estruturados,
-  query keys, permissões, compatibilidade de `directCost`/`salePrice`, ação
-  manual explícita, resumo comercial, navegação e rotas-base.
+- **Marco 4B.2 — Fundação web e produtos (concluído em 13/10/2026):** contratos
+  Zod, erros estruturados, query keys, permissões, compatibilidade de
+  `directCost`/`salePrice`, ação manual explícita, resumo comercial e
+  rotas-base.
 - **Marco 4B.3 — Configuração:** consulta/formulário, leitura e escrita por
   papel, `expectedRevision`, proveniências e estados de página/conflito.
 - **Marco 4B.4 — Perfis:** lista, paginação, detalhe, criação, edição,
@@ -2332,3 +2365,37 @@ git status --short
 - `dist`, `.turbo`, `node_modules` e `*.tsbuildinfo` continuam ignorados. A
   correção não alterou fórmula, testes canônicos, contrato HTTP, snapshot,
   schema, migration, banco normal, interface ou estados da rastreabilidade.
+
+### Marco 4B.2 concluído — 13/10/2026
+
+- Contratos Zod estritos validam o resumo comercial, strings decimais sem
+  expoente, erros estáveis e a entrada mínima do preço manual. `ApiError`
+  preserva `status`, `statusCode`, `message`, `code`, `field` e os detalhes de
+  revisão aprovados, com fallback seguro para corpos incompatíveis.
+- Uma factory central fornece as chaves de configuração, perfis, resumo,
+  composição e versões. Somente resumo e preço manual possuem operações HTTP
+  neste marco. A mutation invalida resumo, produtos legados e o prefixo de
+  versões, que cobre listas e detalhes sem inspecionar seus dados nem antecipar
+  `isAdopted`.
+- A política visual cobre os cinco papéis. Todos consultam o resumo;
+  `OWNER`/`ADMIN` executam preço manual; `OPERATIONS` mantém a edição comum de
+  produto e futura composição; `FINANCE` possui leitura interna; `VIEWER` não
+  recebe custo nem dispara consulta interna de precificação.
+- O diálogo Base UI mantém valores como texto, aceita ponto ou uma vírgula,
+  preserva a entrada durante a edição e envia sua forma decimal canônica,
+  `null` ou valor igual de forma explícita. A canonicalização é textual, não
+  arredonda e valida o limite comercial `Decimal(14,2)`. O diálogo explica a
+  limpeza da origem versionada e possui label, erro associado, foco inicial,
+  Escape, retorno de foco e feedback anunciado. Respostas `403` continuam
+  visíveis.
+- O resumo comercial apresenta preço em BRL, origem e existência de composição,
+  com estados de loading, erro/retry e ausência, sem custo, margem, lucro,
+  dedução, snapshot ou identificador interno.
+- Validação: 62 testes direcionados passaram; a web aprovou 124 testes em 31
+  arquivos, typecheck, lint e build. Os pipelines raiz aprovaram 77 testes do
+  pacote, 167 da API e 124 da web, totalizando 368, além de typecheck, lint e
+  build nos três packages.
+- Limites: configuração, perfis, composição, prévia local, simulação, versões,
+  `isAdopted`, adoção e acabamento integral continuam nos marcos seguintes. Não
+  houve alteração em API, schema, migration, banco, pacote matemático, fórmula,
+  snapshot, dependência, orçamento, pedido, estoque ou financeiro.

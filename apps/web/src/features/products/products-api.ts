@@ -4,14 +4,14 @@ import { apiRequest } from '@/lib/api';
 
 const productTypeSchema = z.enum(['PRODUCT', 'SERVICE']);
 
-const productSchema = z.object({
+export const productSchema = z.object({
   id: z.string().uuid(),
   type: productTypeSchema,
   name: z.string(),
   sku: z.string().nullable(),
   barcode: z.string().nullable(),
   unit: z.string(),
-  directCost: z.string().nullable(),
+  directCost: z.string().nullable().optional(),
   salePrice: z.string().nullable(),
   trackInventory: z.boolean(),
   minimumStock: z.string().nullable(),
@@ -64,7 +64,6 @@ export interface UpdateProductInput {
   barcode?: string | null;
   unit?: string;
   directCost?: string | null;
-  salePrice?: string | null;
   trackInventory?: boolean;
   minimumStock?: string | null;
   notes?: string | null;

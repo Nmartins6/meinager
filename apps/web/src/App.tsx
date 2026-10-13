@@ -84,6 +84,16 @@ const ProductPage = lazy(async () => {
   return { default: module.ProductPage };
 });
 
+const ProductPricingPage = lazy(async () => {
+  const module = await import('@/pages/product-pricing-page');
+  return { default: module.ProductPricingPage };
+});
+
+const PricingFoundationPage = lazy(async () => {
+  const module = await import('@/pages/pricing-foundation-page');
+  return { default: module.PricingFoundationPage };
+});
+
 const QuotesPage = lazy(async () => {
   const module = await import('@/pages/quotes-page');
   return { default: module.QuotesPage };
@@ -291,6 +301,42 @@ export function App() {
             element={
               <LazyRoute>
                 <ProductPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="produtos/:productId/precificacao"
+            element={
+              <LazyRoute>
+                <ProductPricingPage />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="produtos/precificacao/configuracao"
+            element={
+              <LazyRoute>
+                <PricingFoundationPage title="Configuração de precificação" />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="produtos/precificacao/perfis"
+            element={
+              <LazyRoute>
+                <PricingFoundationPage title="Perfis de venda" />
+              </LazyRoute>
+            }
+          />
+
+          <Route
+            path="produtos/precificacao/perfis/:profileId"
+            element={
+              <LazyRoute>
+                <PricingFoundationPage title="Perfil de venda" />
               </LazyRoute>
             }
           />

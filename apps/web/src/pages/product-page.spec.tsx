@@ -82,6 +82,16 @@ function jsonResponse(body: unknown, status = 200) {
 function getInventoryResponse(url: string): Response | null {
   const path = new URL(url).pathname;
 
+  if (path === `/api/pricing/products/${product.id}/summary`) {
+    return jsonResponse({
+      productId: product.id,
+      currency: 'BRL',
+      salePrice: '29.9',
+      priceOrigin: 'MANUAL',
+      hasComposition: false,
+    });
+  }
+
   if (path === `/api/inventory/products/${product.id}/balance`) {
     return jsonResponse(stockBalance);
   }
@@ -118,7 +128,7 @@ afterEach(() => {
 });
 
 describe('ProductPage', () => {
-  it('should update a product and return to the listing', async () => {
+  it('should let OPERATIONS update a product without sending salePrice', async () => {
     const user = userEvent.setup();
 
     const fetchMock = vi.fn(
@@ -132,7 +142,13 @@ describe('ProductPage', () => {
         }
 
         if (url.endsWith('/auth/me')) {
-          return jsonResponse(authenticatedUser);
+          return jsonResponse({
+            ...authenticatedUser,
+            organization: {
+              ...authenticatedUser.organization,
+              role: 'OPERATIONS',
+            },
+          });
         }
 
         if (url.endsWith(`/products/${product.id}`) && init?.method === 'PATCH') {
@@ -177,7 +193,6 @@ describe('ProductPage', () => {
           barcode: null,
           unit: 'UN',
           directCost: '13',
-          salePrice: '29.90',
           trackInventory: true,
           minimumStock: '5.000000',
           notes: null,
@@ -258,7 +273,7 @@ describe('ProductPage', () => {
       }
 
       if (url.endsWith(`/products/${product.id}`)) {
-        return jsonResponse(product);
+        return jsonResponse({ ...product, directCost: undefined });
       }
 
       throw new Error(`Unexpected request: ${url}`);
@@ -684,6 +699,16 @@ describe('ProductPage', () => {
 
       if (path === `/api/inventory/products/${product.id}/movements`) {
         return jsonResponse(reversalHistory);
+      }
+
+      if (path === `/api/pricing/products/${product.id}/summary`) {
+        return jsonResponse({
+          productId: product.id,
+          currency: 'BRL',
+          salePrice: '29.9',
+          priceOrigin: 'MANUAL',
+          hasComposition: false,
+        });
       }
 
       if (url.endsWith('/auth/me')) {

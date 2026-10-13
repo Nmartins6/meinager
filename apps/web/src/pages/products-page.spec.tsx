@@ -131,7 +131,7 @@ describe('ProductsPage', () => {
 
       if (url.includes('/products')) {
         return jsonResponse({
-          data: [product],
+          data: [{ ...product, directCost: undefined }],
           pagination: {
             page: 1,
             pageSize: 10,
@@ -149,6 +149,9 @@ describe('ProductsPage', () => {
     renderPage();
 
     expect(await screen.findByText('Caneca branca')).toBeInTheDocument();
+    expect(screen.queryByText('Custo direto')).not.toBeInTheDocument();
+    expect(screen.queryByText('R$ 12,50')).not.toBeInTheDocument();
+    expect(screen.queryByText(/custos diretos/i)).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(
