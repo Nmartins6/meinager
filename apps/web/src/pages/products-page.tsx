@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import type { ProductType } from '@/features/products/products-api';
 import { useProductsQuery } from '@/features/products/use-products-query';
 import { getPricingPermissions } from '@/features/pricing/pricing-permissions';
+import { ProductsPricingNavigation } from '@/features/pricing/products-pricing-navigation';
 
 type StatusFilter = 'active' | 'inactive' | 'all';
 type TypeFilter = ProductType | 'all';
@@ -71,6 +72,8 @@ export function ProductsPage() {
             : 'Consulte seu catálogo e as configurações de estoque.'}
         </p>
       </div>
+
+      <ProductsPricingNavigation />
 
       <Card className="mt-8">
         <CardHeader>

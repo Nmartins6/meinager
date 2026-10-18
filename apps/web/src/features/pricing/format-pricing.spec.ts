@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { canonicalizeCommercialDecimalInput, formatBrl } from './format-pricing';
+import {
+  canonicalizeCommercialDecimalInput,
+  canonicalizeDecimalInput,
+  canonicalizePercentageInput,
+  formatBrl,
+  percentageFractionToInput,
+} from './format-pricing';
 
 describe('canonicalizeCommercialDecimalInput', () => {
   it.each([
@@ -31,6 +37,25 @@ describe('canonicalizeCommercialDecimalInput', () => {
   ])('rejects %s', (input) => {
     expect(canonicalizeCommercialDecimalInput(input)).toBeNull();
   });
+});
+
+describe('pricing configuration decimals', () => {
+  it.each([
+    ['25', '0.25'],
+    ['0,000001', '0.00000001'],
+    ['000025,00', '0.25'],
+    ['999999.999999', '9999.99999999'],
+  ])('converts the human percentage %s exactly to %s', (input, expected) => {
+    expect(canonicalizePercentageInput(input)).toBe(expected);
+    expect(percentageFractionToInput(expected)).toBe(
+      canonicalizeDecimalInput(input, { integerDigits: 6, scale: 6 }),
+    );
+  });
+
+  it.each(['-1', '+1', '1e2', 'NaN', 'Infinity', '1,2.3', '1000000', '0.0000001'])(
+    'rejects the invalid or out-of-range percentage %s',
+    (input) => expect(canonicalizePercentageInput(input)).toBeNull(),
+  );
 });
 
 describe('formatBrl', () => {

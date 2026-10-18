@@ -17,6 +17,8 @@ describe('pricingPermissions', () => {
       setManualPrice: true,
       editComposition: true,
       viewInternalPricing: true,
+      viewConfiguration: true,
+      editConfiguration: true,
     });
     expect(pricingPermissions.ADMIN).toEqual(pricingPermissions.OWNER);
     expect(pricingPermissions.OPERATIONS).toEqual({
@@ -24,18 +26,24 @@ describe('pricingPermissions', () => {
       setManualPrice: false,
       editComposition: true,
       viewInternalPricing: true,
+      viewConfiguration: true,
+      editConfiguration: false,
     });
     expect(pricingPermissions.FINANCE).toEqual({
       viewCommercialSummary: true,
       setManualPrice: false,
       editComposition: false,
       viewInternalPricing: true,
+      viewConfiguration: true,
+      editConfiguration: false,
     });
     expect(pricingPermissions.VIEWER).toEqual({
       viewCommercialSummary: true,
       setManualPrice: false,
       editComposition: false,
       viewInternalPricing: false,
+      viewConfiguration: false,
+      editConfiguration: false,
     });
   });
 });

@@ -96,6 +96,8 @@ fontes oficiais.
       10/10/2026).
 - [x] Implementar a fundação web, compatibilidade de Produtos, resumo comercial
       e preço manual explícito (Marco 4B.2, 13/10/2026).
+- [x] Implementar consulta, criação e atualização da configuração organizacional
+      na web (Marco 4B.3, 13/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -174,6 +176,34 @@ Cada descoberta deve conter:
 - A rota do produto e o detalhe legado consultam somente o resumo comercial para
   `VIEWER`. Testes comprovam ausência de queries internas, de `directCost` e de
   conteúdo financeiro interno nessa projeção.
+
+### Marco 4B.3 — Configuração organizacional web — 13/10/2026
+
+- A revisão final de 14/10/2026 corrigiu recarga após conflito, alterações
+  exclusivas de proveniência e proteção de rascunhos, sem ampliar o marco.
+- O GET real usa `404 PRICING_CONFIGURATION_NOT_FOUND` como ausência esperada.
+  A página transforma esse contrato em estado vazio e só oferece criação a
+  `OWNER`/`ADMIN`; `OPERATIONS`/`FINANCE` leem e `VIEWER` não inicia a query.
+- Percentuais são convertidos entre fração canônica e unidade humana deslocando
+  o ponto decimal como texto. O adaptador aceita ponto ou vírgula, não arredonda
+  e não usa `number` como fonte financeira.
+- O adaptador do formulário compara valores já canonicalizados. Atualizações
+  enviam somente os parâmetros alterados e a proveniência correspondente;
+  origens dos demais parâmetros ficam fora do PATCH, e remoções não recebem
+  proveniência incompatível.
+- A proveniência é uma alteração independente do valor: o adaptador compara os
+  sete campos editáveis, ignora `schemaVersion` e `confirmedByUserId` e envia
+  `null` ao limpar metadados. A confirmação continua derivada da sessão pela
+  API.
+- A mutation atualiza somente a chave da configuração. Versões históricas,
+  produtos, perfis, composição, estoque e financeiro não são invalidados.
+- Conflitos de revisão e de concorrência mantêm o rascunho e exigem recarga
+  explícita. Somente um GET bem-sucedido substitui o formulário; falhas mantêm
+  conflito e rascunho para nova tentativa. No-op é resolvido sem PATCH e sem
+  mensagem de nova revisão.
+- Formulários editáveis e sujos bloqueiam navegação interna pelo React Router e
+  `beforeunload`. O descarte usa diálogo acessível Base UI; leitura, formulário
+  limpo, salvamento, cancelamento e recarga bem-sucedida não mantêm o bloqueio.
 
 ### Marco 4A — Auditoria da interface web — 10/10/2026
 
@@ -1676,8 +1706,9 @@ Nenhuma interface ou dependência foi implementada.
   Zod, erros estruturados, query keys, permissões, compatibilidade de
   `directCost`/`salePrice`, ação manual explícita, resumo comercial e
   rotas-base.
-- **Marco 4B.3 — Configuração:** consulta/formulário, leitura e escrita por
-  papel, `expectedRevision`, proveniências e estados de página/conflito.
+- **Marco 4B.3 — Configuração (concluído em 13/10/2026):** consulta/formulário,
+  leitura e escrita por papel, `expectedRevision`, proveniências e estados de
+  página/conflito.
 - **Marco 4B.4 — Perfis:** lista, paginação, detalhe, criação, edição,
   desativação, deduções ordenadas, proveniências, permissões e conflitos.
 - **Marco 4C — Composição:** perfil, componentes ordenados, catálogo, mão de
@@ -2399,3 +2430,31 @@ git status --short
   `isAdopted`, adoção e acabamento integral continuam nos marcos seguintes. Não
   houve alteração em API, schema, migration, banco, pacote matemático, fórmula,
   snapshot, dependência, orçamento, pedido, estoque ou financeiro.
+
+### Marco 4B.3 concluído — 13/10/2026
+
+- Contratos Zod estritos representam exatamente a configuração atual, sua
+  revisão, sete proveniências versionadas e o PATCH parcial. IDs protegidos,
+  campos gerados, propriedades desconhecidas e decimais não canônicos são
+  rejeitados antes do HTTP.
+- O formulário React Hook Form apresenta percentuais em unidade humana,
+  preserva a string digitada e converte para fração canônica somente ao salvar.
+  Custos fixos `RATE`/`MONTHLY`, mão de obra, campos anuláveis e proveniências
+  seguem as condições do service existente.
+- `OWNER` e `ADMIN` criam e editam; `OPERATIONS` e `FINANCE` possuem leitura;
+  `VIEWER` vê apenas indisponibilidade e não dispara GET interno. A API continua
+  autoritativa para `401`, `403`, validação e concorrência.
+- O PATCH usa `expectedRevision: null` na criação e a revisão positiva carregada
+  nas atualizações. Diferenças canônicas determinam o payload e suas origens;
+  mudanças exclusivas de proveniência também são persistidas. Cancelamento
+  restaura o persistido, e conflitos preservam o rascunho até um GET realmente
+  bem-sucedido.
+- Rascunhos editáveis bloqueiam navegação interna e `beforeunload`, com diálogo
+  acessível antes do descarte. Modos limpo e somente leitura não bloqueiam.
+- Validação: 94 testes direcionados passaram; a web aprovou 178 testes em 35
+  arquivos. Os pipelines raiz aprovaram 77 testes do pacote, 167 da API e 178
+  da web, totalizando 422, além de typecheck, lint e build nos três packages.
+- Limites: perfis, composição, prévia local, simulação, versões, `isAdopted`,
+  adoção e acabamento integral continuam nos marcos seguintes. Não houve
+  alteração em API, pacote matemático, fórmula, snapshot, schema, migration,
+  banco, dependência, orçamento, pedido, estoque ou financeiro.

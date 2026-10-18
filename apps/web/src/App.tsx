@@ -1,5 +1,11 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  Navigate,
+  Route,
+  RouterProvider,
+} from 'react-router-dom';
 
 import { AppLayout } from '@/components/layout/app-layout';
 import { ProtectedRoute } from '@/features/auth/protected-route';
@@ -94,6 +100,11 @@ const PricingFoundationPage = lazy(async () => {
   return { default: module.PricingFoundationPage };
 });
 
+const PricingConfigurationPage = lazy(async () => {
+  const module = await import('@/pages/pricing-configuration-page');
+  return { default: module.PricingConfigurationPage };
+});
+
 const QuotesPage = lazy(async () => {
   const module = await import('@/pages/quotes-page');
   return { default: module.QuotesPage };
@@ -149,264 +160,266 @@ function LazyRoute({ children }: LazyRouteProps) {
   );
 }
 
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <>
+      <Route
+        path="/"
+        element={
+          <LazyRoute>
+            <HomePage />
+          </LazyRoute>
+        }
+      />
+
+      <Route
+        path="/login"
+        element={
+          <LazyRoute>
+            <LoginPage />
+          </LazyRoute>
+        }
+      />
+
+      <Route
+        path="/cadastro"
+        element={
+          <LazyRoute>
+            <RegisterPage />
+          </LazyRoute>
+        }
+      />
+
+      <Route
+        path="/app"
+        element={
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route
+          index
+          element={
+            <LazyRoute>
+              <DashboardPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="clientes"
+          element={
+            <LazyRoute>
+              <ClientsPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="clientes/novo"
+          element={
+            <LazyRoute>
+              <NewClientPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="clientes/:clientId"
+          element={
+            <LazyRoute>
+              <EditClientPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="produtos"
+          element={
+            <LazyRoute>
+              <ProductsPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro"
+          element={
+            <LazyRoute>
+              <FinancialPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/categorias"
+          element={
+            <LazyRoute>
+              <FinancialCategoriesPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/contas"
+          element={
+            <LazyRoute>
+              <FinancialAccountsPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/lancamentos"
+          element={
+            <LazyRoute>
+              <FinancialEntriesPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/lancamentos/novo"
+          element={
+            <LazyRoute>
+              <NewFinancialEntryPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/lancamentos/:entryId"
+          element={
+            <LazyRoute>
+              <FinancialEntryPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="produtos/novo"
+          element={
+            <LazyRoute>
+              <NewProductPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="produtos/:productId"
+          element={
+            <LazyRoute>
+              <ProductPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="produtos/:productId/precificacao"
+          element={
+            <LazyRoute>
+              <ProductPricingPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="produtos/precificacao/configuracao"
+          element={
+            <LazyRoute>
+              <PricingConfigurationPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="produtos/precificacao/perfis"
+          element={
+            <LazyRoute>
+              <PricingFoundationPage title="Perfis de venda" />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="produtos/precificacao/perfis/:profileId"
+          element={
+            <LazyRoute>
+              <PricingFoundationPage title="Perfil de venda" />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/orcamentos"
+          element={
+            <LazyRoute>
+              <QuotesPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/orcamentos/novo"
+          element={
+            <LazyRoute>
+              <NewQuotePage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/orcamentos/:quoteId"
+          element={
+            <LazyRoute>
+              <QuotePage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/orcamentos/:quoteId/editar"
+          element={
+            <LazyRoute>
+              <EditQuotePage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/pedidos"
+          element={
+            <LazyRoute>
+              <OrdersPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/pedidos/fluxos"
+          element={
+            <LazyRoute>
+              <OrderWorkflowsPage />
+            </LazyRoute>
+          }
+        />
+
+        <Route
+          path="financeiro/pedidos/:orderId"
+          element={
+            <LazyRoute>
+              <OrderPage />
+            </LazyRoute>
+          }
+        />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </>,
+  ),
+);
+
 export function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <LazyRoute>
-              <HomePage />
-            </LazyRoute>
-          }
-        />
-
-        <Route
-          path="/login"
-          element={
-            <LazyRoute>
-              <LoginPage />
-            </LazyRoute>
-          }
-        />
-
-        <Route
-          path="/cadastro"
-          element={
-            <LazyRoute>
-              <RegisterPage />
-            </LazyRoute>
-          }
-        />
-
-        <Route
-          path="/app"
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route
-            index
-            element={
-              <LazyRoute>
-                <DashboardPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="clientes"
-            element={
-              <LazyRoute>
-                <ClientsPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="clientes/novo"
-            element={
-              <LazyRoute>
-                <NewClientPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="clientes/:clientId"
-            element={
-              <LazyRoute>
-                <EditClientPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="produtos"
-            element={
-              <LazyRoute>
-                <ProductsPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro"
-            element={
-              <LazyRoute>
-                <FinancialPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/categorias"
-            element={
-              <LazyRoute>
-                <FinancialCategoriesPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/contas"
-            element={
-              <LazyRoute>
-                <FinancialAccountsPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/lancamentos"
-            element={
-              <LazyRoute>
-                <FinancialEntriesPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/lancamentos/novo"
-            element={
-              <LazyRoute>
-                <NewFinancialEntryPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/lancamentos/:entryId"
-            element={
-              <LazyRoute>
-                <FinancialEntryPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="produtos/novo"
-            element={
-              <LazyRoute>
-                <NewProductPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="produtos/:productId"
-            element={
-              <LazyRoute>
-                <ProductPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="produtos/:productId/precificacao"
-            element={
-              <LazyRoute>
-                <ProductPricingPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="produtos/precificacao/configuracao"
-            element={
-              <LazyRoute>
-                <PricingFoundationPage title="Configuração de precificação" />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="produtos/precificacao/perfis"
-            element={
-              <LazyRoute>
-                <PricingFoundationPage title="Perfis de venda" />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="produtos/precificacao/perfis/:profileId"
-            element={
-              <LazyRoute>
-                <PricingFoundationPage title="Perfil de venda" />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/orcamentos"
-            element={
-              <LazyRoute>
-                <QuotesPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/orcamentos/novo"
-            element={
-              <LazyRoute>
-                <NewQuotePage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/orcamentos/:quoteId"
-            element={
-              <LazyRoute>
-                <QuotePage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/orcamentos/:quoteId/editar"
-            element={
-              <LazyRoute>
-                <EditQuotePage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/pedidos"
-            element={
-              <LazyRoute>
-                <OrdersPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/pedidos/fluxos"
-            element={
-              <LazyRoute>
-                <OrderWorkflowsPage />
-              </LazyRoute>
-            }
-          />
-
-          <Route
-            path="financeiro/pedidos/:orderId"
-            element={
-              <LazyRoute>
-                <OrderPage />
-              </LazyRoute>
-            }
-          />
-        </Route>
-
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
+  return <RouterProvider router={router} />;
 }

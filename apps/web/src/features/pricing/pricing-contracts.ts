@@ -51,8 +51,8 @@ export const pricingErrorResponseSchema = z.strictObject({
   field: z.string().min(1).optional(),
   details: z
     .strictObject({
-      expectedRevision: z.number().int().min(0),
-      currentRevision: z.number().int().min(0),
+      expectedRevision: z.number().int().min(0).nullable(),
+      currentRevision: z.number().int().min(0).nullable(),
     })
     .optional(),
 });

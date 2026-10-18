@@ -55,6 +55,16 @@ describe('pricing contracts', () => {
     ).toBeDefined();
 
     expect(
+      pricingErrorResponseSchema.parse({
+        statusCode: 409,
+        code: 'PRICING_REVISION_CONFLICT',
+        message: 'A configuração foi criada.',
+        field: 'expectedRevision',
+        details: { expectedRevision: null, currentRevision: 1 },
+      }),
+    ).toBeDefined();
+
+    expect(
       pricingErrorResponseSchema.safeParse({
         statusCode: 500,
         code: 'INTERNAL_ERROR',

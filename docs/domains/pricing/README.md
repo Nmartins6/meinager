@@ -145,17 +145,20 @@ de produto, o resumo comercial e a restrição de `directCost` para `VIEWER`.
 Preço manual explícito é exclusivo de `OWNER`/`ADMIN`, limpa o vínculo com a
 versão e gera auditoria atômica; a omissão preserva preço e origem. O resumo
 expõe somente preço, origem manual ou versionada e existência de composição aos
-cinco papéis autenticados. Interface web e integração da origem comercial com
-orçamentos e pedidos continuam pendentes.
+cinco papéis autenticados. As interfaces web restantes e a integração da origem
+comercial com orçamentos e pedidos continuam pendentes.
 
 O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
 10/10/2026 sem implementar código. O Marco 4B.1 concluiu o pacote puro do motor,
 sem adicionar dependência ou código à web. O Marco 4B.2 entregou a fundação web,
 o resumo comercial no produto, a ação explícita de preço manual, contratos de
 erro e consulta e a compatibilidade do catálogo quando `directCost` está ausente
-para `VIEWER`. Edições comuns de produto não enviam mais `salePrice`. A
-precificação continuará sendo integrada a Produtos nas etapas 4B.3
-(configuração), 4B.4 (perfis), 4C (composição/prévia), 4D
+para `VIEWER`. Edições comuns de produto não enviam mais `salePrice`. O Marco
+4B.3 implementou a consulta, criação inicial e atualização parcial da
+configuração organizacional na web, com percentuais em unidade humana,
+proveniências, revisão esperada, conflitos explícitos e leitura por papel. A
+precificação continuará sendo integrada a Produtos nas etapas 4B.4 (perfis),
+4C (composição/prévia), 4D
 (simulação/versões/adoção) e 4E (acabamento). A futura prévia combinará o motor
 puro compartilhado no navegador com a API como autoridade.
 

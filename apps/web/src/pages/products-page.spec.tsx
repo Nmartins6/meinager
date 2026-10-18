@@ -101,6 +101,7 @@ describe('ProductsPage', () => {
     expect(screen.getByText('Com controle')).toBeInTheDocument();
     expect(screen.getByText('R$ 29,90')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Novo produto ou serviço' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Configuração de precificação' })).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Buscar produtos e serviços'), 'Caneca');
     await user.click(screen.getByRole('button', { name: 'Buscar' }));
@@ -152,6 +153,9 @@ describe('ProductsPage', () => {
     expect(screen.queryByText('Custo direto')).not.toBeInTheDocument();
     expect(screen.queryByText('R$ 12,50')).not.toBeInTheDocument();
     expect(screen.queryByText(/custos diretos/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Configuração de precificação' }),
+    ).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(
