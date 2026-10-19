@@ -145,8 +145,10 @@ de produto, o resumo comercial e a restrição de `directCost` para `VIEWER`.
 Preço manual explícito é exclusivo de `OWNER`/`ADMIN`, limpa o vínculo com a
 versão e gera auditoria atômica; a omissão preserva preço e origem. O resumo
 expõe somente preço, origem manual ou versionada e existência de composição aos
-cinco papéis autenticados. As interfaces web restantes e a integração da origem
-comercial com orçamentos e pedidos continuam pendentes.
+cinco papéis autenticados. A interface de perfis de venda também consulta,
+cria, edita e desativa perfis com deduções ordenadas. As interfaces de
+composição, simulação, versões e adoção, além da integração da origem comercial
+com orçamentos e pedidos, continuam pendentes.
 
 O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
 10/10/2026 sem implementar código. O Marco 4B.1 concluiu o pacote puro do motor,
@@ -156,10 +158,12 @@ erro e consulta e a compatibilidade do catálogo quando `directCost` está ausen
 para `VIEWER`. Edições comuns de produto não enviam mais `salePrice`. O Marco
 4B.3 implementou a consulta, criação inicial e atualização parcial da
 configuração organizacional na web, com percentuais em unidade humana,
-proveniências, revisão esperada, conflitos explícitos e leitura por papel. A
-precificação continuará sendo integrada a Produtos nas etapas 4B.4 (perfis),
-4C (composição/prévia), 4D
-(simulação/versões/adoção) e 4E (acabamento). A futura prévia combinará o motor
+proveniências, revisão esperada, conflitos explícitos e leitura por papel. O
+Marco 4B.4 implementou lista, detalhe, criação, edição e desativação dos perfis,
+com deduções e proveniências ordenadas, PATCH parcial, concorrência explícita e
+proteção de rascunhos. A precificação continuará sendo integrada a Produtos nas
+etapas 4C (composição/prévia), 4D (simulação/versões/adoção) e 4E (acabamento).
+A futura prévia combinará o motor
 puro compartilhado no navegador com a API como autoridade.
 
 Também foi aprovado `isAdopted: boolean` somente na lista e no detalhe internos

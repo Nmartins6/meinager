@@ -9,6 +9,8 @@ export interface PricingPermissions {
   viewInternalPricing: boolean;
   viewConfiguration: boolean;
   editConfiguration: boolean;
+  viewProfiles: boolean;
+  editProfiles: boolean;
 }
 
 export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = {
@@ -19,6 +21,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: true,
+    viewProfiles: true,
+    editProfiles: true,
   },
   ADMIN: {
     viewCommercialSummary: true,
@@ -27,6 +31,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: true,
+    viewProfiles: true,
+    editProfiles: true,
   },
   OPERATIONS: {
     viewCommercialSummary: true,
@@ -35,6 +41,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: false,
+    viewProfiles: true,
+    editProfiles: false,
   },
   FINANCE: {
     viewCommercialSummary: true,
@@ -43,6 +51,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: false,
+    viewProfiles: true,
+    editProfiles: false,
   },
   VIEWER: {
     viewCommercialSummary: true,
@@ -51,6 +61,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewInternalPricing: false,
     viewConfiguration: false,
     editConfiguration: false,
+    viewProfiles: false,
+    editProfiles: false,
   },
 };
 
@@ -63,6 +75,8 @@ export function getPricingPermissions(role: OrganizationRole | undefined): Prici
       viewInternalPricing: false,
       viewConfiguration: false,
       editConfiguration: false,
+      viewProfiles: false,
+      editProfiles: false,
     };
   }
 

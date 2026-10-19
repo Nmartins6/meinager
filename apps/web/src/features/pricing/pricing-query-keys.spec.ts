@@ -6,6 +6,8 @@ describe('pricingQueryKeys', () => {
   it('creates the approved stable hierarchy', () => {
     expect(pricingQueryKeys.all).toEqual(['pricing']);
     expect(pricingQueryKeys.configuration()).toEqual(['pricing', 'configuration']);
+    expect(pricingQueryKeys.profiles.all()).toEqual(['pricing', 'profiles']);
+    expect(pricingQueryKeys.profiles.lists()).toEqual(['pricing', 'profiles', 'list']);
     expect(pricingQueryKeys.profiles.list({ page: 2 })).toEqual([
       'pricing',
       'profiles',
@@ -18,6 +20,12 @@ describe('pricingQueryKeys', () => {
       'detail',
       'profile-1',
     ]);
+    expect(pricingQueryKeys.profiles.list({ page: 1, isActive: true })).not.toEqual(
+      pricingQueryKeys.profiles.list({ page: 2, isActive: true }),
+    );
+    expect(pricingQueryKeys.profiles.list({ page: 1, isActive: true })).not.toEqual(
+      pricingQueryKeys.profiles.list({ page: 1, isActive: false }),
+    );
     expect(pricingQueryKeys.products.summary('product-1')).toEqual([
       'pricing',
       'products',

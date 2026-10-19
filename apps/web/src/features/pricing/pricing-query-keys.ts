@@ -14,6 +14,7 @@ export const pricingQueryKeys = {
   configuration: () => ['pricing', 'configuration'] as const,
   profiles: {
     all: () => ['pricing', 'profiles'] as const,
+    lists: () => ['pricing', 'profiles', 'list'] as const,
     list: (filters: PricingProfileListFilters = {}) =>
       ['pricing', 'profiles', 'list', filters] as const,
     detail: (profileId: string) => ['pricing', 'profiles', 'detail', profileId] as const,

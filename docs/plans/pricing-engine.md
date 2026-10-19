@@ -98,6 +98,8 @@ fontes oficiais.
       e preço manual explícito (Marco 4B.2, 13/10/2026).
 - [x] Implementar consulta, criação e atualização da configuração organizacional
       na web (Marco 4B.3, 13/10/2026).
+- [x] Implementar lista, detalhe, criação, edição e desativação de perfis de
+      venda na web (Marco 4B.4, 18/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -204,6 +206,26 @@ Cada descoberta deve conter:
 - Formulários editáveis e sujos bloqueiam navegação interna pelo React Router e
   `beforeunload`. O descarte usa diálogo acessível Base UI; leitura, formulário
   limpo, salvamento, cancelamento e recarga bem-sucedida não mantêm o bloqueio.
+
+### Marco 4B.4 — Perfis de venda e deduções web — 18/10/2026
+
+- A lista real da API não contém deduções; por isso o cache separa listas por
+  página e estado do detalhe completo por ID. Criação, atualização e
+  desativação invalidam somente o prefixo das listas de perfis e atualizam o
+  detalhe afetado.
+- O PATCH é formado por comparação semântica. Alterar apenas o nome omite
+  deduções; qualquer mudança, inserção, remoção ou reordenação envia a coleção
+  completa na ordem visual. Percentuais equivalentes são comparados depois da
+  conversão textual para fração canônica.
+- Os únicos metadados de proveniência enviados são `source`, `referenceId`,
+  `periodStart`, `periodEnd`, `criterion` e `measuredAt`. IDs, posições,
+  `schemaVersion` e `confirmedByUserId` permanecem derivados pelo backend.
+- Uma recarga de conflito que falha mantém os dados anteriores do React Query,
+  o formulário montado, o rascunho e o bloqueio de salvamento. Somente um GET
+  bem-sucedido substitui o formulário e libera nova edição.
+- `VIEWER` não habilita queries de lista nem de detalhe. `OPERATIONS` e
+  `FINANCE` recebem os dados em modo somente leitura; `OWNER` e `ADMIN` podem
+  criar, editar e desativar perfis ativos.
 
 ### Marco 4A — Auditoria da interface web — 10/10/2026
 
@@ -1709,8 +1731,9 @@ Nenhuma interface ou dependência foi implementada.
 - **Marco 4B.3 — Configuração (concluído em 13/10/2026):** consulta/formulário,
   leitura e escrita por papel, `expectedRevision`, proveniências e estados de
   página/conflito.
-- **Marco 4B.4 — Perfis:** lista, paginação, detalhe, criação, edição,
-  desativação, deduções ordenadas, proveniências, permissões e conflitos.
+- **Marco 4B.4 — Perfis (concluído em 18/10/2026):** lista, paginação, detalhe,
+  criação, edição, desativação, deduções ordenadas, proveniências, permissões,
+  conflitos e proteção de rascunhos.
 - **Marco 4C — Composição:** perfil, componentes ordenados, catálogo, mão de
   obra, frete, proveniências, revisão esperada e prévia local.
 - **Marco 4D — Simulação, versões e adoção:** confirmação autoritativa, criação
@@ -2458,3 +2481,31 @@ git status --short
   adoção e acabamento integral continuam nos marcos seguintes. Não houve
   alteração em API, pacote matemático, fórmula, snapshot, schema, migration,
   banco, dependência, orçamento, pedido, estoque ou financeiro.
+
+### Marco 4B.4 concluído — 18/10/2026
+
+- As rotas `/app/produtos/precificacao/perfis` e
+  `/app/produtos/precificacao/perfis/:profileId` passaram a consumir os cinco
+  endpoints existentes. A lista cobre paginação e estado; o detalhe preserva
+  perfis inativos e suas revisões.
+- Contratos Zod estritos validam lista, detalhe, deduções, proveniência,
+  paginação e entradas de criação, atualização e desativação antes do cache ou
+  do HTTP. Propriedades protegidas ou desconhecidas, `null` indevido e decimal
+  não canônico são rejeitados.
+- O formulário usa coleção ordenada, percentuais humanos convertidos por texto,
+  proveniência permitida, PATCH parcial, no-op sem requisição, revisão esperada
+  e substituição completa apenas quando as deduções mudam.
+- Conflitos preservam o rascunho e bloqueiam outro salvamento. Recarga com erro
+  mantém o formulário e permite nova tentativa; rascunhos de criação e edição
+  também são protegidos em navegação interna e `beforeunload` por diálogo
+  acessível.
+- `OWNER`/`ADMIN` criam, editam e desativam; `OPERATIONS`/`FINANCE` consultam;
+  `VIEWER` não recebe link, lista, detalhe, deduções, taxas ou proveniências e
+  não inicia query interna.
+- Validação: 31 testes direcionados passaram; a web aprovou 207 testes em 40
+  arquivos. Os pipelines raiz aprovaram 77 testes do pacote, 167 da API e 207
+  da web, totalizando 451, além de typecheck, lint e build nos três packages.
+- Limites: composição, prévia local, simulação, versões, `isAdopted`, adoção e
+  acabamento integral continuam nos marcos seguintes. Não houve alteração em
+  API, pacote matemático, fórmula, snapshot, schema, migration, banco,
+  dependência, orçamento, pedido, estoque ou financeiro.
