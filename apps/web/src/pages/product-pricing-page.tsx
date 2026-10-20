@@ -1,10 +1,10 @@
 import { ArrowLeft } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 
-import { Card, CardContent } from '@/components/ui/card';
 import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
 import { ProductCommercialSummary } from '@/features/pricing/product-commercial-summary';
 import { getPricingPermissions } from '@/features/pricing/pricing-permissions';
+import { PricingCompositionEditor } from '@/features/pricing/pricing-composition-editor';
 
 export function ProductPricingPage() {
   const { productId = '' } = useParams();
@@ -52,14 +52,7 @@ export function ProductPricingPage() {
       <ProductCommercialSummary productId={productId} role={role} />
 
       {permissions.viewInternalPricing && (
-        <Card className="mt-6">
-          <CardContent className="py-8">
-            <p className="font-medium">Composição e análise detalhada</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              A edição da composição será disponibilizada na próxima etapa da interface.
-            </p>
-          </CardContent>
-        </Card>
+        <PricingCompositionEditor productId={productId} canEdit={permissions.editComposition} />
       )}
     </section>
   );

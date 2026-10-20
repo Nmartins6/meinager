@@ -100,6 +100,8 @@ fontes oficiais.
       na web (Marco 4B.3, 13/10/2026).
 - [x] Implementar lista, detalhe, criação, edição e desativação de perfis de
       venda na web (Marco 4B.4, 18/10/2026).
+- [x] Implementar consulta, criação e edição da composição persistida na web
+      (Marco 4C.1, 19/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -226,6 +228,28 @@ Cada descoberta deve conter:
 - `VIEWER` não habilita queries de lista nem de detalhe. `OPERATIONS` e
   `FINANCE` recebem os dados em modo somente leitura; `OWNER` e `ADMIN` podem
   criar, editar e desativar perfis ativos.
+
+### Marco 4C.1 — Editor da composição persistida — 19/10/2026
+
+- O GET usa `PRICING_COMPOSITION_NOT_FOUND` como ausência esperada. Outros
+  `404`, inclusive produto inexistente ou externo, continuam erros.
+- O PUT é uma substituição integral. A web deriva a posição da ordem visual,
+  nunca envia IDs ou posições e omite `storedUnitCost` em `CATALOG`; ao
+  selecionar o catálogo, aplica também a unidade exigida pelo backend.
+- Perfis ativos compõem novas opções, enquanto o detalhe de um perfil vinculado
+  inativo é carregado separadamente e preservado na leitura.
+- A recarga após conflito chama o GET diretamente e só substitui cache e
+  formulário após resposta válida. Falha mantém rascunho, conflito e bloqueio
+  sem tratar dados antigos do cache como sucesso.
+- A consulta da composição desabilita refetch automático por foco e reconexão.
+  Perfis e catálogo consomem todas as páginas ativas em blocos de 100,
+  deduplicam IDs na ordem retornada e resolvem por detalhe as referências atuais
+  inativas ou ausentes dessas páginas, sem torná-las elegíveis para nova seleção.
+- A suíte web completa apresentou contenção de recursos quando os testes
+  React/JSDOM usavam o paralelismo automático dos 12 processadores disponíveis.
+  O `vitest.config.ts` passou a limitar centralmente a execução a quatro workers;
+  os scripts oficiais mantêm seus comandos originais e nenhum timeout foi
+  aumentado.
 
 ### Marco 4A — Auditoria da interface web — 10/10/2026
 
@@ -1152,6 +1176,26 @@ do Marco 5.
 - Auditoria de alteração registra identidade, revisões e contagem de
   componentes, sem duplicar custos internos. Um no-op semântico não gera evento.
 
+### Editor web da composição persistida — Marco 4C.1
+
+- A página consulta composição, perfis ativos e catálogo somente para os quatro
+  papéis internos. `OWNER`, `ADMIN` e `OPERATIONS` editam; `FINANCE` lê;
+  `VIEWER` mantém somente o resumo comercial e não inicia essas queries.
+- O formulário representa o PUT integral com strings decimais, condições de
+  mão de obra e frete, proveniências e componentes `MANUAL`, `COPIED` ou
+  `CATALOG`. A canonicalização ocorre ao montar o payload, sem `number`,
+  arredondamento ou custo usado como cache de catálogo.
+- Após PUT, a mutation atualiza apenas a chave exata da composição e invalida
+  apenas o resumo do produto. Configuração, perfis, versões, produtos legados e
+  outros domínios permanecem intactos.
+- No-op não envia PUT. Conflitos preservam o rascunho até recarga explícita
+  bem-sucedida. Navegação interna e `beforeunload` usam diálogo acessível
+  enquanto houver edição não salva.
+- Foco e reconexão não refazem a consulta da composição nem substituem o
+  rascunho. Perfis e produtos elegíveis são coletados em todas as páginas; uma
+  referência `CATALOG` atual fora do conjunto elegível é identificada por seu
+  detalhe e exibida apenas como histórica.
+
 ### Simulação autoritativa — Marco 3C.2
 
 - A fonte do cálculo é explicitada por `PERSISTED` ou `DRAFT`. O rascunho é
@@ -1734,8 +1778,11 @@ Nenhuma interface ou dependência foi implementada.
 - **Marco 4B.4 — Perfis (concluído em 18/10/2026):** lista, paginação, detalhe,
   criação, edição, desativação, deduções ordenadas, proveniências, permissões,
   conflitos e proteção de rascunhos.
-- **Marco 4C — Composição:** perfil, componentes ordenados, catálogo, mão de
-  obra, frete, proveniências, revisão esperada e prévia local.
+- **Marco 4C.1 — Composição persistida (concluído em 19/10/2026):** perfil,
+  componentes ordenados, catálogo, mão de obra, frete, proveniências, revisão
+  esperada, permissões, conflitos e proteção de rascunhos.
+- **Marco 4C.2 — Prévia local:** consumo do pacote compartilhado e apresentação
+  imediata dos resultados, sem substituir a confirmação autoritativa.
 - **Marco 4D — Simulação, versões e adoção:** confirmação autoritativa, criação
   e detalhe de versão, histórico, adoção, confirmação abaixo do mínimo e preço
   manual explícito, usando `isAdopted` após a etapa pequena de implementação e
@@ -2509,3 +2556,27 @@ git status --short
   acabamento integral continuam nos marcos seguintes. Não houve alteração em
   API, pacote matemático, fórmula, snapshot, schema, migration, banco,
   dependência, orçamento, pedido, estoque ou financeiro.
+
+### Marco 4C.1 concluído — 19/10/2026
+
+- `/app/produtos/:productId/precificacao` passou a consultar, criar e substituir
+  a composição persistida pelos endpoints existentes. A tela identifica o
+  produto, mostra revisão e estados de ausência, loading, erro e retry.
+- Contratos Zod estritos rejeitam propriedades protegidas, estruturas
+  incompatíveis, decimais não canônicos e combinações inválidas de mão de obra,
+  frete, proveniência e origem do componente.
+- O formulário mantém decimais como texto, envia a coleção completa na ordem
+  visual e suporta adicionar, remover e mover componentes. Perfis inativos já
+  vinculados são preservados; autorreferência e custo persistido de `CATALOG`
+  são impedidos antes do PUT.
+- `OWNER`/`ADMIN`/`OPERATIONS` editam, `FINANCE` lê e `VIEWER` não dispara query
+  interna nem recebe custos, margem, perfil, componentes ou proveniência.
+- Quarenta e dois testes direcionados passaram. A suíte web possui 247 testes em
+  42 arquivos e limita centralmente a concorrência a quatro workers para evitar
+  contenção de recursos entre testes React/JSDOM, sem alterar os scripts ou os
+  timeouts. Duas execuções oficiais consecutivas passaram sem parâmetros
+  adicionais.
+- Limites: prévia local, simulação web, versões, `isAdopted`, adoção e acabamento
+  integral permanecem nos Marcos 4C.2 em diante. Nenhuma API, fórmula, snapshot,
+  schema, migration, dependência, orçamento, pedido, estoque ou financeiro foi
+  alterado.

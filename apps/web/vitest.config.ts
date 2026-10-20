@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    maxWorkers: 4,
     setupFiles: ['./src/test/setup.ts'],
     env: {
       VITE_API_URL: 'http://localhost:3000/api',

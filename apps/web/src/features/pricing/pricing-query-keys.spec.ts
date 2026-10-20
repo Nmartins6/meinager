@@ -8,6 +8,12 @@ describe('pricingQueryKeys', () => {
     expect(pricingQueryKeys.configuration()).toEqual(['pricing', 'configuration']);
     expect(pricingQueryKeys.profiles.all()).toEqual(['pricing', 'profiles']);
     expect(pricingQueryKeys.profiles.lists()).toEqual(['pricing', 'profiles', 'list']);
+    expect(pricingQueryKeys.profiles.allActive()).toEqual([
+      'pricing',
+      'profiles',
+      'list',
+      'all-active',
+    ]);
     expect(pricingQueryKeys.profiles.list({ page: 2 })).toEqual([
       'pricing',
       'profiles',

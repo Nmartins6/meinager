@@ -146,9 +146,11 @@ Preço manual explícito é exclusivo de `OWNER`/`ADMIN`, limpa o vínculo com a
 versão e gera auditoria atômica; a omissão preserva preço e origem. O resumo
 expõe somente preço, origem manual ou versionada e existência de composição aos
 cinco papéis autenticados. A interface de perfis de venda também consulta,
-cria, edita e desativa perfis com deduções ordenadas. As interfaces de
-composição, simulação, versões e adoção, além da integração da origem comercial
-com orçamentos e pedidos, continuam pendentes.
+cria, edita e desativa perfis com deduções ordenadas. A interface da composição
+persistida consulta, cria e substitui perfil, componentes, mão de obra, frete e
+proveniências com revisão esperada. Simulação, prévia local, versões e adoção na
+web, além da integração da origem comercial com orçamentos e pedidos, continuam
+pendentes.
 
 O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
 10/10/2026 sem implementar código. O Marco 4B.1 concluiu o pacote puro do motor,
@@ -161,10 +163,15 @@ configuração organizacional na web, com percentuais em unidade humana,
 proveniências, revisão esperada, conflitos explícitos e leitura por papel. O
 Marco 4B.4 implementou lista, detalhe, criação, edição e desativação dos perfis,
 com deduções e proveniências ordenadas, PATCH parcial, concorrência explícita e
-proteção de rascunhos. A precificação continuará sendo integrada a Produtos nas
-etapas 4C (composição/prévia), 4D (simulação/versões/adoção) e 4E (acabamento).
-A futura prévia combinará o motor
-puro compartilhado no navegador com a API como autoridade.
+proteção de rascunhos. O Marco 4C.1 implementou o editor da composição
+persistida na página do produto, com componentes ordenados, catálogo, mão de
+obra, frete, proveniências, conflito explícito e permissões por papel. A seleção
+consome todas as páginas de perfis e produtos ativos, preserva referências
+históricas inativas sem torná-las elegíveis e impede que foco ou reconexão
+substituam um rascunho. A precificação continuará sendo integrada a Produtos nas
+etapas 4C.2 (prévia), 4D (simulação/versões/adoção) e 4E (acabamento). A futura
+prévia combinará o motor puro compartilhado no navegador com a API como
+autoridade.
 
 Também foi aprovado `isAdopted: boolean` somente na lista e no detalhe internos
 de versões. O backend o calculará do ponteiro atual do produto, sem persistência

@@ -123,6 +123,17 @@ edição possuem proteção de navegação. A validação aprovou 31 testes dire
 207 testes em 40 arquivos da web e 451 testes nos três packages. Composição,
 prévia, simulação, versões e adoção na web permanecem pendentes.
 
+Marco 4C.1 implementado em 19/10/2026 e revisado em 20/10/2026. A página do
+produto passou a consultar, criar e substituir a composição persistida completa
+com strings decimais, componentes ordenados, catálogo, mão de obra, frete,
+proveniências e revisão esperada. Conflitos, no-op, recarga segura, proteção
+contra refetch automático e proteção de rascunho possuem testes; `VIEWER` não
+inicia consultas internas. Perfis e catálogo percorrem todas as páginas ativas,
+e referências históricas inativas são identificadas sem voltar a ser elegíveis.
+Foram aprovados 42 testes direcionados e 247 testes da web em 42 arquivos com
+concorrência central limitada a quatro workers. Prévia local, simulação, versões
+e adoção na web continuam pendentes.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -302,25 +313,25 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Composição de custos
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                                     | Implementação esperada |
-| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| `PREC-CA-010` e `PREC-CA-011` | `IMPLEMENTED` | API cria e substitui composição completa; E2E cobre as oito categorias, coleção ordenada e componentes `MANUAL`, `COPIED` e `CATALOG`                 | Interface web pendente |
-| `PREC-CA-012` a `PREC-CA-016` | `IMPLEMENTED` | Criação de versão resolve `MANUAL`, `COPIED` e custo `CATALOG`, congela ordem, ID e custo efetivo; E2E altera depois o catálogo sem mudar o histórico | Interface web pendente |
-| `PREC-RN-006` a `PREC-RN-011` | `IMPLEMENTED` | Motor único e backend autoritativo validam componentes, quantidades, custos e catálogo; snapshot imutável preserva a execução                         | Interface web pendente |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                            | Implementação esperada                        |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `PREC-CA-010` e `PREC-CA-011` | `IMPLEMENTED` | API e editor web criam e substituem composição completa; testes cobrem categorias, ordem visual e componentes `MANUAL`, `COPIED` e `CATALOG` | Prévia local permanece no Marco 4C.2          |
+| `PREC-CA-012` a `PREC-CA-016` | `IMPLEMENTED` | Editor percorre o catálogo ativo, exige custo string, omite custo de `CATALOG`, impede autorreferência e preserva referências históricas     | Exposição histórica permanece no Marco 4D     |
+| `PREC-RN-006` a `PREC-RN-011` | `IMPLEMENTED` | Web preserva decimais textuais e condições por origem; backend autoritativo valida custos e catálogo, e snapshot preserva a execução         | Prévia dos resultados permanece no Marco 4C.2 |
 
 ### Mão de obra
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                                   | Implementação esperada                    |
-| ----------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `PREC-CA-017` a `PREC-CA-019` | `PARTIAL` | Simulação resolve configuração e tempo, calcula a memória de mão de obra e retorna erro estável quando os parâmetros estão ausentes | Conversão de campos da interface pendente |
-| `PREC-RN-012` a `PREC-RN-015` | `PARTIAL` | Service resolve a mão de obra habilitada e o snapshot v1 congela parâmetros, tempo e memória calculada                              | Interface web pendente                    |
+| Critérios                     | Estado    | Base reutilizável                                                                                                                    | Implementação esperada               |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| `PREC-CA-017` a `PREC-CA-019` | `PARTIAL` | Editor persiste habilitação e tempo; simulação resolve configuração, calcula memória e retorna erro estável quando faltam parâmetros | Exibir cálculo derivado na prévia    |
+| `PREC-RN-012` a `PREC-RN-015` | `PARTIAL` | Web converte campos sem ponto flutuante; service resolve mão de obra e snapshot v1 congela parâmetros, tempo e memória               | Exibir memória e avisos na interface |
 
 ### Frete
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                  | Implementação esperada |
-| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------- |
-| `PREC-CA-020` a `PREC-CA-022` | `PARTIAL` | API autoritativa cobre frete ausente, manual e rateado, incluindo quantidade zero e consumo padrão                 | Interface pendente     |
-| `PREC-RN-016` e `PREC-RN-017` | `PARTIAL` | Service adapta os modos e o snapshot v1 congela entrada e resultado do frete, inclusive consumo padrão normalizado | Interface web pendente |
+| Critérios                     | Estado    | Base reutilizável                                                                                  | Implementação esperada                 |
+| ----------------------------- | --------- | -------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `PREC-CA-020` a `PREC-CA-022` | `PARTIAL` | Editor cobre frete ausente, manual e rateado; API rejeita quantidade zero e aplica consumo padrão  | Exibir custo calculado na prévia       |
+| `PREC-RN-016` e `PREC-RN-017` | `PARTIAL` | Web persiste entradas condicionais; service adapta modos e snapshot v1 congela entrada e resultado | Exibir resultado do frete na interface |
 
 ### Motor de cálculo
 
@@ -400,11 +411,11 @@ de pedidos comprovam o comportamento atual, mas não a integração futura.
 
 ### Permissões
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                                | Implementação esperada            |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| `PREC-CA-045` a `PREC-CA-049` | `IMPLEMENTED` | E2E cobre a API; configuração e perfis web comprovam escrita por OWNER/ADMIN, leitura por OPERATIONS/FINANCE e nenhuma query interna para VIEWER | Preservar nos próximos fluxos web |
-| Acesso não autenticado        | `IMPLEMENTED` | Endpoints de precificação, inclusive adoção e resumo comercial, rejeitam ausência de sessão com `401`                                            | Preservar nos endpoints futuros   |
-| Isolamento organizacional     | `IMPLEMENTED` | Services filtram pela organização da sessão; E2E oculta recursos externos também no preço manual e no resumo                                     | Preservar nas integrações futuras |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada            |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `PREC-CA-045` a `PREC-CA-049` | `IMPLEMENTED` | E2E cobre a API; configuração, perfis e composição web comprovam a matriz de escrita/leitura e nenhuma query interna para `VIEWER` | Preservar nos próximos fluxos web |
+| Acesso não autenticado        | `IMPLEMENTED` | Endpoints de precificação, inclusive adoção e resumo comercial, rejeitam ausência de sessão com `401`                              | Preservar nos endpoints futuros   |
+| Isolamento organizacional     | `IMPLEMENTED` | Services filtram pela organização da sessão; E2E oculta recursos externos também no preço manual e no resumo                       | Preservar nas integrações futuras |
 
 O contrato legado de produtos possui E2E específico de não vazamento:
 `OWNER`, `ADMIN`, `OPERATIONS` e `FINANCE` continuam recebendo `directCost` em
@@ -414,28 +425,28 @@ renderiza coluna, valor, placeholder ou indicação de custo para `VIEWER`.
 
 ### Precisão e arredondamento
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                    | Implementação esperada                          |
-| ----------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `PREC-CA-050` a `PREC-CA-053` | `PARTIAL` | API preserva decimais sem expoente; web canonicaliza preço, configuração e taxas de perfis por texto sem arredondar  | Exibir resultados informativos completos na web |
-| `ADR-002`                     | `PARTIAL` | Motor, persistência, snapshot e adaptadores web usam strings canônicas; percentuais web não usam `number` como fonte | Exibição de todos os resultados ainda pendente  |
+| Critérios                     | Estado    | Base reutilizável                                                                                                      | Implementação esperada                          |
+| ----------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `PREC-CA-050` a `PREC-CA-053` | `PARTIAL` | API preserva decimais sem expoente; web canonicaliza preço, configuração, perfis e composição por texto sem arredondar | Exibir resultados informativos completos na web |
+| `ADR-002`                     | `PARTIAL` | Motor, persistência, snapshot e adaptadores web usam strings canônicas; percentuais web não usam `number` como fonte   | Exibição de todos os resultados ainda pendente  |
 
 ### Interface
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                             | Implementação esperada                              |
-| ----------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `PREC-CA-054` a `PREC-CA-057` | `PARTIAL` | Resumo, diálogos, configuração e perfis cobrem estados, validação, conflitos, recarga segura e proteção acessível do rascunho | Mínimo, sugerido, avisos e fluxo completo pendentes |
-| Recálculo local               | `PENDING` | Pacote compartilhado implementado e validado; a web ainda não o consome                                                       | Prévia em até 100 ms no Marco 4C                    |
-| Validação autoritativa        | `PARTIAL` | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente                           | Interface pendente                                  |
+| Critérios                     | Estado    | Base reutilizável                                                                                                                          | Implementação esperada                              |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `PREC-CA-054` a `PREC-CA-057` | `PARTIAL` | Resumo, configuração, perfis e composição cobrem estados, validação, conflitos, recarga segura e rascunho protegido de navegação e refetch | Mínimo, sugerido, avisos e fluxo completo pendentes |
+| Recálculo local               | `PENDING` | Pacote compartilhado implementado e validado; a web ainda não o consome                                                                    | Prévia em até 100 ms no Marco 4C                    |
+| Validação autoritativa        | `PARTIAL` | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente                                        | Interface pendente                                  |
 
 ### Auditoria e segurança
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                                    | Implementação esperada                      |
-| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração, perfis, composição, versão, adoção e preço manual geram auditorias atômicas testadas                                                   | Preservar nas integrações futuras           |
-| `PREC-CA-059`                 | `IMPLEMENTED` | Evento imutável guarda a decisão e justificativa; AuditLog vinculado guarda organização, ator, produto, versão e preços                              | Comprovado por rollback e metadados E2E     |
-| `PREC-CA-060`                 | `IMPLEMENTED` | DTO de adoção rejeita preço, classificação, fórmula, snapshot, IDs protegidos e resultados enviados pelo cliente                                     | Preservar nas próximas mutações             |
-| `PREC-CA-061`                 | `IMPLEMENTED` | Organização e ator vêm da sessão em todos os casos de uso; E2E cobre também preço manual, resumo e recursos externos                                 | Preservar nas integrações futuras           |
-| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL`     | Web preserva erros estáveis, associa validações aos campos e trata conflitos de configuração e perfis sem perder rascunho; API traduz erros do motor | Formulários de cálculo permanecem pendentes |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                                 | Implementação esperada                      |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração, perfis, composição, versão, adoção e preço manual geram auditorias atômicas testadas                                                | Preservar nas integrações futuras           |
+| `PREC-CA-059`                 | `IMPLEMENTED` | Evento imutável guarda a decisão e justificativa; AuditLog vinculado guarda organização, ator, produto, versão e preços                           | Comprovado por rollback e metadados E2E     |
+| `PREC-CA-060`                 | `IMPLEMENTED` | DTO de adoção rejeita preço, classificação, fórmula, snapshot, IDs protegidos e resultados enviados pelo cliente                                  | Preservar nas próximas mutações             |
+| `PREC-CA-061`                 | `IMPLEMENTED` | Organização e ator vêm da sessão em todos os casos de uso; E2E cobre também preço manual, resumo e recursos externos                              | Preservar nas integrações futuras           |
+| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL`     | Web preserva erros estáveis, associa campos e trata conflitos de configuração, perfis e composição sem perder rascunho; API traduz erros do motor | Formulários de cálculo permanecem pendentes |
 
 ## 6. Rotas atuais que devem ser preservadas
 

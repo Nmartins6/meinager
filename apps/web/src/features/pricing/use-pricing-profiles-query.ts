@@ -12,6 +12,31 @@ export function usePricingProfilesQuery(filters: PricingProfileListFilters, enab
   });
 }
 
+export function useAllActivePricingProfilesQuery(enabled: boolean) {
+  return useQuery({
+    queryKey: pricingQueryKeys.profiles.allActive(),
+    queryFn: async () => {
+      const profiles = new Map<
+        string,
+        Awaited<ReturnType<typeof listPricingProfiles>>['data'][number]
+      >();
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const response = await listPricingProfiles({ page, pageSize: 100, isActive: true });
+        for (const profile of response.data) {
+          if (!profiles.has(profile.id)) profiles.set(profile.id, profile);
+        }
+        totalPages = response.pagination.totalPages;
+        page += 1;
+      } while (page <= totalPages);
+      return [...profiles.values()];
+    },
+    enabled,
+    retry: false,
+  });
+}
+
 export function usePricingProfileQuery(profileId: string, enabled: boolean) {
   return useQuery({
     queryKey: pricingQueryKeys.profiles.detail(profileId),
