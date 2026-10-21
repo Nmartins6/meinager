@@ -1,10 +1,15 @@
 import { ArrowLeft } from 'lucide-react';
+import { lazy, Suspense } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
 import { ProductCommercialSummary } from '@/features/pricing/product-commercial-summary';
 import { getPricingPermissions } from '@/features/pricing/pricing-permissions';
-import { PricingCompositionEditor } from '@/features/pricing/pricing-composition-editor';
+
+const PricingCompositionEditor = lazy(async () => {
+  const module = await import('@/features/pricing/pricing-composition-editor');
+  return { default: module.PricingCompositionEditor };
+});
 
 export function ProductPricingPage() {
   const { productId = '' } = useParams();
@@ -52,7 +57,15 @@ export function ProductPricingPage() {
       <ProductCommercialSummary productId={productId} role={role} />
 
       {permissions.viewInternalPricing && (
-        <PricingCompositionEditor productId={productId} canEdit={permissions.editComposition} />
+        <Suspense
+          fallback={
+            <p role="status" className="mt-6 text-sm text-muted-foreground">
+              Preparando composição...
+            </p>
+          }
+        >
+          <PricingCompositionEditor productId={productId} canEdit={permissions.editComposition} />
+        </Suspense>
       )}
     </section>
   );

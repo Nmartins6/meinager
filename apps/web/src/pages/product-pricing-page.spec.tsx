@@ -10,6 +10,7 @@ import { createMemoryRouter, Link, RouterProvider } from 'react-router-dom';
 
 import type { Product } from '@/features/products/products-api';
 import type { PricingComposition } from '@/features/pricing/pricing-composition-contracts';
+import type { PricingConfiguration } from '@/features/pricing/pricing-configuration-contracts';
 import type { PricingProfileItem } from '@/features/pricing/pricing-profiles-contracts';
 
 import { ProductPricingPage } from './product-pricing-page';
@@ -98,6 +99,48 @@ const secondProfile: PricingProfileItem = {
     name: 'Atacado',
   },
 };
+const pricingConfiguration: PricingConfiguration = {
+  id: '0c441c57-4771-447f-b518-fc7003f51a70',
+  isActive: true,
+  currentRevision: {
+    id: '8b46a55c-2cda-4da5-8afc-240cb0e76be0',
+    revision: 1,
+    effectiveFrom: timestamp,
+    currency: 'BRL',
+    fixedCostMode: 'RATE',
+    fixedCostRate: '0.1',
+    monthlyFixedCost: null,
+    averageMonthlyRevenue: null,
+    monthlyLaborCost: '3300',
+    productiveHours: '165',
+    defaultDesiredMargin: '0.25',
+    parameterOrigins: {
+      fixedCostRate: {
+        schemaVersion: 1,
+        origin: 'MANUAL',
+        source: null,
+        referenceId: null,
+        periodStart: null,
+        periodEnd: null,
+        criterion: null,
+        measuredAt: null,
+        confirmedByUserId: userId,
+      },
+      defaultDesiredMargin: {
+        schemaVersion: 1,
+        origin: 'MANUAL',
+        source: null,
+        referenceId: null,
+        periodStart: null,
+        periodEnd: null,
+        criterion: null,
+        measuredAt: null,
+        confirmedByUserId: userId,
+      },
+    },
+    createdAt: timestamp,
+  },
+};
 const componentOrigin = {
   schemaVersion: 1 as const,
   source: null,
@@ -121,7 +164,19 @@ const composition: PricingComposition = {
   freightTotalCost: null,
   freightQuantity: null,
   freightConsumedQuantity: null,
-  parameterOrigins: {},
+  parameterOrigins: {
+    desiredMargin: {
+      schemaVersion: 1,
+      origin: 'MANUAL',
+      source: null,
+      referenceId: null,
+      periodStart: null,
+      periodEnd: null,
+      criterion: null,
+      measuredAt: null,
+      confirmedByUserId: userId,
+    },
+  },
   isActive: true,
   createdAt: timestamp,
   updatedAt: timestamp,
@@ -145,12 +200,14 @@ const composition: PricingComposition = {
 
 interface FetchOptions {
   role?: 'OWNER' | 'ADMIN' | 'OPERATIONS' | 'FINANCE' | 'VIEWER';
+  product?: Product;
   initialComposition?: typeof composition | null;
   onPut?: (body: Record<string, unknown>) => Response;
   onCompositionGet?: (call: number) => Response;
   profilePages?: PricingProfileItem[][];
   catalogPages?: Product[][];
-  onLinkedProfileGet?: (call: number) => Response;
+  onLinkedProfileGet?: (call: number, profileId: string) => Response | Promise<Response>;
+  onConfigurationGet?: () => Response;
   onProductDetailGet?: (productId: string) => Response | undefined;
 }
 
@@ -172,11 +229,14 @@ function setupFetch(options: FetchOptions = {}) {
       : undefined;
     requested.push({ path: url.pathname, method, body, search: url.search });
     if (url.pathname === '/api/auth/me') return jsonResponse(auth(options.role ?? 'OWNER'));
+    if (url.pathname === '/api/pricing/configuration') {
+      return options.onConfigurationGet?.() ?? jsonResponse(pricingConfiguration);
+    }
     if (url.pathname === `/api/pricing/products/${productId}/summary`) {
       return jsonResponse({
         productId,
         currency: 'BRL',
-        salePrice: null,
+        salePrice: options.product?.salePrice ?? null,
         priceOrigin: 'MANUAL',
         hasComposition,
       });
@@ -208,7 +268,9 @@ function setupFetch(options: FetchOptions = {}) {
       }
       return jsonResponse(options.initialComposition ?? composition);
     }
-    if (url.pathname === `/api/products/${productId}`) return jsonResponse(targetProduct);
+    if (url.pathname === `/api/products/${productId}`) {
+      return jsonResponse(options.product ?? targetProduct);
+    }
     if (url.pathname === '/api/products') {
       const pages = options.catalogPages ?? [[targetProduct, sourceProduct]];
       const page = Number(url.searchParams.get('page') ?? '1');
@@ -245,14 +307,35 @@ function setupFetch(options: FetchOptions = {}) {
         },
       });
     }
-    if (url.pathname === `/api/pricing/profiles/${profileId}`) {
+    if (url.pathname.startsWith('/api/pricing/profiles/')) {
       linkedProfileGets += 1;
-      const response = options.onLinkedProfileGet?.(linkedProfileGets);
+      const requestedProfileId = url.pathname.slice('/api/pricing/profiles/'.length);
+      const response = options.onLinkedProfileGet?.(linkedProfileGets, requestedProfileId);
       if (response) return response;
+      const listedProfile = (options.profilePages ?? [[profile]])
+        .flat()
+        .find((item) => item.id === requestedProfileId);
+      const requestedProfile =
+        listedProfile ??
+        (requestedProfileId === profileId
+          ? profile
+          : requestedProfileId === secondProfileId
+            ? secondProfile
+            : undefined);
+      if (!requestedProfile) {
+        return jsonResponse(
+          {
+            statusCode: 404,
+            message: 'Perfil não encontrado.',
+            code: 'PRICING_PROFILE_NOT_FOUND',
+          },
+          404,
+        );
+      }
       return jsonResponse({
-        ...profile,
-        isActive: false,
-        currentRevision: { ...profile.currentRevision, deductions: [] },
+        ...requestedProfile,
+        isActive: Boolean(listedProfile?.isActive),
+        currentRevision: { ...requestedProfile.currentRevision, deductions: [] },
       });
     }
     throw new Error(`Unexpected request: ${method} ${url.pathname}`);
@@ -316,8 +399,9 @@ describe('ProductPricingPage composition editor', () => {
     expect(screen.getByLabelText('Nome')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Salvar composição' })).not.toBeInTheDocument();
     expect(screen.getByText(/sem realizar alterações/)).toBeVisible();
+    expect(await screen.findByRole('option', { name: 'Varejo (inativo)' })).toBeVisible();
     expect(screen.getByLabelText('Perfil de venda')).toHaveDisplayValue('Varejo (inativo)');
-    expect(screen.getByRole('option', { name: 'Varejo (inativo)' })).toBeVisible();
+    expect(screen.getByText('O perfil de venda selecionado está inativo.')).toBeVisible();
   });
 
   it('loads every active profile page without duplicates and resolves a linked profile beyond the first page', async () => {
@@ -333,7 +417,7 @@ describe('ProductPricingPage composition editor', () => {
       requested.filter(({ path }) => path === '/api/pricing/profiles').map(({ search }) => search),
     ).toEqual(['?page=1&pageSize=100&isActive=true', '?page=2&pageSize=100&isActive=true']);
     expect(requested.some(({ path }) => path === `/api/pricing/profiles/${secondProfileId}`)).toBe(
-      false,
+      true,
     );
   });
 
@@ -359,8 +443,9 @@ describe('ProductPricingPage composition editor', () => {
     });
     renderPage();
     expect(await screen.findByText('Falha ao carregar perfil.')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
-    expect(await screen.findByLabelText('Perfil de venda')).toHaveDisplayValue('Varejo (inativo)');
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente o perfil' }));
+    expect(await screen.findByRole('option', { name: 'Varejo (inativo)' })).toBeVisible();
+    expect(screen.getByLabelText('Perfil de venda')).toHaveDisplayValue('Varejo (inativo)');
     expect(screen.queryByText('Falha ao carregar perfil.')).not.toBeInTheDocument();
     expect(detailCalls).toBe(2);
   });
@@ -394,6 +479,183 @@ describe('ProductPricingPage composition editor', () => {
     await waitFor(() => expect(profileGetCount()).toBeGreaterThan(profilesBeforeReconnect));
     expect(compositionGetCount()).toBe(1);
     expect(margin).toHaveValue('27');
+  });
+
+  it.each(['OWNER', 'ADMIN', 'OPERATIONS'] as const)(
+    'shows %s an immediate local preview without any write or simulation request',
+    async (role) => {
+      const user = userEvent.setup();
+      const { requested } = setupFetch({
+        role,
+        initialComposition: { ...composition, profileId: null },
+      });
+      renderPage();
+      expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+      expect(
+        screen.getByText('Esta é uma prévia local. Nenhum preço ou versão será alterado.'),
+      ).toBeVisible();
+
+      const cost = screen.getByLabelText('Custo unitário persistido');
+      await user.clear(cost);
+      expect(await screen.findByText(/Complete os valores financeiros válidos/)).toBeVisible();
+      expect(screen.queryByText('margin-divisor-v1')).not.toBeInTheDocument();
+      await user.type(cost, '5');
+      expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+
+      expect(requested.some(({ path }) => path.endsWith('/simulations'))).toBe(false);
+      expect(requested.every(({ method }) => method === 'GET')).toBe(true);
+    },
+  );
+
+  it('removes and restores the local preview with the composition margin origin', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      initialComposition: { ...composition, profileId: null },
+    });
+    renderPage();
+    expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+
+    const marginOrigin = screen.getByLabelText('Origem', {
+      selector: '#desiredMargin-origin',
+    });
+    expect(marginOrigin).toHaveValue('MANUAL');
+    await user.selectOptions(marginOrigin, '');
+    expect(
+      await screen.findByText(
+        'Informe a origem da margem desejada da composição para atualizar a prévia.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText('margin-divisor-v1')).not.toBeInTheDocument();
+
+    await user.selectOptions(marginOrigin, 'MANUAL');
+    expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+    expect(requested.every(({ method }) => method === 'GET')).toBe(true);
+    expect(
+      requested.some(({ path }) => path.endsWith('/simulations') || path.includes('/versions')),
+    ).toBe(false);
+  });
+
+  it('shows FINANCE the complete preview in read-only mode', async () => {
+    const { requested } = setupFetch({
+      role: 'FINANCE',
+      initialComposition: { ...composition, profileId: null },
+    });
+    renderPage();
+    expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+    expect(screen.getByLabelText('Custo unitário persistido')).toBeDisabled();
+    expect(screen.getByText('Cobertura de custos fixos')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Salvar composição' })).not.toBeInTheDocument();
+    expect(requested.some(({ path }) => path.endsWith('/simulations'))).toBe(false);
+  });
+
+  it('labels and warns about the current product price without changing it', async () => {
+    const { requested } = setupFetch({
+      product: { ...targetProduct, salePrice: '1' },
+      initialComposition: { ...composition, profileId: null },
+    });
+    renderPage();
+    expect(await screen.findByText('Análise do preço atual')).toBeVisible();
+    expect(screen.getByText('Abaixo do preço mínimo')).toBeVisible();
+    expect(
+      screen.getByText('O preço é insuficiente para cobrir os custos; há prejuízo estimado.'),
+    ).toBeVisible();
+    expect(screen.getByText('R$ -1,60')).toBeVisible();
+    expect(screen.getByText('-160%')).toBeVisible();
+    expect(requested.every(({ method }) => method === 'GET')).toBe(true);
+  });
+
+  it('updates component, margin, labor and freight results immediately in the same draft', async () => {
+    const user = userEvent.setup();
+    setupFetch({ initialComposition: { ...composition, profileId: null } });
+    renderPage();
+    expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+
+    const cost = screen.getByLabelText('Custo unitário persistido');
+    await user.clear(cost);
+    await user.type(cost, '5');
+    await waitFor(() => expect(screen.getAllByText('R$ 5,00').length).toBeGreaterThan(0));
+
+    const margin = screen.getByLabelText('Margem desejada (%)');
+    await user.clear(margin);
+    await user.type(margin, '20');
+    await waitFor(() => expect(screen.getByText('20%')).toBeVisible());
+
+    await user.click(screen.getByRole('checkbox', { name: 'Considerar tempo de mão de obra' }));
+    await user.type(screen.getByLabelText('Tempo (minutos)'), '60');
+    expect(await screen.findByRole('heading', { name: 'Mão de obra' })).toBeVisible();
+
+    await user.selectOptions(screen.getByLabelText('Frete'), 'MANUAL');
+    await user.type(screen.getByLabelText('Custo unitário do frete'), '3');
+    expect(await screen.findByRole('heading', { name: 'Frete' })).toBeVisible();
+    expect(screen.getByText('Cobertura de custos fixos')).toBeVisible();
+    expect(screen.getByText('Margem efetiva')).toBeVisible();
+    expect(screen.getByText('Classificação')).toBeVisible();
+  });
+
+  it('clears the previous result while a newly selected profile detail is loading', async () => {
+    const user = userEvent.setup();
+    let resolveSecondProfile!: (response: Response) => void;
+    const secondProfileResponse = new Promise<Response>((resolve) => {
+      resolveSecondProfile = resolve;
+    });
+    setupFetch({
+      profilePages: [[profile, secondProfile]],
+      onLinkedProfileGet: (_call, requestedProfileId) => {
+        if (requestedProfileId === secondProfileId) return secondProfileResponse;
+        return jsonResponse({
+          ...profile,
+          currentRevision: { ...profile.currentRevision, deductions: [] },
+        });
+      },
+    });
+    renderPage();
+    expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+
+    await user.selectOptions(screen.getByLabelText('Perfil de venda'), secondProfileId);
+    expect(await screen.findByText('Carregando o perfil selecionado...')).toBeVisible();
+    expect(screen.queryByText('margin-divisor-v1')).not.toBeInTheDocument();
+
+    resolveSecondProfile(
+      jsonResponse({
+        ...secondProfile,
+        currentRevision: { ...secondProfile.currentRevision, deductions: [] },
+      }),
+    );
+    expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+  });
+
+  it('shows an explicit configuration-missing state and keeps the draft editable', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      initialComposition: { ...composition, profileId: null },
+      onConfigurationGet: () =>
+        jsonResponse(
+          {
+            statusCode: 404,
+            message: 'Configuração não encontrada.',
+            code: 'PRICING_CONFIGURATION_NOT_FOUND',
+          },
+          404,
+        ),
+    });
+    renderPage();
+    expect(
+      await screen.findByText(
+        'Configure os parâmetros organizacionais antes de calcular a prévia.',
+      ),
+    ).toBeVisible();
+    await user.clear(screen.getByLabelText('Custo unitário persistido'));
+    await user.type(screen.getByLabelText('Custo unitário persistido'), '4');
+    expect(requested.some(({ path }) => path.endsWith('/simulations'))).toBe(false);
+    expect(screen.queryByText('margin-divisor-v1')).not.toBeInTheDocument();
+  });
+
+  it('calculates a local preview while creating a composition that does not exist yet', async () => {
+    setupFetch({ initialComposition: null, profilePages: [[]] });
+    renderPage();
+    expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+    expect(screen.getAllByText('Nenhum componente informado.')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Criar composição' })).toBeVisible();
   });
 
   it('recovers from loading error, then preserves a conflict through failed and successful reloads', async () => {

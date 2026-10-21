@@ -17,11 +17,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ApiError } from '@/lib/api';
+import type { Product } from '@/features/products/products-api';
 
 import type {
   PricingComposition,
   PricingCompositionParameterName,
 } from './pricing-composition-contracts';
+import type { PricingConfiguration } from './pricing-configuration-contracts';
 import { pricingCompositionParameterNames } from './pricing-composition-contracts';
 import {
   buildPricingCompositionInput,
@@ -31,6 +33,9 @@ import {
   type PricingCompositionFormValues,
 } from './pricing-composition-form-state';
 import type { PricingProfileItem } from './pricing-profiles-contracts';
+import { buildLocalPricingPreview } from './pricing-preview-adapter';
+import { PricingPreviewPanel, type PricingPreviewViewState } from './pricing-preview-panel';
+import { usePricingProfileQuery } from './use-pricing-profiles-query';
 import { usePutPricingCompositionMutation } from './use-put-pricing-composition-mutation';
 
 const selectClassName =
@@ -66,11 +71,14 @@ const categoryLabels = {
 
 interface PricingCompositionFormProps {
   productId: string;
+  product: Product;
   composition: PricingComposition | null;
   canEdit: boolean;
   profiles: PricingProfileItem[];
-  linkedProfile?: PricingProfileItem;
   catalogProducts: PricingCatalogProductOption[];
+  configuration?: PricingConfiguration;
+  configurationStatus: 'loading' | 'available' | 'missing' | 'error';
+  configurationError?: string;
   onCancel?: () => void;
   onReload: () => Promise<
     { success: true; composition: PricingComposition | null } | { success: false; error: string }
@@ -81,6 +89,8 @@ export interface PricingCatalogProductOption {
   id: string;
   name: string;
   unit: string;
+  directCost: string | null | undefined;
+  isActive: boolean;
   eligible: boolean;
 }
 
@@ -196,11 +206,14 @@ function ParameterOriginEditor({
 
 export function PricingCompositionForm({
   productId,
+  product,
   composition,
   canEdit,
   profiles,
-  linkedProfile,
   catalogProducts,
+  configuration,
+  configurationStatus,
+  configurationError,
   onCancel,
   onReload,
 }: PricingCompositionFormProps) {
@@ -224,10 +237,58 @@ export function PricingCompositionForm({
     defaultValues: pricingCompositionToFormValues(composition),
   });
   const components = useFieldArray({ control, name: 'components' });
-  const values = useWatch({ control });
+  const values = useWatch({ control }) as PricingCompositionFormValues;
+  const selectedProfileId = values.profileId ?? '';
+  const selectedProfileQuery = usePricingProfileQuery(selectedProfileId, selectedProfileId !== '');
   const shouldProtectDraft = canEdit && isDirty;
   const blocker = useBlocker(shouldProtectDraft);
   const disabled = !canEdit || mutation.isPending || hasConflict;
+
+  const previewState = useMemo<PricingPreviewViewState>(() => {
+    if (configurationStatus === 'loading') {
+      return { status: 'waiting', message: 'Carregando a configuração organizacional...' };
+    }
+    if (configurationStatus === 'missing') {
+      return {
+        status: 'configuration-missing',
+        message: 'Configure os parâmetros organizacionais antes de calcular a prévia.',
+      };
+    }
+    if (configurationStatus === 'error' || !configuration) {
+      return {
+        status: 'dependency-error',
+        message: configurationError ?? 'Não foi possível carregar a configuração de precificação.',
+      };
+    }
+    if (selectedProfileId !== '' && selectedProfileQuery.isPending) {
+      return { status: 'profile-loading', message: 'Carregando o perfil selecionado...' };
+    }
+    if (selectedProfileId !== '' && selectedProfileQuery.isError) {
+      return {
+        status: 'profile-error',
+        message: selectedProfileQuery.error.message,
+      };
+    }
+    return buildLocalPricingPreview({
+      product,
+      values,
+      configuration,
+      profile: selectedProfileId === '' ? null : (selectedProfileQuery.data ?? null),
+      catalogProducts,
+    });
+  }, [
+    catalogProducts,
+    configuration,
+    configurationError,
+    configurationStatus,
+    product,
+    selectedProfileId,
+    selectedProfileQuery.data,
+    selectedProfileQuery.error,
+    selectedProfileQuery.isError,
+    selectedProfileQuery.isPending,
+    values,
+  ]);
 
   useBeforeUnload(
     useCallback(
@@ -346,6 +407,7 @@ export function PricingCompositionForm({
                 className={selectClassName}
                 disabled={disabled}
                 aria-invalid={Boolean(errors.profileId)}
+                value={selectedProfileId}
                 {...register('profileId')}
               >
                 <option value="">Sem perfil</option>
@@ -354,11 +416,17 @@ export function PricingCompositionForm({
                     {profile.currentRevision.name}
                   </option>
                 ))}
-                {linkedProfile && !profiles.some((profile) => profile.id === linkedProfile.id) && (
-                  <option value={linkedProfile.id}>
-                    {linkedProfile.currentRevision.name} (inativo)
-                  </option>
-                )}
+                {selectedProfileQuery.data &&
+                  !profiles.some((profile) => profile.id === selectedProfileQuery.data.id) && (
+                    <option value={selectedProfileQuery.data.id}>
+                      {selectedProfileQuery.data.currentRevision.name} (inativo)
+                    </option>
+                  )}
+                {selectedProfileId !== '' &&
+                  !profiles.some((profile) => profile.id === selectedProfileId) &&
+                  !selectedProfileQuery.data && (
+                    <option value={selectedProfileId}>Carregando perfil selecionado...</option>
+                  )}
               </select>
               {errors.profileId?.message && (
                 <p role="alert" className="text-sm text-destructive">
@@ -461,6 +529,17 @@ export function PricingCompositionForm({
           )}
         </CardContent>
       </Card>
+
+      <PricingPreviewPanel
+        state={previewState}
+        analyzesCurrentPrice={typeof product.salePrice === 'string'}
+        onRetryProfile={
+          previewState.status === 'profile-error'
+            ? () => void selectedProfileQuery.refetch()
+            : undefined
+        }
+        isRetryingProfile={selectedProfileQuery.isFetching}
+      />
 
       <Card>
         <CardHeader>

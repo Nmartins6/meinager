@@ -134,6 +134,14 @@ Foram aprovados 42 testes direcionados e 247 testes da web em 42 arquivos com
 concorrência central limitada a quatro workers. Prévia local, simulação, versões
 e adoção na web continuam pendentes.
 
+Marco 4C.2 implementado em 20/10/2026. A web passou a consumir diretamente o
+pacote compartilhado por um adaptador puro equivalente à resolução da API e
+apresenta a prévia local sem escrita ou chamada a `/simulations`. EX-001 e
+EX-002, origem e precedência da margem efetiva, estados de dependência, papéis,
+decomposição e uma execução síncrona inferior a 100 ms possuem testes de
+integração. A suíte web aprovou 280 testes em 43 arquivos. Simulação autoritativa
+na interface, versões, histórico, `isAdopted` e adoção permanecem pendentes.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -321,25 +329,26 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Mão de obra
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                                    | Implementação esperada               |
-| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
-| `PREC-CA-017` a `PREC-CA-019` | `PARTIAL` | Editor persiste habilitação e tempo; simulação resolve configuração, calcula memória e retorna erro estável quando faltam parâmetros | Exibir cálculo derivado na prévia    |
-| `PREC-RN-012` a `PREC-RN-015` | `PARTIAL` | Web converte campos sem ponto flutuante; service resolve mão de obra e snapshot v1 congela parâmetros, tempo e memória               | Exibir memória e avisos na interface |
+| Critérios                     | Estado        | Base reutilizável                                                                                                             | Implementação esperada                                        |
+| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `PREC-CA-017` a `PREC-CA-019` | `PARTIAL`     | Editor e prévia calculam e exibem custo por hora, minuto e total; parâmetros ausentes ou inválidos bloqueiam o resultado      | Conversão opcional de horas na interface não foi implementada |
+| `PREC-RN-012` a `PREC-RN-015` | `IMPLEMENTED` | Configuração, composição, motor, snapshot e prévia preservam custo mensal, horas produtivas, minutos e memória de mão de obra | Comprovado pelo adaptador e painel web                        |
 
 ### Frete
 
-| Critérios                     | Estado    | Base reutilizável                                                                                  | Implementação esperada                 |
-| ----------------------------- | --------- | -------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `PREC-CA-020` a `PREC-CA-022` | `PARTIAL` | Editor cobre frete ausente, manual e rateado; API rejeita quantidade zero e aplica consumo padrão  | Exibir custo calculado na prévia       |
-| `PREC-RN-016` e `PREC-RN-017` | `PARTIAL` | Web persiste entradas condicionais; service adapta modos e snapshot v1 congela entrada e resultado | Exibir resultado do frete na interface |
+| Critérios                     | Estado        | Base reutilizável                                                                                         | Implementação esperada                         |
+| ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `PREC-CA-020` a `PREC-CA-022` | `IMPLEMENTED` | Editor e prévia cobrem frete ausente, manual e rateado, consumo padrão e erro tipado para quantidade zero | Comprovado por testes do adaptador e interface |
+| `PREC-RN-016` e `PREC-RN-017` | `IMPLEMENTED` | Web, service, motor e snapshot preservam os dois modos e exibem custo por unidade e total                 | Comprovado por integração local e backend      |
 
 ### Motor de cálculo
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                     | Implementação esperada                                    |
-| ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `PREC-CA-023` a `PREC-CA-028` | `PARTIAL`     | Simulação e criação de versão recalculam pelo backend, preservam resultado e decomposição e rejeitam divisor inválido | Interface web pendente                                    |
-| `PREC-RN-018` a `PREC-RN-027` | `PARTIAL`     | Versão congela taxa fixa, deduções, margem, custos e resultado do `margin-divisor-v1`                                 | Exposição na interface pendente                           |
-| `EX-001` a `EX-012`           | `IMPLEMENTED` | 12 testes aprovados, nomeados por exemplo em `packages/pricing-calculator/src/pricing-calculator.spec.ts`             | Cenários matemáticos aprovados; sem integração de domínio |
+| Critérios                                                    | Estado        | Base reutilizável                                                                                                                                          | Implementação esperada                                    |
+| ------------------------------------------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `PREC-CA-023` a `PREC-CA-028`                                | `IMPLEMENTED` | EX-001/EX-002 passam pelo adaptador; painel mostra decomposição; divisor inválido e recálculo abaixo de 100 ms são testados; backend continua autoritativo | Prévia não substitui simulação ou versão                  |
+| `PREC-RN-018`, `PREC-RN-019` e `PREC-RN-021` a `PREC-RN-027` | `IMPLEMENTED` | Pacote, API, snapshot e prévia preservam taxa fixa, deduções, margem, preços e limites do `margin-divisor-v1`                                              | Comprovado nas fronteiras entregues                       |
+| `PREC-RN-020`                                                | `FUTURE`      | A primeira estratégia permanece percentual conforme ADR-001                                                                                                | Custo fixo unitário é evolução futura                     |
+| `EX-001` a `EX-012`                                          | `IMPLEMENTED` | 12 testes aprovados, nomeados por exemplo em `packages/pricing-calculator/src/pricing-calculator.spec.ts`                                                  | Cenários matemáticos aprovados; sem integração de domínio |
 
 ### Preço adotado
 
@@ -353,11 +362,11 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Decomposição e explicação
 
-| Critérios                     | Estado        | Base reutilizável                                                                                 | Implementação esperada                |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `PREC-CA-026`                 | `PARTIAL`     | Simulação e detalhe histórico expõem decomposição completa em strings e ordem determinística      | Interface pendente                    |
-| `PREC-RN-032` e `PREC-RN-033` | `IMPLEMENTED` | Snapshot v1 validado preserva entradas, resultado integral, configuração, fórmula, autoria e data | Interface web pendente                |
-| `PREC-RN-034`                 | `PARTIAL`     | Simulação transitória e persistência explícita são separadas na API                               | Recálculo local da interface pendente |
+| Critérios                     | Estado        | Base reutilizável                                                                                            | Implementação esperada                                |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `PREC-CA-026`                 | `IMPLEMENTED` | Prévia apresenta custo-base, componentes, custos fixos, deduções, preços, lucro, margens, desconto e fórmula | Comprovado pelo painel e testes web                   |
+| `PREC-RN-032` e `PREC-RN-033` | `IMPLEMENTED` | Snapshot v1 validado preserva entradas, resultado integral, configuração, fórmula, autoria e data            | Interface web pendente                                |
+| `PREC-RN-034`                 | `IMPLEMENTED` | Rascunho recalcula localmente sem salvar; resultado transitório permanece separado do cache e da composição  | Comprovado por edição imediata e ausência de PUT/POST |
 
 ### Histórico e snapshots
 
@@ -425,28 +434,28 @@ renderiza coluna, valor, placeholder ou indicação de custo para `VIEWER`.
 
 ### Precisão e arredondamento
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                      | Implementação esperada                          |
-| ----------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `PREC-CA-050` a `PREC-CA-053` | `PARTIAL` | API preserva decimais sem expoente; web canonicaliza preço, configuração, perfis e composição por texto sem arredondar | Exibir resultados informativos completos na web |
-| `ADR-002`                     | `PARTIAL` | Motor, persistência, snapshot e adaptadores web usam strings canônicas; percentuais web não usam `number` como fonte   | Exibição de todos os resultados ainda pendente  |
+| Critérios                     | Estado        | Base reutilizável                                                                                                         | Implementação esperada                                  |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `PREC-CA-050` a `PREC-CA-053` | `IMPLEMENTED` | Pacote e API preservam precisão; o painel usa `display`/`commercial`, percentuais textuais e análise após preço comercial | EX-001/EX-002 e `0.00000001` cobertos na integração web |
+| `ADR-002`                     | `IMPLEMENTED` | Motor, persistência, snapshot e adaptador web usam strings canônicas; a projeção visual não realimenta o cálculo          | Comprovado por testes do pacote, API e web              |
 
 ### Interface
 
-| Critérios                     | Estado    | Base reutilizável                                                                                                                          | Implementação esperada                              |
-| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `PREC-CA-054` a `PREC-CA-057` | `PARTIAL` | Resumo, configuração, perfis e composição cobrem estados, validação, conflitos, recarga segura e rascunho protegido de navegação e refetch | Mínimo, sugerido, avisos e fluxo completo pendentes |
-| Recálculo local               | `PENDING` | Pacote compartilhado implementado e validado; a web ainda não o consome                                                                    | Prévia em até 100 ms no Marco 4C                    |
-| Validação autoritativa        | `PARTIAL` | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente                                        | Interface pendente                                  |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                | Implementação esperada                      |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `PREC-CA-054` a `PREC-CA-057` | `PARTIAL`     | Resumo, formulários e prévia diferenciam entradas, resultados, mínimo, sugerido, preço atual, avisos, erros e estados acessíveis | Fluxos de versão e adoção ainda pendentes   |
+| Recálculo local               | `IMPLEMENTED` | Web consome o pacote compartilhado, recalcula sem rede e possui prova síncrona representativa abaixo de 100 ms                   | Resultado local não é autoridade financeira |
+| Validação autoritativa        | `PARTIAL`     | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente                              | Interface pendente                          |
 
 ### Auditoria e segurança
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                                 | Implementação esperada                      |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração, perfis, composição, versão, adoção e preço manual geram auditorias atômicas testadas                                                | Preservar nas integrações futuras           |
-| `PREC-CA-059`                 | `IMPLEMENTED` | Evento imutável guarda a decisão e justificativa; AuditLog vinculado guarda organização, ator, produto, versão e preços                           | Comprovado por rollback e metadados E2E     |
-| `PREC-CA-060`                 | `IMPLEMENTED` | DTO de adoção rejeita preço, classificação, fórmula, snapshot, IDs protegidos e resultados enviados pelo cliente                                  | Preservar nas próximas mutações             |
-| `PREC-CA-061`                 | `IMPLEMENTED` | Organização e ator vêm da sessão em todos os casos de uso; E2E cobre também preço manual, resumo e recursos externos                              | Preservar nas integrações futuras           |
-| `PREC-RN-046` a `PREC-RN-048` | `PARTIAL`     | Web preserva erros estáveis, associa campos e trata conflitos de configuração, perfis e composição sem perder rascunho; API traduz erros do motor | Formulários de cálculo permanecem pendentes |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                          | Implementação esperada                    |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `PREC-CA-058`                 | `IMPLEMENTED` | Configuração, perfis, composição, versão, adoção e preço manual geram auditorias atômicas testadas                                         | Preservar nas integrações futuras         |
+| `PREC-CA-059`                 | `IMPLEMENTED` | Evento imutável guarda a decisão e justificativa; AuditLog vinculado guarda organização, ator, produto, versão e preços                    | Comprovado por rollback e metadados E2E   |
+| `PREC-CA-060`                 | `IMPLEMENTED` | DTO de adoção rejeita preço, classificação, fórmula, snapshot, IDs protegidos e resultados enviados pelo cliente                           | Preservar nas próximas mutações           |
+| `PREC-CA-061`                 | `IMPLEMENTED` | Organização e ator vêm da sessão em todos os casos de uso; E2E cobre também preço manual, resumo e recursos externos                       | Preservar nas integrações futuras         |
+| `PREC-RN-046` a `PREC-RN-048` | `IMPLEMENTED` | Prévia bloqueia divisor e divisões inválidas com erro tipado e separa visualmente entradas de campos calculados; API mantém erros estáveis | Comprovado no adaptador, painel e backend |
 
 ## 6. Rotas atuais que devem ser preservadas
 

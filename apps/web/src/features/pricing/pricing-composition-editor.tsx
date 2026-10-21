@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { getProduct } from '@/features/products/products-api';
 import { useProductQuery } from '@/features/products/use-product-query';
+import { ApiError } from '@/lib/api';
 
 import { getPricingComposition } from './pricing-composition-api';
 import {
@@ -12,11 +13,9 @@ import {
 } from './pricing-composition-form';
 import { pricingQueryKeys } from './pricing-query-keys';
 import { usePricingCompositionQuery } from './use-pricing-composition-query';
+import { usePricingConfigurationQuery } from './use-pricing-configuration-query';
 import { usePricingCatalogQuery } from './use-pricing-catalog-query';
-import {
-  useAllActivePricingProfilesQuery,
-  usePricingProfileQuery,
-} from './use-pricing-profiles-query';
+import { useAllActivePricingProfilesQuery } from './use-pricing-profiles-query';
 
 export function PricingCompositionEditor({
   productId,
@@ -30,12 +29,7 @@ export function PricingCompositionEditor({
   const productQuery = useProductQuery(productId);
   const profilesQuery = useAllActivePricingProfilesQuery(true);
   const catalogQuery = usePricingCatalogQuery(true);
-  const linkedProfileId = compositionQuery.data?.profileId ?? '';
-  const shouldLoadLinkedProfile =
-    profilesQuery.isSuccess &&
-    linkedProfileId !== '' &&
-    !profilesQuery.data.some((profile) => profile.id === linkedProfileId);
-  const linkedProfileQuery = usePricingProfileQuery(linkedProfileId, shouldLoadLinkedProfile);
+  const configurationQuery = usePricingConfigurationQuery(true);
   const linkedCatalogSourceIds = [
     ...new Set(
       (compositionQuery.data?.components ?? [])
@@ -61,7 +55,6 @@ export function PricingCompositionEditor({
     productQuery.isPending ||
     profilesQuery.isPending ||
     catalogQuery.isPending ||
-    (shouldLoadLinkedProfile && linkedProfileQuery.isPending) ||
     linkedCatalogQueries.some((query) => query.isPending);
   if (pending) {
     return (
@@ -72,11 +65,7 @@ export function PricingCompositionEditor({
   }
 
   const error =
-    compositionQuery.error ??
-    productQuery.error ??
-    profilesQuery.error ??
-    catalogQuery.error ??
-    (shouldLoadLinkedProfile ? linkedProfileQuery.error : null);
+    compositionQuery.error ?? productQuery.error ?? profilesQuery.error ?? catalogQuery.error;
   if (error || !productQuery.data || !profilesQuery.data || !catalogQuery.data) {
     return (
       <Card className="mt-6">
@@ -91,8 +80,7 @@ export function PricingCompositionEditor({
               compositionQuery.isFetching ||
               productQuery.isFetching ||
               profilesQuery.isFetching ||
-              catalogQuery.isFetching ||
-              (shouldLoadLinkedProfile && linkedProfileQuery.isFetching)
+              catalogQuery.isFetching
             }
             onClick={() => {
               const retries: Array<Promise<unknown>> = [
@@ -101,7 +89,6 @@ export function PricingCompositionEditor({
                 profilesQuery.refetch(),
                 catalogQuery.refetch(),
               ];
-              if (shouldLoadLinkedProfile) retries.push(linkedProfileQuery.refetch());
               void Promise.all(retries);
             }}
           >
@@ -145,6 +132,8 @@ export function PricingCompositionEditor({
       id: product.id,
       name: product.name,
       unit: product.unit,
+      directCost: product.directCost,
+      isActive: product.isActive,
       eligible: true,
     })),
     ...linkedCatalogSourceIds
@@ -158,6 +147,8 @@ export function PricingCompositionEditor({
             resolved?.unit ??
             componentUnitBySourceId.get(sourceProductId) ??
             'unidade desconhecida',
+          directCost: resolved?.directCost,
+          isActive: resolved?.isActive ?? false,
           eligible: false,
         };
       }),
@@ -175,11 +166,23 @@ export function PricingCompositionEditor({
       </div>
       <PricingCompositionForm
         productId={productId}
+        product={productQuery.data}
         composition={composition}
         canEdit={canEdit}
         profiles={profilesQuery.data}
-        linkedProfile={linkedProfileQuery.data}
         catalogProducts={catalogProducts}
+        configuration={configurationQuery.data}
+        configurationStatus={
+          configurationQuery.isPending
+            ? 'loading'
+            : configurationQuery.isError
+              ? configurationQuery.error instanceof ApiError &&
+                configurationQuery.error.code === 'PRICING_CONFIGURATION_NOT_FOUND'
+                ? 'missing'
+                : 'error'
+              : 'available'
+        }
+        configurationError={configurationQuery.error?.message}
         onCancel={() => void compositionQuery.refetch()}
         onReload={async () => {
           try {

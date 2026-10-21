@@ -102,11 +102,12 @@ fontes oficiais.
       venda na web (Marco 4B.4, 18/10/2026).
 - [x] Implementar consulta, criação e edição da composição persistida na web
       (Marco 4C.1, 19/10/2026).
+- [x] Implementar prévia local instantânea com o motor compartilhado (Marco
+      4C.2, 20/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
-- [x] Atualizar a matriz de rastreabilidade até a fundação compartilhada do
-      Marco 4B.1.
+- [x] Atualizar a matriz de rastreabilidade até a prévia local do Marco 4C.2.
 - [ ] Registrar os resultados finais.
 
 ## Descobertas
@@ -250,6 +251,31 @@ Cada descoberta deve conter:
   O `vitest.config.ts` passou a limitar centralmente a execução a quatro workers;
   os scripts oficiais mantêm seus comandos originais e nenhum timeout foi
   aumentado.
+
+### Marco 4C.2 — Prévia local instantânea — 20/10/2026
+
+- A web passou a depender diretamente de `@meinager/pricing-calculator`. Seus
+  comandos diretos de typecheck, teste e build preparam o pacote por lifecycle,
+  enquanto o Turbo preserva a ordem pelo vínculo de workspace.
+- Um adaptador puro reproduz a resolução de `PricingCalculationsService`:
+  margem da composição precede a configuração e ambas exigem sua origem
+  correspondente, custos fixos exigem valor e origem, mão de obra usa a
+  configuração, o perfil detalhado fornece deduções ordenadas e `CATALOG` usa
+  somente o `directCost` atual resolvido.
+- O resultado transitório não pertence ao cache nem ao formulário. Troca de
+  perfil, campo financeiro inválido, catálogo incompatível, configuração
+  ausente ou erro tipado do motor removem imediatamente o resultado anterior.
+- O painel usa somente campos de apresentação do motor para dinheiro e
+  conversão percentual textual. Ele mostra preço mínimo, sugerido e analisado,
+  decomposição, lucro, margens, classificação, avisos e versão da fórmula sem
+  executar escrita ou `POST /simulations`.
+- `ProductPricingPage` carrega o editor e o pacote matemático em chunk dinâmico
+  apenas para os papéis internos. `VIEWER` continua consultando somente o resumo
+  comercial e não inicia consultas de configuração, composição, perfil ou
+  catálogo.
+- A prova síncrona representativa do adaptador e do cálculo ficou abaixo de
+  100 ms. EX-001 e EX-002 também passam pelo adaptador web, sem copiar a suíte
+  canônica de 77 testes do pacote.
 
 ### Marco 4A — Auditoria da interface web — 10/10/2026
 
@@ -1196,6 +1222,19 @@ do Marco 5.
   referência `CATALOG` atual fora do conjunto elegível é identificada por seu
   detalhe e exibida apenas como histórica.
 
+### Prévia local instantânea — Marco 4C.2
+
+O navegador usa diretamente o pacote puro compartilhado, por meio de um
+adaptador web explícito que resolve somente entradas autorizadas já carregadas.
+O resultado é derivado com `useMemo`, permanece separado do cache persistido e
+do estado do formulário e nunca é enviado como fonte de verdade. A consulta do
+detalhe do perfil acompanha a seleção atual; durante troca, falha ou retry,
+nenhum resultado do perfil anterior fica visível. A margem efetiva é resolvida
+junto com sua precedência e origem; remover a origem da composição ou da
+configuração elimina imediatamente o resultado local. A confirmação
+autoritativa por `POST /simulations`, criação de versão e adoção permanecem para
+o Marco 4D.
+
 ### Simulação autoritativa — Marco 3C.2
 
 - A fonte do cálculo é explicitada por `PERSISTED` ou `DRAFT`. O rascunho é
@@ -1782,7 +1821,8 @@ Nenhuma interface ou dependência foi implementada.
   componentes ordenados, catálogo, mão de obra, frete, proveniências, revisão
   esperada, permissões, conflitos e proteção de rascunhos.
 - **Marco 4C.2 — Prévia local:** consumo do pacote compartilhado e apresentação
-  imediata dos resultados, sem substituir a confirmação autoritativa.
+  imediata dos resultados, concluído em 20/10/2026 sem substituir a confirmação
+  autoritativa.
 - **Marco 4D — Simulação, versões e adoção:** confirmação autoritativa, criação
   e detalhe de versão, histórico, adoção, confirmação abaixo do mínimo e preço
   manual explícito, usando `isAdopted` após a etapa pequena de implementação e
@@ -2580,3 +2620,26 @@ git status --short
   integral permanecem nos Marcos 4C.2 em diante. Nenhuma API, fórmula, snapshot,
   schema, migration, dependência, orçamento, pedido, estoque ou financeiro foi
   alterado.
+
+### Marco 4C.2 concluído — 20/10/2026
+
+- Entrega: prévia financeira local no editor da composição, alimentada pelo
+  pacote compartilhado e por um adaptador puro equivalente à resolução da API.
+  O painel cobre preços, custos, componentes, mão de obra, frete, deduções,
+  lucro, margens, diferença, desconto, classificação, avisos e fórmula.
+- A troca de perfil consulta seu detalhe e suspende o resultado até receber as
+  deduções atuais. Configuração ausente, parâmetros obrigatórios ausentes,
+  perfil inativo, catálogo incompatível, rascunho incompleto e erros tipados do
+  motor possuem estados explícitos sem resultado antigo.
+- Segurança: `VIEWER` não carrega o chunk do editor/motor nem faz consultas
+  internas. Os quatro papéis internos recebem a prévia; `FINANCE` permanece em
+  leitura. A edição local não chama `/simulations` e não escreve composição,
+  produto, versão, snapshot ou auditoria.
+- Evidência: os testes web cobrem EX-001/EX-002 pelo adaptador, os três tipos de
+  custo, origem e precedência da margem, parâmetros, perfil, catálogo, frete,
+  preço atual, estados, papéis, ausência de escrita e cálculo representativo
+  abaixo de 100 ms. A suíte web passou com 280 testes em 43 arquivos, mantendo
+  quatro workers e sem ampliar timeouts.
+- Limites: a prévia não é autoritativa. Simulação HTTP, versões, histórico,
+  `isAdopted`, adoção e acabamento integral permanecem nos Marcos 4D e 4E.
+  Nenhuma API, fórmula, snapshot, schema, migration ou banco foi alterado.
