@@ -140,7 +140,20 @@ apresenta a prévia local sem escrita ou chamada a `/simulations`. EX-001 e
 EX-002, origem e precedência da margem efetiva, estados de dependência, papéis,
 decomposição e uma execução síncrona inferior a 100 ms possuem testes de
 integração. A suíte web aprovou 280 testes em 43 arquivos. Simulação autoritativa
-na interface, versões, histórico, `isAdopted` e adoção permanecem pendentes.
+na interface, versões, histórico, `isAdopted` e adoção ainda permaneciam
+pendentes nessa etapa.
+
+Marco 4D.1 implementado em 22/10/2026. Lista e detalhe internos de versões
+agora projetam `isAdopted` dinamicamente a partir do ponteiro atual do produto,
+sem persistência, N+1, escrita ou auditoria. Testes unitários e E2E comprovam
+ponteiro nulo, adoções sucessivas, preço manual, papéis, isolamento e histórico
+imutável. A interface de simulação, histórico e adoção permanece pendente nos
+Marcos 4D.2–4D.4.
+
+Revisão crítica em 24/10/2026 confirmou também a rejeição de `isAdopted` como
+entrada do POST, a resposta `false` quando a versão adotada está fora da página
+e a preservação integral de snapshot, componentes e deduções. `PREC-CA-038`
+permanece `PARTIAL` porque lista e detalhe ainda não existem na interface.
 
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
@@ -370,12 +383,12 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Histórico e snapshots
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada                                       |
-| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças | Adoção não faz parte destes critérios                        |
-| `PREC-CA-038`                 | `PARTIAL`     | GET paginado e detalhe validado exibem versões finalizadas da mais recente para a mais antiga                                      | Implementar e testar `isAdopted` aprovado antes da interface |
-| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                             | Comprovado no Marco 3C.3                                     |
-| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo/adoção implementadas; snapshots comerciais de orçamento/pedido já existem                           | Integrar referências aos documentos comerciais               |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada                         |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças | Adoção não faz parte destes critérios          |
+| `PREC-CA-038`                 | `PARTIAL`     | GET paginado e detalhe validado exibem versões finalizadas com `isAdopted` dinâmico, papéis e isolamento testados                  | Implementar lista e detalhe na interface       |
+| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                             | Comprovado no Marco 3C.3                       |
+| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo/adoção implementadas; snapshots comerciais de orçamento/pedido já existem                           | Integrar referências aos documentos comerciais |
 
 ### Integração com produtos
 

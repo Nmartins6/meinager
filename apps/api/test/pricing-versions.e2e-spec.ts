@@ -331,6 +331,7 @@ describe('Pricing calculation versions (e2e)', () => {
     expect(created.body.deductions).toHaveLength(1);
     expect(created.body.components[0].effectiveUnitCost).toBe('0.000001');
     expect(created.body.deductions[0].rate).toBe('0.00000001');
+    expect(created.body).not.toHaveProperty('isAdopted');
 
     const after = await sideEffectCounts(owner.organizationId, product.id);
     expect(after).toMatchObject({
@@ -473,6 +474,180 @@ describe('Pricing calculation versions (e2e)', () => {
     });
   });
 
+  it('projects the current adopted version dynamically and clears it after a manual price', async () => {
+    const product = await createProduct(owner, 'version-adoption-projection', {
+      salePrice: '40.00',
+    });
+    const persisted = await persistComposition(product.id, composition(null));
+    const url = `/api/pricing/products/${product.id}/versions`;
+    const versionA = await request(server())
+      .post(url)
+      .set('Cookie', owner.cookie)
+      .send({ expectedCompositionRevision: persisted.revision })
+      .expect(201)
+      .then((response) => response.body);
+    const versionB = await request(server())
+      .post(url)
+      .set('Cookie', owner.cookie)
+      .send({
+        expectedCompositionRevision: persisted.revision,
+        adoptedPrice: '70.00',
+      })
+      .expect(201)
+      .then((response) => response.body);
+    expect(versionA).not.toHaveProperty('isAdopted');
+    expect(versionB).not.toHaveProperty('isAdopted');
+
+    const immutableBefore = await prisma.pricingCalculationVersion.findMany({
+      where: { organizationId: owner.organizationId, productId: product.id },
+      orderBy: { number: 'asc' },
+      select: {
+        id: true,
+        snapshot: true,
+        componentCount: true,
+        deductionCount: true,
+        components: { orderBy: { position: 'asc' } },
+        deductions: { orderBy: { position: 'asc' } },
+      },
+    });
+    const auditsBeforeRead = await prisma.auditLog.count({
+      where: { organizationId: owner.organizationId },
+    });
+
+    const initial = await request(server())
+      .get(`${url}?page=1&pageSize=100`)
+      .set('Cookie', owner.cookie)
+      .expect(200);
+    expect(initial.body.data).toHaveLength(2);
+    expect(
+      initial.body.data.map((item: { isAdopted: boolean }) => item.isAdopted),
+    ).toEqual([false, false]);
+    expect(
+      initial.body.data.every(
+        (item: Record<string, unknown>) => !('snapshot' in item),
+      ),
+    ).toBe(true);
+    expect(
+      (
+        await request(server())
+          .get(`${url}/${versionA.id}`)
+          .set('Cookie', owner.cookie)
+          .expect(200)
+      ).body.isAdopted,
+    ).toBe(false);
+    expect(
+      await prisma.auditLog.count({
+        where: { organizationId: owner.organizationId },
+      }),
+    ).toBe(auditsBeforeRead);
+
+    await request(server())
+      .post(`/api/pricing/products/${product.id}/adoptions`)
+      .set('Cookie', owner.cookie)
+      .send({ versionId: versionA.id })
+      .expect(200);
+    const afterA = await request(server())
+      .get(url)
+      .set('Cookie', finance.cookie)
+      .expect(200);
+    expect(
+      Object.fromEntries(
+        afterA.body.data.map((item: { id: string; isAdopted: boolean }) => [
+          item.id,
+          item.isAdopted,
+        ]),
+      ),
+    ).toEqual({ [versionB.id]: false, [versionA.id]: true });
+    expect(
+      (
+        await request(server())
+          .get(`${url}/${versionA.id}`)
+          .set('Cookie', operations.cookie)
+          .expect(200)
+      ).body.isAdopted,
+    ).toBe(true);
+    expect(
+      (
+        await request(server())
+          .get(`${url}/${versionB.id}`)
+          .set('Cookie', admin.cookie)
+          .expect(200)
+      ).body.isAdopted,
+    ).toBe(false);
+
+    await request(server())
+      .post(`/api/pricing/products/${product.id}/adoptions`)
+      .set('Cookie', admin.cookie)
+      .send({ versionId: versionB.id })
+      .expect(200);
+    const afterB = await request(server())
+      .get(url)
+      .set('Cookie', owner.cookie)
+      .expect(200);
+    expect(
+      Object.fromEntries(
+        afterB.body.data.map((item: { id: string; isAdopted: boolean }) => [
+          item.id,
+          item.isAdopted,
+        ]),
+      ),
+    ).toEqual({ [versionB.id]: true, [versionA.id]: false });
+
+    const pageWithoutAdoptedVersion = await request(server())
+      .get(`${url}?page=2&pageSize=1`)
+      .set('Cookie', owner.cookie)
+      .expect(200);
+    expect(pageWithoutAdoptedVersion.body.pagination).toMatchObject({
+      page: 2,
+      pageSize: 1,
+      total: 2,
+    });
+    expect(pageWithoutAdoptedVersion.body.data).toEqual([
+      expect.objectContaining({ id: versionA.id, isAdopted: false }),
+    ]);
+
+    await request(server())
+      .patch(`/api/products/${product.id}`)
+      .set('Cookie', owner.cookie)
+      .send({ salePrice: '88.00' })
+      .expect(200);
+    const afterManualPrice = await request(server())
+      .get(url)
+      .set('Cookie', owner.cookie)
+      .expect(200);
+    expect(
+      afterManualPrice.body.data.map(
+        (item: { isAdopted: boolean }) => item.isAdopted,
+      ),
+    ).toEqual([false, false]);
+    expect(
+      await prisma.product.findUniqueOrThrow({
+        where: { id: product.id },
+        select: { adoptedPricingVersionId: true },
+      }),
+    ).toEqual({ adoptedPricingVersionId: null });
+
+    await request(server()).get(url).set('Cookie', viewer.cookie).expect(403);
+    await request(server())
+      .get(`${url}/${versionA.id}`)
+      .set('Cookie', viewer.cookie)
+      .expect(403);
+    expect(
+      await prisma.pricingCalculationVersion.findMany({
+        where: { organizationId: owner.organizationId, productId: product.id },
+        orderBy: { number: 'asc' },
+        select: {
+          id: true,
+          snapshot: true,
+          componentCount: true,
+          deductionCount: true,
+          components: { orderBy: { position: 'asc' } },
+          deductions: { orderBy: { position: 'asc' } },
+        },
+      }),
+    ).toEqual(immutableBefore);
+  });
+
   it('requires valid persisted dependencies and rejects protected version fields', async () => {
     const unconfigured = await createProduct(
       noConfiguration,
@@ -533,6 +708,7 @@ describe('Pricing calculation versions (e2e)', () => {
       { effectiveUnitCost: '1' },
       { createdAt: new Date().toISOString() },
       { id: randomUUID() },
+      { isAdopted: true },
     ]) {
       const response = await request(server())
         .post(`/api/pricing/products/${protectedProduct.id}/versions`)

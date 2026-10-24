@@ -88,12 +88,24 @@ const versionDetailSelect = {
   },
 } satisfies Prisma.PricingCalculationVersionSelect;
 
+const versionDetailWithAdoptionSelect = {
+  ...versionDetailSelect,
+  product: {
+    select: { adoptedPricingVersionId: true },
+  },
+} satisfies Prisma.PricingCalculationVersionSelect;
+
 const VERSION_NUMBER_UNIQUE_INDEX =
   'pricing_calculation_versions_org_product_number_key';
 
 type VersionDetailRecord = Prisma.PricingCalculationVersionGetPayload<{
   select: typeof versionDetailSelect;
 }>;
+
+type VersionDetailWithAdoptionRecord =
+  Prisma.PricingCalculationVersionGetPayload<{
+    select: typeof versionDetailWithAdoptionSelect;
+  }>;
 
 interface PreliminaryLockSet {
   readonly configurationId: string;
@@ -186,13 +198,17 @@ export class PricingVersionsService {
           finalizedAt: true,
           createdByUserId: true,
           createdAt: true,
+          product: {
+            select: { adoptedPricingVersionId: true },
+          },
         },
       }),
       this.prisma.pricingCalculationVersion.count({ where }),
     ]);
     return {
-      data: versions.map((version) => ({
+      data: versions.map(({ product, ...version }) => ({
         ...version,
+        isAdopted: product.adoptedPricingVersionId === version.id,
         finalizedAt: version.finalizedAt!.toISOString(),
         createdAt: version.createdAt.toISOString(),
       })),
@@ -209,7 +225,7 @@ export class PricingVersionsService {
     await this.assertProduct(organizationId, productId);
     const version = await this.prisma.pricingCalculationVersion.findFirst({
       where: { id: versionId, organizationId, productId },
-      select: versionDetailSelect,
+      select: versionDetailWithAdoptionSelect,
     });
     if (!version) throw this.versionNotFound();
     if (version.state !== PricingVersionState.FINALIZED) {
@@ -219,7 +235,7 @@ export class PricingVersionsService {
         'A versão de precificação ainda não foi finalizada.',
       );
     }
-    return this.toDetail(version);
+    return this.toDetailWithAdoption(version);
   }
 
   private async createInTransaction(
@@ -568,6 +584,14 @@ export class PricingVersionsService {
         rate: serializePricingDecimal(item.rate),
         createdAt: item.createdAt.toISOString(),
       })),
+    };
+  }
+
+  private toDetailWithAdoption(version: VersionDetailWithAdoptionRecord) {
+    const { product, ...detail } = version;
+    return {
+      ...this.toDetail(detail),
+      isAdopted: product.adoptedPricingVersionId === version.id,
     };
   }
 

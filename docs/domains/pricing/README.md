@@ -177,10 +177,12 @@ internos; `VIEWER` conserva apenas o resumo comercial. A precificação continua
 sendo integrada a Produtos nas etapas 4D (simulação/versões/adoção) e 4E
 (acabamento), mantendo a API como autoridade.
 
-Também foi aprovado `isAdopted: boolean` somente na lista e no detalhe internos
-de versões. O backend o calculará do ponteiro atual do produto, sem persistência
-ou alteração do snapshot; `VIEWER` e o resumo comercial não receberão o campo.
-A implementação e os testes próprios precederão a interface de histórico.
+O Marco 4D.1 implementou `isAdopted: boolean` somente na lista e no detalhe
+internos de versões. O backend o calcula do ponteiro atual do produto por
+projeção relacional, sem persistência, escrita, auditoria ou alteração do
+snapshot; `VIEWER` e o resumo comercial não recebem o campo. A alteração manual
+do preço limpa o ponteiro e faz todas as versões retornarem `false`. A interface
+de histórico e adoção permanece pendente nos Marcos 4D.2–4D.4.
 
 ## Processo de alteração
 

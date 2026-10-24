@@ -104,6 +104,8 @@ fontes oficiais.
       (Marco 4C.1, 19/10/2026).
 - [x] Implementar prévia local instantânea com o motor compartilhado (Marco
       4C.2, 20/10/2026).
+- [x] Implementar a projeção dinâmica `isAdopted` na lista e no detalhe internos
+      de versões (Marco 4D.1, 22/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -297,12 +299,11 @@ Cada descoberta deve conter:
   representam a fórmula de margem divisora. A ADR-008 aprova prévia híbrida com
   extração incremental do motor para um pacote puro compartilhado no Marco
   4B.1.
-- Os contratos reais dos Marcos 3B a 3D.2 correspondem à ADR-007. A listagem e
-  o detalhe de versões, porém, não informam qual versão é a origem atual do
-  preço e o resumo comercial deliberadamente não expõe o identificador. A
-  revisão humana aprovou `isAdopted: boolean` nos contratos internos; sua
-  implementação pequena e seus testes precederão a interface de histórico do
-  Marco 4D.
+- Os contratos reais dos Marcos 3B a 3D.2 correspondem à ADR-007. O Marco 4D.1
+  passou a informar a origem atual do preço somente na lista e no detalhe
+  internos por `isAdopted: boolean`; o resumo comercial deliberadamente não
+  expõe o identificador. A projeção relacional compara o ponteiro atual do
+  produto sem N+1, persistência ou mutação da versão.
 - Não existe hoje diálogo próprio, toast ou proteção contra saída com formulário
   sujo. Um diálogo acessível pode reutilizar `@base-ui/react`, já instalado;
   feedback inline e os padrões atuais de `role="status"`/`role="alert"` evitam
@@ -1028,8 +1029,9 @@ para `VIEWER` e omissão de `salePrice` em edições comuns.
 A extensão interna `isAdopted: boolean` foi aprovada para lista e detalhe de
 versões. É uma projeção dinâmica calculada pela comparação entre o ponteiro
 atual do produto e a versão, sem persistência, schema ou migration. O resumo
-comercial permanece sem identificador ou snapshot. A implementação e os testes
-próprios precederão a interface de histórico do Marco 4D.
+comercial permanece sem identificador ou snapshot. O Marco 4D.1 implementou a
+projeção com leitura relacional do ponteiro, sem consulta adicional por versão;
+a interface de histórico permanece para os Marcos 4D.2–4D.4.
 
 ### Representação do motor puro — Marco 1
 
@@ -1825,8 +1827,8 @@ Nenhuma interface ou dependência foi implementada.
   autoritativa.
 - **Marco 4D — Simulação, versões e adoção:** confirmação autoritativa, criação
   e detalhe de versão, histórico, adoção, confirmação abaixo do mínimo e preço
-  manual explícito, usando `isAdopted` após a etapa pequena de implementação e
-  testes da extensão interna aprovada.
+  manual explícito. O Marco 4D.1 concluiu `isAdopted`; simulação, histórico e
+  adoção na interface permanecem nos Marcos 4D.2–4D.4.
 - **Marco 4E — Acabamento e validação:** responsividade, acessibilidade, estados,
   teste visual e fluxo integral por papel.
 
@@ -2643,3 +2645,45 @@ git status --short
 - Limites: a prévia não é autoritativa. Simulação HTTP, versões, histórico,
   `isAdopted`, adoção e acabamento integral permanecem nos Marcos 4D e 4E.
   Nenhuma API, fórmula, snapshot, schema, migration ou banco foi alterado.
+
+### Marco 4D.1 concluído — 22/10/2026
+
+- Lista e detalhe internos de versões incluem `isAdopted`, calculado pela
+  comparação entre `Product.adoptedPricingVersionId` e o identificador da
+  versão. O select relacional traz somente o ponteiro junto com a versão, sem
+  consulta adicional por item, lock de escrita, persistência ou auditoria.
+- O POST de criação de versão, o resumo comercial e os contratos de entrada não
+  receberam o campo. `VIEWER` continua proibido, e organização e produto seguem
+  filtrados pela sessão.
+- Unitários cobrem versão adotada, versões não correspondentes, ponteiro nulo,
+  adoção fora da página, detalhe, paginação, ordenação, ausência de snapshot e
+  de N+1 ou escrita. A API aprovou 171 testes em 21 arquivos.
+- O runner PostgreSQL descartável aprovou 80 testes E2E em sete arquivos. Ele
+  comprovou versões inicialmente falsas, adoções A–B, limpeza por preço manual,
+  papéis, isolamento e preservação de snapshot/projeções. As bases
+  `pricing_configuration_e2e_07a0fc27d61d7492` e
+  `pricing_configuration_e2e_cleanup_07a0fc27d61d7492` foram removidas.
+- Os pipelines raiz aprovaram typecheck, lint, 528 testes e build nos três
+  packages: 77 testes do pacote, 171 da API e 280 da web.
+- Limites: simulação autoritativa, histórico e adoção na interface permanecem
+  nos Marcos 4D.2–4D.4; acabamento integral permanece no Marco 4E. Nenhum
+  schema, migration, snapshot, fórmula, dependência ou código web foi alterado.
+
+### Revisão crítica do Marco 4D.1 — 24/10/2026
+
+- O pacote de revisão e os oito arquivos alterados da árvore real foram
+  confrontados byte a byte. A projeção permanece restrita aos GETs de lista e
+  detalhe e deriva somente da igualdade entre o ponteiro atual do produto e o
+  identificador da versão; POST, resumo comercial, DTOs, schema e migrations
+  continuam sem `isAdopted`.
+- A cobertura E2E passou a rejeitar `isAdopted` como entrada do POST, comprovar
+  que todos os itens da página são `false` quando a versão adotada está fora
+  dela e comparar integralmente snapshot, componentes e deduções antes e depois
+  das transições de adoção e do preço manual.
+- A validação aprovou 72 testes unitários direcionados, 171 testes da API em 21
+  arquivos e 80 E2E em sete arquivos. O runner aplicou 16 migrations e removeu
+  as bases descartáveis `pricing_configuration_e2e_da85d4c1eb4cd5cf` e
+  `pricing_configuration_e2e_cleanup_da85d4c1eb4cd5cf`.
+- Os pipelines raiz aprovaram typecheck, lint, 528 testes e build nos três
+  packages: 77 testes do pacote, 171 da API e 280 da web. Nenhuma fórmula,
+  persistência, rota, permissão ou implementação de interface foi alterada.

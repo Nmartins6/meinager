@@ -51,9 +51,9 @@ antes dos formulários de precificação:
 Os contratos implementados de precificação correspondem à ADR-007. A revisão
 humana aprovou a extensão interna `isAdopted: boolean` para resolver
 `PREC-CA-038`: o resumo comercial continua sem identificador de versão, enquanto
-a listagem e o detalhe internos indicarão dinamicamente se cada versão é a
-origem do preço atual. A implementação dessa extensão será uma etapa pequena,
-com testes próprios, antes da interface de histórico do Marco 4D.
+a listagem e o detalhe internos indicam dinamicamente se cada versão é a origem
+do preço atual. O Marco 4D.1 implementou essa extensão na API com testes
+próprios; a interface de histórico permanece pendente.
 
 ### Contratos confirmados na implementação
 
@@ -69,7 +69,7 @@ somente no desenho anterior da ADR-007:
 | `GET/PUT /api/pricing/products/:productId/composition`          | leitura interna; escrita `OWNER`/`ADMIN`/`OPERATIONS` | estado completo, componentes na ordem do array e `expectedRevision` no `PUT`                                          |
 | `POST /api/pricing/products/:productId/simulations`             | `OWNER`/`ADMIN`/`OPERATIONS`                          | fonte `PERSISTED` ou `DRAFT`, preço analisado opcional; devolve entradas resolvidas e resultado completo sem escrever |
 | `POST /api/pricing/products/:productId/versions`                | `OWNER`/`ADMIN`/`OPERATIONS`                          | `expectedCompositionRevision` e preço analisado opcional; devolve versão finalizada                                   |
-| `GET /api/pricing/products/:productId/versions` e `/:versionId` | leitura interna                                       | respostas atuais sem `isAdopted`; detalhe mantém snapshot/projeções congelados                                        |
+| `GET /api/pricing/products/:productId/versions` e `/:versionId` | leitura interna                                       | lista e detalhe incluem `isAdopted`; detalhe mantém snapshot/projeções congelados                                     |
 | `POST /api/pricing/products/:productId/adoptions`               | `OWNER`/`ADMIN`/`OPERATIONS`                          | `versionId`; confirmação/justificativa condicionais; devolve produto e evento de adoção                               |
 | `GET /api/pricing/products/:productId/summary`                  | cinco papéis                                          | somente `productId`, `currency`, `salePrice`, `priceOrigin` e `hasComposition`                                        |
 | `PATCH /api/products/:productId`                                | papel do cadastro, com regra condicional              | `salePrice` omitido preserva origem; string ou `null` explícito é decisão manual exclusiva de `OWNER`/`ADMIN`         |
@@ -80,17 +80,17 @@ mantêm componentes ordenados e usam strings para valores financeiros. A API
 deriva organização e ator da sessão e não aceita resultados calculados pelo
 cliente.
 
-### Extensão interna aprovada: `isAdopted`
+### Extensão interna implementada: `isAdopted`
 
 As respostas internas de
 `GET /api/pricing/products/:productId/versions` e
-`GET /api/pricing/products/:productId/versions/:versionId` receberão:
+`GET /api/pricing/products/:productId/versions/:versionId` incluem:
 
 ```ts
 isAdopted: boolean;
 ```
 
-O campo será calculado pelo backend no momento da consulta e será `true`
+O campo é calculado pelo backend no momento da consulta e é `true`
 somente quando `Product.adoptedPricingVersionId === version.id`. Se o preço
 atual for manual, o ponteiro estará nulo e todas as versões retornarão
 `isAdopted: false`.
@@ -104,8 +104,8 @@ a organização e o produto da sessão.
 
 Os dados da versão são históricos e imutáveis. `isAdopted` é uma projeção
 comercial dinâmica do estado atual do produto e pode mudar sem qualquer
-alteração na versão. A implementação terá testes unitários e E2E próprios antes
-da interface de histórico do Marco 4D.
+alteração na versão. O Marco 4D.1 comprovou essa separação por testes unitários
+e E2E; a interface de histórico e adoção permanece nos Marcos 4D.2–4D.4.
 
 ## Decisão
 
@@ -195,7 +195,7 @@ papéis recebem orientação sem ação indevida.
 - exigir confirmação e justificativa para preço abaixo do mínimo e somente
   exibir essa ação a `OWNER`/`ADMIN`;
 - atualizar resumo e produto após adoção ou preço manual;
-- usar `isAdopted` depois da implementação da extensão interna aprovada.
+- usar a projeção `isAdopted` implementada pela API no Marco 4D.1.
 
 #### Marco 4E — Acabamento e validação integral
 

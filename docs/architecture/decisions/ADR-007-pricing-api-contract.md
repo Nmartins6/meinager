@@ -57,24 +57,24 @@ número de versão não são ignorados silenciosamente: não pertencem aos DTOs 
 
 Todos os caminhos abaixo recebem o prefixo global `/api`.
 
-| Método  | Caminho                                            | Entrada do cliente                                     | Resposta                                                      | Status |
-| ------- | -------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- | ------ |
-| `GET`   | `/pricing/products/:productId/summary`             | parâmetro `productId`                                  | projeção comercial do preço atual                             | `200`  |
-| `GET`   | `/pricing/configuration`                           | nenhuma                                                | configuração e revisão atuais                                 | `200`  |
-| `PATCH` | `/pricing/configuration`                           | campos editáveis, origens e `expectedRevision`         | configuração e nova revisão                                   | `200`  |
-| `GET`   | `/pricing/profiles`                                | `page`, `pageSize`, filtros de estado                  | `{ data, pagination }`, sem snapshots                         | `200`  |
-| `GET`   | `/pricing/profiles/:profileId`                     | parâmetro `profileId`                                  | perfil, revisão e deduções ordenadas                          | `200`  |
-| `POST`  | `/pricing/profiles`                                | nome, parâmetros, deduções e origens                   | perfil e revisão inicial                                      | `201`  |
-| `PATCH` | `/pricing/profiles/:profileId`                     | campos editáveis, deduções e `expectedRevision`        | perfil e nova revisão                                         | `200`  |
-| `POST`  | `/pricing/profiles/:profileId/deactivate`          | `expectedRevision`                                     | perfil desativado                                             | `200`  |
-| `GET`   | `/pricing/products/:productId/composition`         | parâmetro `productId`                                  | composição, revisão e componentes ordenados                   | `200`  |
-| `PUT`   | `/pricing/products/:productId/composition`         | composição completa e `expectedRevision`               | composição e nova revisão                                     | `200`  |
-| `POST`  | `/pricing/products/:productId/simulations`         | fonte persistida ou rascunho; `adoptedPrice` opcional  | resultado completo, sem persistência                          | `200`  |
-| `POST`  | `/pricing/products/:productId/versions`            | `expectedCompositionRevision`; `adoptedPrice` opcional | versão finalizada e projeções                                 | `201`  |
-| `GET`   | `/pricing/products/:productId/versions`            | `page`, `pageSize`                                     | `{ data, pagination }`; `isAdopted` aprovado e pendente       | `200`  |
-| `GET`   | `/pricing/products/:productId/versions/:versionId` | parâmetros `productId` e `versionId`                   | versão; `isAdopted` aprovado e pendente; snapshot e projeções | `200`  |
-| `POST`  | `/pricing/products/:productId/adoptions`           | `versionId`, confirmação e justificativa condicionais  | produto e adoção efetiva                                      | `200`  |
-| `PATCH` | `/products/:productId`                             | DTO atual; `salePrice` explícito indica preço manual   | produto atualizado, sem ponteiro interno                      | `200`  |
+| Método  | Caminho                                            | Entrada do cliente                                     | Resposta                                             | Status |
+| ------- | -------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------- | ------ |
+| `GET`   | `/pricing/products/:productId/summary`             | parâmetro `productId`                                  | projeção comercial do preço atual                    | `200`  |
+| `GET`   | `/pricing/configuration`                           | nenhuma                                                | configuração e revisão atuais                        | `200`  |
+| `PATCH` | `/pricing/configuration`                           | campos editáveis, origens e `expectedRevision`         | configuração e nova revisão                          | `200`  |
+| `GET`   | `/pricing/profiles`                                | `page`, `pageSize`, filtros de estado                  | `{ data, pagination }`, sem snapshots                | `200`  |
+| `GET`   | `/pricing/profiles/:profileId`                     | parâmetro `profileId`                                  | perfil, revisão e deduções ordenadas                 | `200`  |
+| `POST`  | `/pricing/profiles`                                | nome, parâmetros, deduções e origens                   | perfil e revisão inicial                             | `201`  |
+| `PATCH` | `/pricing/profiles/:profileId`                     | campos editáveis, deduções e `expectedRevision`        | perfil e nova revisão                                | `200`  |
+| `POST`  | `/pricing/profiles/:profileId/deactivate`          | `expectedRevision`                                     | perfil desativado                                    | `200`  |
+| `GET`   | `/pricing/products/:productId/composition`         | parâmetro `productId`                                  | composição, revisão e componentes ordenados          | `200`  |
+| `PUT`   | `/pricing/products/:productId/composition`         | composição completa e `expectedRevision`               | composição e nova revisão                            | `200`  |
+| `POST`  | `/pricing/products/:productId/simulations`         | fonte persistida ou rascunho; `adoptedPrice` opcional  | resultado completo, sem persistência                 | `200`  |
+| `POST`  | `/pricing/products/:productId/versions`            | `expectedCompositionRevision`; `adoptedPrice` opcional | versão finalizada e projeções                        | `201`  |
+| `GET`   | `/pricing/products/:productId/versions`            | `page`, `pageSize`                                     | `{ data, pagination }`; cada item inclui `isAdopted` | `200`  |
+| `GET`   | `/pricing/products/:productId/versions/:versionId` | parâmetros `productId` e `versionId`                   | versão com `isAdopted`, snapshot e projeções         | `200`  |
+| `POST`  | `/pricing/products/:productId/adoptions`           | `versionId`, confirmação e justificativa condicionais  | produto e adoção efetiva                             | `200`  |
+| `PATCH` | `/products/:productId`                             | DTO atual; `salePrice` explícito indica preço manual   | produto atualizado, sem ponteiro interno             | `200`  |
 
 `PUT` é usado para composição porque o comando substitui a coleção ordenada
 completa. Configuração e perfil usam `PATCH` porque criam uma revisão a partir
@@ -86,7 +86,7 @@ O resumo comercial contém apenas `productId`, `currency`, `salePrice`,
 expõe o snapshot ou o identificador da versão adotada. A listagem de versões
 segue a convenção `{ data, pagination }` já usada pela API.
 
-#### Extensão interna aprovada para o Marco 4
+#### Extensão interna implementada no Marco 4D.1
 
 Em 10/10/2026, a revisão humana aprovou acrescentar `isAdopted: boolean` às
 respostas internas de listagem e detalhe de versões. O backend calcula o campo
@@ -102,8 +102,11 @@ organização e produto.
 
 Essa extensão existe somente nos contratos internos de versões. `VIEWER`
 continua sem acesso a ambos os endpoints, e o resumo comercial continua sem
-`versionId` ou snapshot. A implementação será uma etapa pequena antes da
-interface de histórico, com testes unitários e E2E próprios.
+`versionId` ou snapshot. O Marco 4D.1 a implementou em 22/10/2026 por projeção
+relacional do ponteiro junto com cada versão, sem consulta adicional por item,
+escrita ou auditoria. Testes unitários e E2E cobrem adoções sucessivas e a
+limpeza do ponteiro pelo preço manual. A interface de histórico permanece
+pendente.
 
 A adoção abaixo do mínimo usa o mesmo endpoint de adoção. Ela é uma condição
 do comando, com autorização, confirmação e justificativa adicionais, e não um
