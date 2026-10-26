@@ -149,9 +149,13 @@ cinco papéis autenticados. A interface de perfis de venda também consulta,
 cria, edita e desativa perfis com deduções ordenadas. A interface da composição
 persistida consulta, cria e substitui perfil, componentes, mão de obra, frete e
 proveniências com revisão esperada. Ela também calcula uma prévia local imediata
-com o mesmo pacote puro usado pela API, sem gravar ou chamar a simulação HTTP.
-Simulação autoritativa na web, versões e adoção, além da integração da origem
-comercial com orçamentos e pedidos, continuam pendentes.
+com o mesmo pacote puro usado pela API. O Marco 4D.2 acrescentou a confirmação
+autoritativa explícita pela simulação HTTP: estado salvo e semanticamente igual
+usa `PERSISTED`; composição nova ou rascunho alterado usa `DRAFT`. A resposta
+remota permanece separada do formulário e do cache, é comparada integralmente
+com a prévia e nunca salva composição, cria versão ou altera preço. Versões e
+adoção na web, além da integração da origem comercial com orçamentos e pedidos,
+continuam pendentes.
 
 O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
 10/10/2026 sem implementar código. O Marco 4B.1 concluiu o pacote puro do motor,

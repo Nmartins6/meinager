@@ -20,9 +20,11 @@ import { useAllActivePricingProfilesQuery } from './use-pricing-profiles-query';
 export function PricingCompositionEditor({
   productId,
   canEdit,
+  canSimulate,
 }: {
   productId: string;
   canEdit: boolean;
+  canSimulate: boolean;
 }) {
   const queryClient = useQueryClient();
   const compositionQuery = usePricingCompositionQuery(productId, true);
@@ -169,6 +171,7 @@ export function PricingCompositionEditor({
         product={productQuery.data}
         composition={composition}
         canEdit={canEdit}
+        canSimulate={canSimulate}
         profiles={profilesQuery.data}
         catalogProducts={catalogProducts}
         configuration={configurationQuery.data}

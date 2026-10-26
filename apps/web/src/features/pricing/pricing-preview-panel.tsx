@@ -156,6 +156,57 @@ function PricingBreakdown({ result }: { result: PricingCalculatorResult }) {
   );
 }
 
+export function PricingResultDetails({
+  result,
+  analyzesCurrentPrice,
+}: {
+  result: PricingCalculatorResult;
+  analyzesCurrentPrice: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ResultValue label="Custo-base" value={formatBrl(result.baseCost.display)} />
+        <ResultValue label="Preço mínimo" value={formatBrl(result.minimumPrice.commercial)} />
+        <ResultValue label="Preço sugerido" value={formatBrl(result.suggestedPrice.commercial)} />
+        <ResultValue
+          label={analyzesCurrentPrice ? 'Análise do preço atual' : 'Preço analisado'}
+          value={formatBrl(result.analysis.price)}
+        />
+        <ResultValue label="Taxa de custos fixos" value={percentage(result.fixedCosts.rate)} />
+        <ResultValue label="Taxa total de deduções" value={percentage(result.totalDeductionRate)} />
+        <ResultValue label="Margem desejada" value={percentage(result.desiredMargin)} />
+        <ResultValue
+          label="Classificação"
+          value={classificationLabels[result.analysis.classification]}
+        />
+        <ResultValue label="Versão da fórmula" value={result.formulaVersion} />
+      </dl>
+
+      <PricingBreakdown result={result} />
+
+      {result.warnings.length > 0 && (
+        <section aria-labelledby="pricing-warnings-title">
+          <h4 id="pricing-warnings-title" className="font-semibold">
+            Avisos
+          </h4>
+          <ul className="mt-2 space-y-2">
+            {result.warnings.map((warning) => (
+              <li
+                key={warning.code}
+                role="alert"
+                className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+              >
+                {warning.message}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
 export function PricingPreviewPanel({
   state,
   analyzesCurrentPrice,
@@ -217,48 +268,8 @@ export function PricingPreviewPanel({
           Esta é uma prévia local. Nenhum preço ou versão será alterado.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <ResultValue label="Custo-base" value={formatBrl(result.baseCost.display)} />
-          <ResultValue label="Preço mínimo" value={formatBrl(result.minimumPrice.commercial)} />
-          <ResultValue label="Preço sugerido" value={formatBrl(result.suggestedPrice.commercial)} />
-          <ResultValue
-            label={analyzesCurrentPrice ? 'Análise do preço atual' : 'Preço analisado'}
-            value={formatBrl(result.analysis.price)}
-          />
-          <ResultValue label="Taxa de custos fixos" value={percentage(result.fixedCosts.rate)} />
-          <ResultValue
-            label="Taxa total de deduções"
-            value={percentage(result.totalDeductionRate)}
-          />
-          <ResultValue label="Margem desejada" value={percentage(result.desiredMargin)} />
-          <ResultValue
-            label="Classificação"
-            value={classificationLabels[result.analysis.classification]}
-          />
-          <ResultValue label="Versão da fórmula" value={result.formulaVersion} />
-        </dl>
-
-        <PricingBreakdown result={result} />
-
-        {result.warnings.length > 0 && (
-          <section aria-labelledby="pricing-warnings-title">
-            <h4 id="pricing-warnings-title" className="font-semibold">
-              Avisos
-            </h4>
-            <ul className="mt-2 space-y-2">
-              {result.warnings.map((warning) => (
-                <li
-                  key={warning.code}
-                  role="alert"
-                  className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
-                >
-                  {warning.message}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+      <CardContent>
+        <PricingResultDetails result={result} analyzesCurrentPrice={analyzesCurrentPrice} />
       </CardContent>
     </Card>
   );

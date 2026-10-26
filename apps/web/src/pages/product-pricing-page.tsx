@@ -64,7 +64,11 @@ export function ProductPricingPage() {
             </p>
           }
         >
-          <PricingCompositionEditor productId={productId} canEdit={permissions.editComposition} />
+          <PricingCompositionEditor
+            productId={productId}
+            canEdit={permissions.editComposition}
+            canSimulate={permissions.simulatePricing}
+          />
         </Suspense>
       )}
     </section>

@@ -155,6 +155,14 @@ entrada do POST, a resposta `false` quando a versão adotada está fora da pági
 e a preservação integral de snapshot, componentes e deduções. `PREC-CA-038`
 permanece `PARTIAL` porque lista e detalhe ainda não existem na interface.
 
+Marco 4D.2 implementado em 25/10/2026. A web confirma a prévia por simulação
+autoritativa explícita, seleciona `PERSISTED` ou `DRAFT` pelo estado semântico do
+formulário e valida a resposta integral por contratos runtime estritos. O
+resultado remoto é transitório, não invalida cache, não altera o rascunho e é
+descartado ou marcado como desatualizado após mudanças. A suíte web aprovou 314
+testes em 47 arquivos. Requisitos de criação de versão, histórico visual,
+`isAdopted` na interface e adoção não foram promovidos.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -356,12 +364,12 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Motor de cálculo
 
-| Critérios                                                    | Estado        | Base reutilizável                                                                                                                                          | Implementação esperada                                    |
-| ------------------------------------------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `PREC-CA-023` a `PREC-CA-028`                                | `IMPLEMENTED` | EX-001/EX-002 passam pelo adaptador; painel mostra decomposição; divisor inválido e recálculo abaixo de 100 ms são testados; backend continua autoritativo | Prévia não substitui simulação ou versão                  |
-| `PREC-RN-018`, `PREC-RN-019` e `PREC-RN-021` a `PREC-RN-027` | `IMPLEMENTED` | Pacote, API, snapshot e prévia preservam taxa fixa, deduções, margem, preços e limites do `margin-divisor-v1`                                              | Comprovado nas fronteiras entregues                       |
-| `PREC-RN-020`                                                | `FUTURE`      | A primeira estratégia permanece percentual conforme ADR-001                                                                                                | Custo fixo unitário é evolução futura                     |
-| `EX-001` a `EX-012`                                          | `IMPLEMENTED` | 12 testes aprovados, nomeados por exemplo em `packages/pricing-calculator/src/pricing-calculator.spec.ts`                                                  | Cenários matemáticos aprovados; sem integração de domínio |
+| Critérios                                                    | Estado        | Base reutilizável                                                                                                                                                                            | Implementação esperada                                    |
+| ------------------------------------------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `PREC-CA-023` a `PREC-CA-028`                                | `IMPLEMENTED` | EX-001/EX-002 passam pelo adaptador; painel mostra decomposição; a web compara o resultado integral com a simulação autoritativa; divisor inválido e recálculo abaixo de 100 ms são testados | Simulação transitória não cria versão                     |
+| `PREC-RN-018`, `PREC-RN-019` e `PREC-RN-021` a `PREC-RN-027` | `IMPLEMENTED` | Pacote, API, snapshot e prévia preservam taxa fixa, deduções, margem, preços e limites do `margin-divisor-v1`                                                                                | Comprovado nas fronteiras entregues                       |
+| `PREC-RN-020`                                                | `FUTURE`      | A primeira estratégia permanece percentual conforme ADR-001                                                                                                                                  | Custo fixo unitário é evolução futura                     |
+| `EX-001` a `EX-012`                                          | `IMPLEMENTED` | 12 testes aprovados, nomeados por exemplo em `packages/pricing-calculator/src/pricing-calculator.spec.ts`                                                                                    | Cenários matemáticos aprovados; sem integração de domínio |
 
 ### Preço adotado
 

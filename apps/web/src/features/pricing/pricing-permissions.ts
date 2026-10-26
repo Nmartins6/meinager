@@ -6,6 +6,7 @@ export interface PricingPermissions {
   viewCommercialSummary: boolean;
   setManualPrice: boolean;
   editComposition: boolean;
+  simulatePricing: boolean;
   viewInternalPricing: boolean;
   viewConfiguration: boolean;
   editConfiguration: boolean;
@@ -18,6 +19,7 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewCommercialSummary: true,
     setManualPrice: true,
     editComposition: true,
+    simulatePricing: true,
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: true,
@@ -28,6 +30,7 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewCommercialSummary: true,
     setManualPrice: true,
     editComposition: true,
+    simulatePricing: true,
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: true,
@@ -38,6 +41,7 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewCommercialSummary: true,
     setManualPrice: false,
     editComposition: true,
+    simulatePricing: true,
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: false,
@@ -48,6 +52,7 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewCommercialSummary: true,
     setManualPrice: false,
     editComposition: false,
+    simulatePricing: false,
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: false,
@@ -58,6 +63,7 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     viewCommercialSummary: true,
     setManualPrice: false,
     editComposition: false,
+    simulatePricing: false,
     viewInternalPricing: false,
     viewConfiguration: false,
     editConfiguration: false,
@@ -72,6 +78,7 @@ export function getPricingPermissions(role: OrganizationRole | undefined): Prici
       viewCommercialSummary: false,
       setManualPrice: false,
       editComposition: false,
+      simulatePricing: false,
       viewInternalPricing: false,
       viewConfiguration: false,
       editConfiguration: false,

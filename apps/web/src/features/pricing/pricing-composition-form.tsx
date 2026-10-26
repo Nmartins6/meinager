@@ -1,7 +1,7 @@
 import { Dialog } from '@base-ui/react/dialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useFieldArray,
   useForm,
@@ -35,7 +35,15 @@ import {
 import type { PricingProfileItem } from './pricing-profiles-contracts';
 import { buildLocalPricingPreview } from './pricing-preview-adapter';
 import { PricingPreviewPanel, type PricingPreviewViewState } from './pricing-preview-panel';
+import {
+  buildPricingSimulationInput,
+  hasAuthoritativePricingParity,
+  pricingSimulationSignature,
+} from './pricing-simulation-adapter';
+import { PricingSimulationPanel, type PricingSimulationDisplay } from './pricing-simulation-panel';
+import type { PricingSimulationResponse } from './pricing-simulation-contracts';
 import { usePricingProfileQuery } from './use-pricing-profiles-query';
+import { usePricingSimulationMutation } from './use-pricing-simulation-mutation';
 import { usePutPricingCompositionMutation } from './use-put-pricing-composition-mutation';
 
 const selectClassName =
@@ -74,6 +82,7 @@ interface PricingCompositionFormProps {
   product: Product;
   composition: PricingComposition | null;
   canEdit: boolean;
+  canSimulate: boolean;
   profiles: PricingProfileItem[];
   catalogProducts: PricingCatalogProductOption[];
   configuration?: PricingConfiguration;
@@ -209,6 +218,7 @@ export function PricingCompositionForm({
   product,
   composition,
   canEdit,
+  canSimulate,
   profiles,
   catalogProducts,
   configuration,
@@ -218,11 +228,17 @@ export function PricingCompositionForm({
   onReload,
 }: PricingCompositionFormProps) {
   const mutation = usePutPricingCompositionMutation(productId);
+  const simulationMutation = usePricingSimulationMutation(productId);
+  const simulationGeneration = useRef(0);
   const schema = useMemo(() => createPricingCompositionFormSchema(productId), [productId]);
   const [feedback, setFeedback] = useState<string>();
   const [hasConflict, setHasConflict] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
   const [reloadError, setReloadError] = useState<string>();
+  const [authoritativeSimulation, setAuthoritativeSimulation] = useState<{
+    response: PricingSimulationResponse;
+    signature: string;
+  }>();
   const {
     control,
     formState: { errors, isDirty },
@@ -289,6 +305,25 @@ export function PricingCompositionForm({
     selectedProfileQuery.isPending,
     values,
   ]);
+  const currentSimulationSignature = useMemo(() => {
+    if (previewState.status !== 'available') return null;
+    try {
+      return pricingSimulationSignature(buildPricingSimulationInput(values, composition, product));
+    } catch {
+      return null;
+    }
+  }, [composition, previewState.status, product, values]);
+  const simulationDisplay: PricingSimulationDisplay | undefined = authoritativeSimulation
+    ? {
+        response: authoritativeSimulation.response,
+        matchesLocalPreview:
+          previewState.status === 'available' &&
+          hasAuthoritativePricingParity(previewState.result, authoritativeSimulation.response),
+        stale:
+          currentSimulationSignature === null ||
+          currentSimulationSignature !== authoritativeSimulation.signature,
+      }
+    : undefined;
 
   useBeforeUnload(
     useCallback(
@@ -304,6 +339,11 @@ export function PricingCompositionForm({
 
   useEffect(() => {
     reset(pricingCompositionToFormValues(composition));
+    simulationGeneration.current += 1;
+    setAuthoritativeSimulation(undefined);
+    simulationMutation.reset();
+    // The composition identity/revision is the persisted boundary for transient simulations.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composition, reset]);
 
   const visibleOrigins = pricingCompositionParameterNames.filter((name) => {
@@ -321,6 +361,9 @@ export function PricingCompositionForm({
   function submit(formValues: PricingCompositionFormValues) {
     const payload = buildPricingCompositionInput(formValues, composition);
     mutation.reset();
+    simulationGeneration.current += 1;
+    setAuthoritativeSimulation(undefined);
+    simulationMutation.reset();
     setReloadError(undefined);
     if (!payload.changed) {
       setFeedback('Nenhuma alteração para salvar. A revisão atual foi preservada.');
@@ -330,6 +373,9 @@ export function PricingCompositionForm({
     mutation.mutate(payload.input, {
       onSuccess: (saved) => {
         reset(pricingCompositionToFormValues(saved));
+        simulationGeneration.current += 1;
+        setAuthoritativeSimulation(undefined);
+        simulationMutation.reset();
         setHasConflict(false);
         setFeedback(
           composition
@@ -366,6 +412,9 @@ export function PricingCompositionForm({
       }
       reset(pricingCompositionToFormValues(result.composition));
       mutation.reset();
+      simulationGeneration.current += 1;
+      simulationMutation.reset();
+      setAuthoritativeSimulation(undefined);
       setHasConflict(false);
       setFeedback('Composição recarregada. Revise os dados antes de editar novamente.');
     } finally {
@@ -376,10 +425,31 @@ export function PricingCompositionForm({
   function cancel() {
     reset(pricingCompositionToFormValues(composition));
     mutation.reset();
+    simulationGeneration.current += 1;
+    simulationMutation.reset();
+    setAuthoritativeSimulation(undefined);
     setHasConflict(false);
     setReloadError(undefined);
     setFeedback(undefined);
     onCancel?.();
+  }
+
+  function simulate(formValues: PricingCompositionFormValues) {
+    if (previewState.status !== 'available') return;
+    const input = buildPricingSimulationInput(formValues, composition, product);
+    const signature = pricingSimulationSignature(input);
+    const generation = ++simulationGeneration.current;
+    setAuthoritativeSimulation(undefined);
+    simulationMutation.reset();
+    simulationMutation.mutate(input, {
+      onSuccess: (response) => {
+        if (generation !== simulationGeneration.current) return;
+        setAuthoritativeSimulation({
+          response,
+          signature,
+        });
+      },
+    });
   }
 
   return (
@@ -539,6 +609,15 @@ export function PricingCompositionForm({
             : undefined
         }
         isRetryingProfile={selectedProfileQuery.isFetching}
+      />
+
+      <PricingSimulationPanel
+        canSimulate={canSimulate}
+        simulation={simulationDisplay}
+        error={simulationMutation.error?.message}
+        isPending={simulationMutation.isPending}
+        canSubmit={previewState.status === 'available' && !hasConflict}
+        onSimulate={() => void handleSubmit(simulate)()}
       />
 
       <Card>

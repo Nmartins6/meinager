@@ -106,6 +106,8 @@ fontes oficiais.
       4C.2, 20/10/2026).
 - [x] Implementar a projeção dinâmica `isAdopted` na lista e no detalhe internos
       de versões (Marco 4D.1, 22/10/2026).
+- [x] Implementar a confirmação autoritativa da simulação na interface web
+      (Marco 4D.2, 25/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -2687,3 +2689,42 @@ git status --short
 - Os pipelines raiz aprovaram typecheck, lint, 528 testes e build nos três
   packages: 77 testes do pacote, 171 da API e 280 da web. Nenhuma fórmula,
   persistência, rota, permissão ou implementação de interface foi alterada.
+
+### Marco 4D.2 concluído — 25/10/2026
+
+- O editor preserva a prévia local e oferece confirmação explícita por
+  `POST /api/pricing/products/:productId/simulations` para `OWNER`, `ADMIN` e
+  `OPERATIONS`. `FINANCE` continua somente com a prévia local e `VIEWER` não
+  carrega o editor nem inicia consultas internas.
+- A web envia `PERSISTED` quando o formulário é semanticamente igual à
+  composição salva e `DRAFT` para composição nova ou qualquer mudança efetiva.
+  O adaptador reutiliza a canonicalização da composição, preserva a ordem dos
+  componentes e omite revisão, identificadores internos, resultados e custo
+  persistido de componentes `CATALOG`.
+- Contratos Zod estritos validam payloads e a resposta integral, incluindo
+  referências usadas, margem efetiva, entrada resolvida, resultado completo e
+  fórmula. Decimais permanecem strings canônicas, inclusive `0.00000001`.
+- A confirmação fica fora do React Hook Form e do cache de queries. Alteração
+  semântica posterior a marca como desatualizada; texto decimal equivalente
+  não gera falsa divergência. Salvar, cancelar ou recarregar descarta o estado
+  transitório.
+- A paridade compara o resultado integral e a fórmula da prévia com a resposta
+  autoritativa. Divergências são exibidas sem alterar o rascunho, arredondar ou
+  criar versão. Erros estruturados possuem retry e respostas inválidas usam
+  mensagem segura sem detalhes internos.
+- A suíte web aprovou 314 testes em 47 arquivos, mantendo quatro workers e os
+  timeouts existentes. Criação de versão, histórico visual, `isAdopted` na web,
+  adoção e acabamento permanecem nos Marcos 4D.3–4E.
+
+### Revisão crítica do Marco 4D.2 — 25/10/2026
+
+- O contrato de resposta passou a exigir as coleções de componentes e deduções
+  sempre devolvidas pelo service da API. Respostas 200 inválidas ou malformadas
+  apresentam erro genérico, sem expor os detalhes da validação runtime.
+- Uma nova tentativa remove a confirmação anterior; respostas atrasadas após
+  salvar, cancelar ou recarregar são ignoradas. A paridade é avaliada contra a
+  prévia local vigente, inclusive após atualização das dependências de leitura.
+- Testes específicos cobrem ausência de coleções obrigatórias, erro seguro,
+  falha após confirmação anterior e resposta recebida após Cancelar. A web
+  aprovou 314 testes em 47 arquivos; os pipelines raiz aprovaram 562 testes
+  nos três packages, além de typecheck, lint e build.

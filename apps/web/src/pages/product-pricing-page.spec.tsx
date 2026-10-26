@@ -4,14 +4,16 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, Link, RouterProvider } from 'react-router-dom';
+import { calculatePricing, type PricingCalculatorInput } from '@meinager/pricing-calculator';
 
 import type { Product } from '@/features/products/products-api';
 import type { PricingComposition } from '@/features/pricing/pricing-composition-contracts';
 import type { PricingConfiguration } from '@/features/pricing/pricing-configuration-contracts';
 import type { PricingProfileItem } from '@/features/pricing/pricing-profiles-contracts';
+import { pricingSimulationResponseSchema } from '@/features/pricing/pricing-simulation-contracts';
 
 import { ProductPricingPage } from './product-pricing-page';
 
@@ -209,6 +211,118 @@ interface FetchOptions {
   onLinkedProfileGet?: (call: number, profileId: string) => Response | Promise<Response>;
   onConfigurationGet?: () => Response;
   onProductDetailGet?: (productId: string) => Response | undefined;
+  onSimulationPost?: (body: Record<string, unknown>, call: number) => Response | Promise<Response>;
+}
+
+function authoritativeSimulation(body: Record<string, unknown>) {
+  const source = body.source === 'DRAFT' ? 'DRAFT' : 'PERSISTED';
+  const draft =
+    source === 'DRAFT'
+      ? (body.draft as {
+          profileId: string | null;
+          desiredMargin: string | null;
+          laborEnabled: boolean;
+          timeMinutes: string | null;
+          freightMode: 'MANUAL' | 'ALLOCATED' | null;
+          freightUnitCost: string | null;
+          freightTotalCost: string | null;
+          freightQuantity: string | null;
+          freightConsumedQuantity: string | null;
+          components: Array<{
+            description: string;
+            category: PricingCalculatorInput['components'] extends readonly (infer Component)[]
+              ? Component extends { category: infer Category }
+                ? Category
+                : never
+              : never;
+            unit: string;
+            quantity: string;
+            costSource: 'MANUAL' | 'COPIED' | 'CATALOG';
+            storedUnitCost?: string;
+            sourceProductId?: string;
+          }>;
+        })
+      : {
+          profileId: composition.profileId,
+          desiredMargin: composition.desiredMargin,
+          laborEnabled: composition.laborEnabled,
+          timeMinutes: composition.timeMinutes,
+          freightMode: composition.freightMode,
+          freightUnitCost: composition.freightUnitCost,
+          freightTotalCost: composition.freightTotalCost,
+          freightQuantity: composition.freightQuantity,
+          freightConsumedQuantity: composition.freightConsumedQuantity,
+          components: composition.components,
+        };
+  const resolvedInput: PricingCalculatorInput = {
+    currency: 'BRL',
+    components: draft.components.map((component) => ({
+      description: component.description,
+      category: component.category,
+      unit: component.unit,
+      quantity: component.quantity,
+      unitCost: component.costSource === 'CATALOG' ? '10' : (component.storedUnitCost ?? '0'),
+      origin: component.costSource,
+      ...(component.costSource === 'CATALOG' && component.sourceProductId
+        ? { productId: component.sourceProductId }
+        : {}),
+    })),
+    fixedCosts: { mode: 'RATE', rate: '0.1', origin: 'MANUAL' },
+    deductions: [],
+    desiredMargin: draft.desiredMargin ?? '0.25',
+    ...(draft.laborEnabled
+      ? {
+          labor: {
+            monthlyCost: '3300',
+            productiveHours: '165',
+            timeMinutes: draft.timeMinutes!,
+          },
+        }
+      : {}),
+    ...(draft.freightMode === 'MANUAL'
+      ? { freight: { mode: 'MANUAL' as const, unitCost: draft.freightUnitCost! } }
+      : draft.freightMode === 'ALLOCATED'
+        ? {
+            freight: {
+              mode: 'ALLOCATED' as const,
+              totalCost: draft.freightTotalCost!,
+              quantity: draft.freightQuantity!,
+              ...(draft.freightConsumedQuantity === null
+                ? {}
+                : { consumedQuantity: draft.freightConsumedQuantity }),
+            },
+          }
+        : {}),
+    ...(typeof body.adoptedPrice === 'string' ? { adoptedPrice: body.adoptedPrice } : {}),
+  };
+  const result = calculatePricing(resolvedInput);
+  return pricingSimulationResponseSchema.parse({
+    productId,
+    source,
+    compositionRevision: source === 'PERSISTED' ? composition.revision : null,
+    configuration: {
+      id: pricingConfiguration.id,
+      revisionId: pricingConfiguration.currentRevision.id,
+      revision: pricingConfiguration.currentRevision.revision,
+    },
+    profile: draft.profileId
+      ? {
+          id: profile.id,
+          revisionId: profile.currentRevision.id,
+          revision: profile.currentRevision.revision,
+          name: profile.currentRevision.name,
+        }
+      : null,
+    effectiveDesiredMargin: {
+      value: resolvedInput.desiredMargin,
+      precedence: draft.desiredMargin === null ? 'CONFIGURATION' : 'COMPOSITION',
+      origin: 'MANUAL',
+    },
+    resolvedInput,
+    result,
+    formulaVersion: result.formulaVersion,
+    adoptedPrice: result.adoptedPrice,
+  });
 }
 
 function setupFetch(options: FetchOptions = {}) {
@@ -220,6 +334,7 @@ function setupFetch(options: FetchOptions = {}) {
   }> = [];
   let compositionGets = 0;
   let linkedProfileGets = 0;
+  let simulationPosts = 0;
   let hasComposition = options.initialComposition !== null;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -240,6 +355,13 @@ function setupFetch(options: FetchOptions = {}) {
         priceOrigin: 'MANUAL',
         hasComposition,
       });
+    }
+    if (url.pathname === `/api/pricing/products/${productId}/simulations`) {
+      simulationPosts += 1;
+      return (
+        (await options.onSimulationPost?.(body ?? {}, simulationPosts)) ??
+        jsonResponse(authoritativeSimulation(body ?? {}))
+      );
     }
     if (url.pathname === `/api/pricing/products/${productId}/composition`) {
       if (method === 'PUT') {
@@ -378,7 +500,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('ProductPricingPage composition editor', () => {
+describe('ProductPricingPage for VIEWER', () => {
   it('lets VIEWER read only the commercial summary without internal pricing requests', async () => {
     const { requested } = setupFetch({ role: 'VIEWER' });
     renderPage();
@@ -390,6 +512,12 @@ describe('ProductPricingPage composition editor', () => {
         `/api/pricing/products/${productId}/summary`,
       ]);
     });
+  });
+});
+
+describe('ProductPricingPage composition editor', () => {
+  beforeAll(async () => {
+    await import('@/features/pricing/pricing-composition-editor');
   });
 
   it('shows FINANCE a read-only composition and preserves its linked inactive profile', async () => {
@@ -546,6 +674,287 @@ describe('ProductPricingPage composition editor', () => {
     expect(screen.getByText('Cobertura de custos fixos')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Salvar composição' })).not.toBeInTheDocument();
     expect(requested.some(({ path }) => path.endsWith('/simulations'))).toBe(false);
+  });
+
+  it.each(['OWNER', 'ADMIN', 'OPERATIONS'] as const)(
+    'lets %s confirm the persisted composition without causing writes or cache refetches',
+    async (role) => {
+      const user = userEvent.setup();
+      const { requested } = setupFetch({ role });
+      renderPage();
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+      );
+
+      expect(
+        await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+      ).toBeVisible();
+      expect(screen.getByText('PERSISTED')).toBeVisible();
+      expect(screen.getByText('Revisão 2')).toBeVisible();
+
+      const simulations = requested.filter(({ path }) => path.endsWith('/simulations'));
+      expect(simulations).toHaveLength(1);
+      expect(simulations[0]).toMatchObject({
+        method: 'POST',
+        body: { source: 'PERSISTED' },
+      });
+      expect(
+        requested.some(
+          ({ path, method }) =>
+            method !== 'GET' &&
+            (path.endsWith('/composition') ||
+              path.includes('/versions') ||
+              path.includes('/adoptions') ||
+              path === `/api/products/${productId}`),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it('does not expose authoritative simulation to FINANCE', async () => {
+    const { requested } = setupFetch({ role: 'FINANCE' });
+    renderPage();
+    expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Confirmar simulação no servidor' }),
+    ).not.toBeInTheDocument();
+    expect(requested.some(({ path }) => path.endsWith('/simulations'))).toBe(false);
+  });
+
+  it('sends a complete DRAFT, preserves dirty protection and expires only on semantic changes', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch();
+    renderPage();
+    const cost = await screen.findByLabelText('Custo unitário persistido');
+    await user.clear(cost);
+    await user.type(cost, '5');
+
+    await user.click(screen.getByRole('button', { name: 'Confirmar simulação no servidor' }));
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    const simulation = requested.find(({ path }) => path.endsWith('/simulations'));
+    expect(simulation?.body).toMatchObject({
+      source: 'DRAFT',
+      draft: {
+        profileId,
+        components: [{ description: 'Embalagem', storedUnitCost: '5' }],
+      },
+    });
+    const draft = simulation?.body?.draft as Record<string, unknown>;
+    expect(draft).not.toHaveProperty('expectedRevision');
+    expect((draft.components as Array<Record<string, unknown>>)[0]).not.toHaveProperty('position');
+    expect((draft.components as Array<Record<string, unknown>>)[0]).not.toHaveProperty('id');
+
+    const dirtyBeforeUnload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(dirtyBeforeUnload);
+    expect(dirtyBeforeUnload.defaultPrevented).toBe(true);
+
+    await user.clear(cost);
+    await user.type(cost, '05,000');
+    expect(screen.queryByText(/confirmação está desatualizada/)).not.toBeInTheDocument();
+    await user.clear(cost);
+    await user.type(cost, '6');
+    expect(await screen.findByText(/confirmação está desatualizada/)).toBeVisible();
+    expect(screen.getAllByText('R$ 6,00').length).toBeGreaterThan(0);
+  });
+
+  it('prevents duplicate submission while an authoritative simulation is pending', async () => {
+    const user = userEvent.setup();
+    let resolveSimulation!: (response: Response) => void;
+    let pendingBody: Record<string, unknown> = {};
+    const pending = new Promise<Response>((resolve) => {
+      resolveSimulation = resolve;
+    });
+    const { requested } = setupFetch({
+      onSimulationPost: (body) => {
+        pendingBody = body;
+        return pending;
+      },
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    const pendingButton = screen.getByRole('button', { name: 'Confirmando simulação...' });
+    expect(pendingButton).toBeDisabled();
+    expect(requested.filter(({ path }) => path.endsWith('/simulations'))).toHaveLength(1);
+
+    resolveSimulation(jsonResponse(authoritativeSimulation(pendingBody)));
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+  });
+
+  it('preserves the draft and local preview across an error and explicit retry', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      onSimulationPost: (body, call) =>
+        call === 1
+          ? jsonResponse(
+              {
+                statusCode: 409,
+                code: 'PRICING_CONCURRENT_MODIFICATION',
+                message: 'Os parâmetros mudaram durante a simulação.',
+              },
+              409,
+            )
+          : jsonResponse(authoritativeSimulation(body)),
+    });
+    renderPage();
+    const cost = await screen.findByLabelText('Custo unitário persistido');
+    await user.clear(cost);
+    await user.type(cost, '5');
+    await user.click(screen.getByRole('button', { name: 'Confirmar simulação no servidor' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Os parâmetros mudaram durante a simulação.',
+    );
+    expect(cost).toHaveValue('5');
+    expect(screen.getByText('margin-divisor-v1')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    expect(requested.filter(({ path }) => path.endsWith('/simulations'))).toHaveLength(2);
+  });
+
+  it('uses a safe message for an invalid internal error response', async () => {
+    const user = userEvent.setup();
+    setupFetch({
+      onSimulationPost: () =>
+        jsonResponse(
+          { statusCode: 500, code: 'P2028', message: 'SQL transaction failed', stack: 'secret' },
+          500,
+        ),
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Não foi possível concluir a solicitação.');
+    expect(alert).not.toHaveTextContent(/P2028|SQL|secret/);
+  });
+
+  it('shows a structured forbidden error without leaking internal details', async () => {
+    const user = userEvent.setup();
+    setupFetch({
+      onSimulationPost: () =>
+        jsonResponse(
+          {
+            statusCode: 403,
+            code: 'PRICING_FORBIDDEN',
+            message: 'Você não tem permissão para confirmar esta simulação.',
+          },
+          403,
+        ),
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Você não tem permissão para confirmar esta simulação.',
+    );
+  });
+
+  it('does not keep an earlier confirmation valid after a failed new attempt', async () => {
+    const user = userEvent.setup();
+    setupFetch({
+      onSimulationPost: (body, call) =>
+        call === 1
+          ? jsonResponse(authoritativeSimulation(body))
+          : jsonResponse(
+              { statusCode: 409, code: 'PRICING_CONCURRENT_MODIFICATION', message: 'Conflito.' },
+              409,
+            ),
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Confirmar simulação no servidor' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Conflito.');
+    expect(
+      screen.queryByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('discards the transient result when the user cancels the draft', async () => {
+    const user = userEvent.setup();
+    setupFetch();
+    renderPage();
+    const cost = await screen.findByLabelText('Custo unitário persistido');
+    await user.clear(cost);
+    await user.type(cost, '5');
+    await user.click(screen.getByRole('button', { name: 'Confirmar simulação no servidor' }));
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(
+      screen.queryByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByLabelText('Custo unitário persistido')).toHaveValue('2.5'),
+    );
+  });
+
+  it('ignores a simulation response that arrives after the draft was canceled', async () => {
+    const user = userEvent.setup();
+    let resolveSimulation!: (response: Response) => void;
+    let requestBody: Record<string, unknown> = {};
+    const pending = new Promise<Response>((resolve) => {
+      resolveSimulation = resolve;
+    });
+    setupFetch({
+      onSimulationPost: (body) => {
+        requestBody = body;
+        return pending;
+      },
+    });
+    renderPage();
+    const cost = await screen.findByLabelText('Custo unitário persistido');
+    await user.clear(cost);
+    await user.type(cost, '5');
+    await user.click(screen.getByRole('button', { name: 'Confirmar simulação no servidor' }));
+    expect(screen.getByRole('button', { name: 'Confirmando simulação...' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await act(async () => resolveSimulation(jsonResponse(authoritativeSimulation(requestBody))));
+    expect(
+      screen.queryByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Custo unitário persistido')).toHaveValue('2.5');
+  });
+
+  it('shows an explicit parity divergence while preserving the authoritative response', async () => {
+    const user = userEvent.setup();
+    setupFetch({
+      onSimulationPost: (body) => {
+        const response = authoritativeSimulation(body);
+        return jsonResponse({
+          ...response,
+          result: {
+            ...response.result,
+            analysis: { ...response.result.analysis, classification: 'COST_COVERAGE' },
+          },
+        });
+      },
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(await screen.findByText(/dados autoritativos diferem da prévia local/)).toBeVisible();
+    expect(screen.getByText('PERSISTED')).toBeVisible();
+    expect(screen.getAllByText('margin-divisor-v1').length).toBeGreaterThanOrEqual(2);
   });
 
   it('labels and warns about the current product price without changing it', async () => {
