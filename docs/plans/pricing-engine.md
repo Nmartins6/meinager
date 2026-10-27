@@ -108,10 +108,12 @@ fontes oficiais.
       de versões (Marco 4D.1, 22/10/2026).
 - [x] Implementar a confirmação autoritativa da simulação na interface web
       (Marco 4D.2, 25/10/2026).
+- [x] Implementar criação de versão e histórico visual somente leitura na web
+      (Marco 4D.3, 26/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
-- [x] Atualizar a matriz de rastreabilidade até a prévia local do Marco 4C.2.
+- [x] Atualizar a matriz de rastreabilidade até o histórico web do Marco 4D.3.
 - [ ] Registrar os resultados finais.
 
 ## Descobertas
@@ -125,6 +127,21 @@ Cada descoberta deve conter:
 - descrição;
 - evidência;
 - impacto no plano.
+
+### Marco 4D.3 — Contrato histórico da API — 26/10/2026
+
+- O POST de criação retorna a versão finalizada sem `isAdopted`; somente os GETs
+  de lista e detalhe incluem essa projeção dinâmica. Contratos Zod distintos
+  impedem que o retorno do POST seja confundido com detalhe em cache.
+- O snapshot guarda `adoptedPrice` de entrada como decimal canônico. As colunas
+  comerciais da versão são `Text` e recebem diretamente os preços com duas casas
+  do resultado congelado, inclusive zeros finais como `90.90`. O contrato web
+  valida essas fronteiras separadamente e exige a correspondência exata das
+  projeções com o snapshot.
+- Evidência: `pricing-versions.service.ts`, `pricing-snapshot-v1.ts`,
+  `pricing-versions-contracts.ts` e testes de contrato/API web. Impacto: criar
+  versão exige composição persistida, confirmação `PERSISTED` vigente e revisão
+  correspondente; o histórico lê snapshot e projeções sem recalcular.
 
 ### Marco 4B.1 — Pacote compartilhado do motor — 10/10/2026
 
@@ -976,6 +993,12 @@ arredondados para cima até o próximo centavo, conforme `ADR-002`.
 
 Cálculos salvos são versões imutáveis e documentos comerciais preservam
 snapshots, conforme `ADR-003`.
+
+Na web do Marco 4D.3, a criação consome uma confirmação autoritativa `PERSISTED`
+em paridade e envia somente revisão esperada e preço comercial atual opcional.
+Após sucesso, outra versão exige nova simulação explícita. A criação invalida
+apenas listas de versões do produto; detalhes históricos permanecem no cache e
+`isAdopted` é lido dinamicamente dos GETs. A interface não oferece adoção.
 
 ### Snapshot runtime e versões — Marco 3C.3
 
@@ -2728,3 +2751,44 @@ git status --short
   falha após confirmação anterior e resposta recebida após Cancelar. A web
   aprovou 314 testes em 47 arquivos; os pipelines raiz aprovaram 562 testes
   nos três packages, além de typecheck, lint e build.
+
+### Marco 4D.3 concluído — 26/10/2026
+
+- A página de precificação cria versões somente da composição persistida após
+  simulação `PERSISTED` vigente, revisão idêntica e paridade integral com a
+  prévia. O POST envia apenas `expectedCompositionRevision` e, se houver,
+  `adoptedPrice` do preço atual. A confirmação é consumida após o sucesso;
+  conflitos preservam o formulário e exigem GET explícito e nova simulação.
+- Lista paginada e detalhe em diálogo acessível apresentam snapshots,
+  projeções, decomposição, proveniências e autoria congeladas. O indicador
+  textual `isAdopted` vem dos GETs e não é inferido do preço nem persistido na
+  web. `FINANCE` lê sem criar; `VIEWER` não inicia consulta interna.
+- Contratos Zod estritos separam payload, POST, lista, detalhe e snapshot v1.
+  Criação invalida somente listas de versões do produto e preserva detalhes
+  históricos em cache. Erros de histórico ficam isolados do editor.
+- Testes dirigidos cobrem contratos, API, cache, permissões, pré-condições,
+  duplo envio, revisão, preço opcional, paginação, `isAdopted`, diálogo e retry.
+  A suíte web oficial aprovou 338 testes em 50 arquivos; `pnpm test` aprovou
+  586 testes nos três packages (77 pacote, 171 API e 338 web). Typecheck,
+  lint e build da web e da raiz passaram. Não houve banco, backend, versão
+  criada em ambiente real ou adoção.
+- Limites: adoção web, orçamentos, pedidos e acabamento do Marco 4E permanecem
+  pendentes.
+
+### Revisão crítica do Marco 4D.3 — 27/10/2026
+
+- O contrato inicial da web rejeitava preços comerciais legítimos com zero
+  final porque tratava as colunas `Text` da versão como decimais sem casas
+  redundantes. Contrato e fixtures agora preservam as duas casas que a API
+  grava. Testes de contrato cobrem o retorno `90.90`.
+- A autorização de criação confere produto, revisão de composição, revisão de
+  configuração, revisão do perfil, entradas resolvidas, precedência e origem
+  da margem efetiva e preço analisado da simulação vigente. As
+  respostas de POST e detalhe são rejeitadas se pertencerem a outro produto,
+  revisão ou versão. Projeções de componentes, deduções e proveniências são
+  verificadas contra o snapshot congelado. A troca de produto reinicia o editor
+  local.
+- Testes direcionados: 66 aprovados em cinco arquivos. A suíte web oficial
+  aprovou 338 testes em 50 arquivos; a raiz aprovou 586 testes (77 pacote, 171
+  API, 338 web), além de typecheck, lint e build. Nenhum backend, schema,
+  migration, fórmula ou banco foi alterado ou utilizado nesta revisão.

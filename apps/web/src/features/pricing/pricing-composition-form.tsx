@@ -38,10 +38,14 @@ import { PricingPreviewPanel, type PricingPreviewViewState } from './pricing-pre
 import {
   buildPricingSimulationInput,
   hasAuthoritativePricingParity,
+  hasAuthoritativeResolvedInputParity,
   pricingSimulationSignature,
 } from './pricing-simulation-adapter';
 import { PricingSimulationPanel, type PricingSimulationDisplay } from './pricing-simulation-panel';
 import type { PricingSimulationResponse } from './pricing-simulation-contracts';
+import { canonicalizeCommercialDecimalInput } from './format-pricing';
+import { PricingVersionsPanel } from './pricing-versions-panel';
+import { useCreatePricingVersionMutation } from './use-pricing-versions';
 import { usePricingProfileQuery } from './use-pricing-profiles-query';
 import { usePricingSimulationMutation } from './use-pricing-simulation-mutation';
 import { usePutPricingCompositionMutation } from './use-put-pricing-composition-mutation';
@@ -229,12 +233,17 @@ export function PricingCompositionForm({
 }: PricingCompositionFormProps) {
   const mutation = usePutPricingCompositionMutation(productId);
   const simulationMutation = usePricingSimulationMutation(productId);
+  const versionMutation = useCreatePricingVersionMutation(productId);
+  const versionSubmitting = useRef(false);
   const simulationGeneration = useRef(0);
   const schema = useMemo(() => createPricingCompositionFormSchema(productId), [productId]);
   const [feedback, setFeedback] = useState<string>();
   const [hasConflict, setHasConflict] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
   const [reloadError, setReloadError] = useState<string>();
+  const [versionConsumed, setVersionConsumed] = useState(false);
+  const [createdVersionId, setCreatedVersionId] = useState<string>();
+  const [createdVersionNumber, setCreatedVersionNumber] = useState<number>();
   const [authoritativeSimulation, setAuthoritativeSimulation] = useState<{
     response: PricingSimulationResponse;
     signature: string;
@@ -258,7 +267,7 @@ export function PricingCompositionForm({
   const selectedProfileQuery = usePricingProfileQuery(selectedProfileId, selectedProfileId !== '');
   const shouldProtectDraft = canEdit && isDirty;
   const blocker = useBlocker(shouldProtectDraft);
-  const disabled = !canEdit || mutation.isPending || hasConflict;
+  const disabled = !canEdit || mutation.isPending || versionMutation.isPending || hasConflict;
 
   const previewState = useMemo<PricingPreviewViewState>(() => {
     if (configurationStatus === 'loading') {
@@ -313,10 +322,34 @@ export function PricingCompositionForm({
       return null;
     }
   }, [composition, previewState.status, product, values]);
+  const simulationMatchesCurrentContext =
+    authoritativeSimulation !== undefined &&
+    previewState.status === 'available' &&
+    authoritativeSimulation.response.productId === productId &&
+    authoritativeSimulation.response.configuration.id === configuration?.id &&
+    authoritativeSimulation.response.configuration.revisionId ===
+      configuration?.currentRevision.id &&
+    authoritativeSimulation.response.configuration.revision ===
+      configuration?.currentRevision.revision &&
+    authoritativeSimulation.response.profile?.id === (selectedProfileId || undefined) &&
+    authoritativeSimulation.response.profile?.revisionId ===
+      selectedProfileQuery.data?.currentRevision.id &&
+    authoritativeSimulation.response.effectiveDesiredMargin.precedence ===
+      (values.desiredMargin.trim() === '' ? 'CONFIGURATION' : 'COMPOSITION') &&
+    authoritativeSimulation.response.effectiveDesiredMargin.origin ===
+      (values.desiredMargin.trim() === ''
+        ? configuration?.currentRevision.parameterOrigins.defaultDesiredMargin?.origin
+        : values.parameterOrigins.desiredMargin.origin) &&
+    (authoritativeSimulation.response.adoptedPrice === null
+      ? product.salePrice === null
+      : canonicalizeCommercialDecimalInput(authoritativeSimulation.response.adoptedPrice) ===
+        canonicalizeCommercialDecimalInput(product.salePrice ?? '')) &&
+    hasAuthoritativeResolvedInputParity(previewState.input, authoritativeSimulation.response);
   const simulationDisplay: PricingSimulationDisplay | undefined = authoritativeSimulation
     ? {
         response: authoritativeSimulation.response,
         matchesLocalPreview:
+          simulationMatchesCurrentContext &&
           previewState.status === 'available' &&
           hasAuthoritativePricingParity(previewState.result, authoritativeSimulation.response),
         stale:
@@ -324,6 +357,22 @@ export function PricingCompositionForm({
           currentSimulationSignature !== authoritativeSimulation.signature,
       }
     : undefined;
+  const canCreateVersion =
+    canSimulate &&
+    composition !== null &&
+    !hasConflict &&
+    !versionConsumed &&
+    !versionMutation.isPending &&
+    !mutation.isPending &&
+    !simulationMutation.isPending &&
+    simulationDisplay !== undefined &&
+    simulationDisplay.response.source === 'PERSISTED' &&
+    simulationDisplay.response.compositionRevision === composition.revision &&
+    simulationMatchesCurrentContext &&
+    !simulationDisplay.stale &&
+    simulationDisplay.matchesLocalPreview &&
+    currentSimulationSignature !== null &&
+    !buildPricingCompositionInput(values, composition).changed;
 
   useBeforeUnload(
     useCallback(
@@ -342,6 +391,7 @@ export function PricingCompositionForm({
     simulationGeneration.current += 1;
     setAuthoritativeSimulation(undefined);
     simulationMutation.reset();
+    versionMutation.reset();
     // The composition identity/revision is the persisted boundary for transient simulations.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composition, reset]);
@@ -364,6 +414,7 @@ export function PricingCompositionForm({
     simulationGeneration.current += 1;
     setAuthoritativeSimulation(undefined);
     simulationMutation.reset();
+    versionMutation.reset();
     setReloadError(undefined);
     if (!payload.changed) {
       setFeedback('Nenhuma alteração para salvar. A revisão atual foi preservada.');
@@ -376,6 +427,7 @@ export function PricingCompositionForm({
         simulationGeneration.current += 1;
         setAuthoritativeSimulation(undefined);
         simulationMutation.reset();
+        versionMutation.reset();
         setHasConflict(false);
         setFeedback(
           composition
@@ -414,6 +466,7 @@ export function PricingCompositionForm({
       mutation.reset();
       simulationGeneration.current += 1;
       simulationMutation.reset();
+      versionMutation.reset();
       setAuthoritativeSimulation(undefined);
       setHasConflict(false);
       setFeedback('Composição recarregada. Revise os dados antes de editar novamente.');
@@ -427,6 +480,7 @@ export function PricingCompositionForm({
     mutation.reset();
     simulationGeneration.current += 1;
     simulationMutation.reset();
+    versionMutation.reset();
     setAuthoritativeSimulation(undefined);
     setHasConflict(false);
     setReloadError(undefined);
@@ -435,12 +489,13 @@ export function PricingCompositionForm({
   }
 
   function simulate(formValues: PricingCompositionFormValues) {
-    if (previewState.status !== 'available') return;
+    if (previewState.status !== 'available' || versionSubmitting.current) return;
     const input = buildPricingSimulationInput(formValues, composition, product);
     const signature = pricingSimulationSignature(input);
     const generation = ++simulationGeneration.current;
     setAuthoritativeSimulation(undefined);
     simulationMutation.reset();
+    versionMutation.reset();
     simulationMutation.mutate(input, {
       onSuccess: (response) => {
         if (generation !== simulationGeneration.current) return;
@@ -448,8 +503,42 @@ export function PricingCompositionForm({
           response,
           signature,
         });
+        setVersionConsumed(false);
       },
     });
+  }
+
+  function createVersion() {
+    if (!canCreateVersion || !composition || versionSubmitting.current) return;
+    versionSubmitting.current = true;
+    versionMutation.reset();
+    versionMutation.mutate(
+      {
+        expectedCompositionRevision: composition.revision,
+        ...(typeof product.salePrice === 'string' ? { adoptedPrice: product.salePrice } : {}),
+      },
+      {
+        onSuccess: (created) => {
+          setVersionConsumed(true);
+          setCreatedVersionId(created.id);
+          setCreatedVersionNumber(created.number);
+        },
+        onError: (error) => {
+          if (
+            error instanceof ApiError &&
+            (error.code === 'PRICING_REVISION_CONFLICT' ||
+              error.code === 'PRICING_CONCURRENT_MODIFICATION')
+          ) {
+            simulationGeneration.current += 1;
+            setAuthoritativeSimulation(undefined);
+            setHasConflict(true);
+          }
+        },
+        onSettled: () => {
+          versionSubmitting.current = false;
+        },
+      },
+    );
   }
 
   return (
@@ -616,9 +705,46 @@ export function PricingCompositionForm({
         simulation={simulationDisplay}
         error={simulationMutation.error?.message}
         isPending={simulationMutation.isPending}
-        canSubmit={previewState.status === 'available' && !hasConflict}
+        canSubmit={
+          previewState.status === 'available' && !hasConflict && !versionMutation.isPending
+        }
         onSimulate={() => void handleSubmit(simulate)()}
       />
+
+      {canSimulate && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Salvar versão</CardTitle>
+            <CardDescription>
+              Cria um cálculo histórico finalizado a partir da composição salva. Não altera nem
+              adota o preço do produto.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button type="button" disabled={!canCreateVersion} onClick={createVersion}>
+              {versionMutation.isPending ? 'Criando versão...' : 'Salvar versão'}
+            </Button>
+            {!canCreateVersion && !versionConsumed && (
+              <p className="text-sm text-muted-foreground">
+                Salve a composição e confirme novamente uma simulação PERSISTED em paridade antes de
+                criar a versão. Uma simulação DRAFT não pode ser salva como versão.
+              </p>
+            )}
+            {versionConsumed && (
+              <p role="status" className="text-sm">
+                Confirmação utilizada. Execute uma nova simulação antes de criar outra versão.
+                Versão nº {createdVersionNumber} criada: {createdVersionId}.
+              </p>
+            )}
+            {versionMutation.isError && (
+              <p role="alert" className="text-sm text-destructive">
+                {versionMutation.error.message}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      <PricingVersionsPanel productId={productId} createdVersionId={createdVersionId} />
 
       <Card>
         <CardHeader>
@@ -895,10 +1021,18 @@ export function PricingCompositionForm({
 
       {canEdit ? (
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={cancel} disabled={mutation.isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={cancel}
+            disabled={mutation.isPending || versionMutation.isPending}
+          >
             Cancelar
           </Button>
-          <Button type="submit" disabled={mutation.isPending || hasConflict}>
+          <Button
+            type="submit"
+            disabled={mutation.isPending || versionMutation.isPending || hasConflict}
+          >
             {mutation.isPending
               ? 'Salvando...'
               : composition

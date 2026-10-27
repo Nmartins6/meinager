@@ -163,6 +163,25 @@ descartado ou marcado como desatualizado após mudanças. A suíte web aprovou 3
 testes em 47 arquivos. Requisitos de criação de versão, histórico visual,
 `isAdopted` na interface e adoção não foram promovidos.
 
+Marco 4D.3 implementado em 26/10/2026. A página do produto cria uma versão
+finalizada somente após confirmação `PERSISTED` vigente e em paridade, lista
+versões paginadas e abre snapshot histórico validado em detalhe somente
+leitura. `isAdopted` é exibido textualmente conforme os GETs, inclusive quando
+todas as versões da página retornam `false`; o POST permanece sem esse campo.
+Testes web cobrem permissões, cache, pré-condições, conflitos, paginação,
+detalhe e ausência de adoção. A suíte web aprovou 338 testes em 50 arquivos;
+os pipelines raiz aprovaram 586 testes. Adoção pela web e integração com
+orçamentos e pedidos permanecem pendentes.
+
+Revisão crítica em 27/10/2026 corrigiu o contrato web dos preços comerciais de
+versão: as colunas `Text` preservam duas casas, inclusive zero final. Testes
+comprovam também a correspondência das entradas resolvidas, da origem da margem
+e das projeções ao snapshot, além do vínculo das respostas ao produto, à revisão
+e à versão solicitados. A suíte web oficial
+aprovou 338 testes em 50 arquivos, e a raiz aprovou 586 testes. O estado de
+`PREC-CA-038` permanece `IMPLEMENTED`; adoção web, orçamentos e pedidos não foram
+promovidos.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -391,12 +410,12 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Histórico e snapshots
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                  | Implementação esperada                         |
-| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças | Adoção não faz parte destes critérios          |
-| `PREC-CA-038`                 | `PARTIAL`     | GET paginado e detalhe validado exibem versões finalizadas com `isAdopted` dinâmico, papéis e isolamento testados                  | Implementar lista e detalhe na interface       |
-| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                             | Comprovado no Marco 3C.3                       |
-| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo/adoção implementadas; snapshots comerciais de orçamento/pedido já existem                           | Integrar referências aos documentos comerciais |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                                          | Implementação esperada                            |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças                         | Adoção não faz parte destes critérios             |
+| `PREC-CA-038`                 | `IMPLEMENTED` | GET paginado e detalhe validado exibem versões finalizadas com `isAdopted` dinâmico; a web pagina, abre detalhe e identifica textualmente a versão adotada | Preservar a leitura histórica nos próximos fluxos |
+| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                                                     | Comprovado no Marco 3C.3                          |
+| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo/adoção implementadas; snapshots comerciais de orçamento/pedido já existem                                                   | Integrar referências aos documentos comerciais    |
 
 ### Integração com produtos
 
@@ -462,11 +481,11 @@ renderiza coluna, valor, placeholder ou indicação de custo para `VIEWER`.
 
 ### Interface
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                | Implementação esperada                      |
-| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `PREC-CA-054` a `PREC-CA-057` | `PARTIAL`     | Resumo, formulários e prévia diferenciam entradas, resultados, mínimo, sugerido, preço atual, avisos, erros e estados acessíveis | Fluxos de versão e adoção ainda pendentes   |
-| Recálculo local               | `IMPLEMENTED` | Web consome o pacote compartilhado, recalcula sem rede e possui prova síncrona representativa abaixo de 100 ms                   | Resultado local não é autoridade financeira |
-| Validação autoritativa        | `PARTIAL`     | Simulação, versão e adoção validam/reproduzem o cálculo no backend e rejeitam resultados do cliente                              | Interface pendente                          |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                           | Implementação esperada                      |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `PREC-CA-054` a `PREC-CA-057` | `PARTIAL`     | Resumo, formulários, prévia e histórico diferenciam entradas, resultados, mínimo, sugerido, preço atual, avisos, erros e estados acessíveis | Adoção pela interface ainda pendente        |
+| Recálculo local               | `IMPLEMENTED` | Web consome o pacote compartilhado, recalcula sem rede e possui prova síncrona representativa abaixo de 100 ms                              | Resultado local não é autoridade financeira |
+| Validação autoritativa        | `PARTIAL`     | Simulação e criação de versão são acionadas pela web sem enviar resultado do cliente; backend também valida adoção                          | Adoção pela interface pendente              |
 
 ### Auditoria e segurança
 

@@ -153,9 +153,12 @@ com o mesmo pacote puro usado pela API. O Marco 4D.2 acrescentou a confirmação
 autoritativa explícita pela simulação HTTP: estado salvo e semanticamente igual
 usa `PERSISTED`; composição nova ou rascunho alterado usa `DRAFT`. A resposta
 remota permanece separada do formulário e do cache, é comparada integralmente
-com a prévia e nunca salva composição, cria versão ou altera preço. Versões e
-adoção na web, além da integração da origem comercial com orçamentos e pedidos,
-continuam pendentes.
+com a prévia e nunca salva composição, cria versão ou altera preço. O Marco 4D.3
+acrescentou criação explícita de versões finalizadas somente após simulação
+`PERSISTED` vigente e em paridade, além de lista paginada e detalhe histórico
+somente leitura. A lista e o detalhe exibem `isAdopted` recebido da API, sem
+inferir adoção pelo preço. A adoção na web e a integração da origem comercial
+com orçamentos e pedidos continuam pendentes.
 
 O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
 10/10/2026 sem implementar código. O Marco 4B.1 concluiu o pacote puro do motor,
@@ -186,7 +189,7 @@ internos de versões. O backend o calcula do ponteiro atual do produto por
 projeção relacional, sem persistência, escrita, auditoria ou alteração do
 snapshot; `VIEWER` e o resumo comercial não recebem o campo. A alteração manual
 do preço limpa o ponteiro e faz todas as versões retornarem `false`. A interface
-de histórico e adoção permanece pendente nos Marcos 4D.2–4D.4.
+de adoção permanece pendente no Marco 4D.4.
 
 ## Processo de alteração
 

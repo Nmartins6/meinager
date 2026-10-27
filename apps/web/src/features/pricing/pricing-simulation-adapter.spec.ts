@@ -9,6 +9,7 @@ import { buildLocalPricingPreview } from './pricing-preview-adapter';
 import {
   buildPricingSimulationInput,
   hasAuthoritativePricingParity,
+  hasAuthoritativeResolvedInputParity,
 } from './pricing-simulation-adapter';
 import { pricingSimulationResponseFixture } from './pricing-simulation-test-fixtures';
 
@@ -83,6 +84,32 @@ function values(): PricingCompositionFormValues {
 }
 
 describe('pricing simulation adapter', () => {
+  it('matches the resolved inputs without relying on object key order and normalizes allocated freight', () => {
+    const response = pricingSimulationResponseFixture();
+    expect(hasAuthoritativeResolvedInputParity(response.resolvedInput, response)).toBe(true);
+    expect(
+      hasAuthoritativeResolvedInputParity(response.resolvedInput, {
+        ...response,
+        resolvedInput: {
+          ...response.resolvedInput,
+          components: [{ ...response.resolvedInput.components[0]!, quantity: '999' }],
+        },
+      }),
+    ).toBe(false);
+    const local = {
+      ...response.resolvedInput,
+      freight: { mode: 'ALLOCATED' as const, totalCost: '5', quantity: '10' },
+    };
+    expect(
+      hasAuthoritativeResolvedInputParity(local, {
+        ...response,
+        resolvedInput: {
+          ...local,
+          freight: { ...local.freight, consumedQuantity: '1' },
+        },
+      }),
+    ).toBe(true);
+  });
   it('selects PERSISTED for an equivalent composition and includes the current price', () => {
     expect(buildPricingSimulationInput(values(), composition, product)).toEqual({
       source: 'PERSISTED',

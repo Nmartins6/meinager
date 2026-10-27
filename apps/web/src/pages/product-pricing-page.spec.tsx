@@ -4,7 +4,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, Link, RouterProvider } from 'react-router-dom';
 import { calculatePricing, type PricingCalculatorInput } from '@meinager/pricing-calculator';
@@ -14,6 +14,7 @@ import type { PricingComposition } from '@/features/pricing/pricing-composition-
 import type { PricingConfiguration } from '@/features/pricing/pricing-configuration-contracts';
 import type { PricingProfileItem } from '@/features/pricing/pricing-profiles-contracts';
 import { pricingSimulationResponseSchema } from '@/features/pricing/pricing-simulation-contracts';
+import { pricingVersionFixture } from '@/features/pricing/pricing-versions-test-fixtures';
 
 import { ProductPricingPage } from './product-pricing-page';
 
@@ -212,6 +213,31 @@ interface FetchOptions {
   onConfigurationGet?: () => Response;
   onProductDetailGet?: (productId: string) => Response | undefined;
   onSimulationPost?: (body: Record<string, unknown>, call: number) => Response | Promise<Response>;
+  onVersionPost?: (body: Record<string, unknown>, call: number) => Response | Promise<Response>;
+  onVersionList?: (page: number) => Response;
+  onVersionDetail?: (versionId: string) => Response;
+}
+
+function versionForPage() {
+  const version = pricingVersionFixture();
+  return {
+    ...version,
+    productId,
+    compositionId: composition.id,
+    compositionRevision: composition.revision,
+    snapshot: {
+      ...version.snapshot,
+      context: {
+        ...version.snapshot.context,
+        product: { ...version.snapshot.context.product, id: productId },
+        composition: {
+          ...version.snapshot.context.composition,
+          id: composition.id,
+          revision: composition.revision,
+        },
+      },
+    },
+  };
 }
 
 function authoritativeSimulation(body: Record<string, unknown>) {
@@ -335,6 +361,7 @@ function setupFetch(options: FetchOptions = {}) {
   let compositionGets = 0;
   let linkedProfileGets = 0;
   let simulationPosts = 0;
+  let versionPosts = 0;
   let hasComposition = options.initialComposition !== null;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -361,6 +388,32 @@ function setupFetch(options: FetchOptions = {}) {
       return (
         (await options.onSimulationPost?.(body ?? {}, simulationPosts)) ??
         jsonResponse(authoritativeSimulation(body ?? {}))
+      );
+    }
+    if (url.pathname === `/api/pricing/products/${productId}/versions` && method === 'GET') {
+      const page = Number(url.searchParams.get('page') ?? 1);
+      const response = options.onVersionList?.(page);
+      if (response) return response;
+      return jsonResponse({
+        data: [],
+        pagination: { page, pageSize: 20, total: 0, totalPages: 0 },
+      });
+    }
+    if (url.pathname === `/api/pricing/products/${productId}/versions` && method === 'POST') {
+      versionPosts += 1;
+      return (
+        (await options.onVersionPost?.(body ?? {}, versionPosts)) ??
+        jsonResponse(versionForPage(), 201)
+      );
+    }
+    if (
+      url.pathname.startsWith(`/api/pricing/products/${productId}/versions/`) &&
+      method === 'GET'
+    ) {
+      const versionId = url.pathname.slice(`/api/pricing/products/${productId}/versions/`.length);
+      return (
+        options.onVersionDetail?.(versionId) ??
+        jsonResponse({ ...versionForPage(), isAdopted: false })
       );
     }
     if (url.pathname === `/api/pricing/products/${productId}/composition`) {
@@ -658,8 +711,9 @@ describe('ProductPricingPage composition editor', () => {
     await user.selectOptions(marginOrigin, 'MANUAL');
     expect(await screen.findByText('margin-divisor-v1')).toBeVisible();
     expect(requested.every(({ method }) => method === 'GET')).toBe(true);
+    expect(requested.some(({ path }) => path.endsWith('/simulations'))).toBe(false);
     expect(
-      requested.some(({ path }) => path.endsWith('/simulations') || path.includes('/versions')),
+      requested.some(({ path, method }) => path.includes('/versions') && method !== 'GET'),
     ).toBe(false);
   });
 
@@ -1145,11 +1199,19 @@ describe('ProductPricingPage composition editor', () => {
   });
 
   it('performs a complete ordered replacement and never caches cost for CATALOG', async () => {
-    const user = userEvent.setup();
     let putBody: Record<string, unknown> | undefined;
     setupFetch({
       role: 'OPERATIONS',
       catalogPages: [[targetProduct, costlessProduct], [sourceProduct]],
+      onConfigurationGet: () =>
+        jsonResponse(
+          {
+            statusCode: 404,
+            code: 'PRICING_CONFIGURATION_NOT_FOUND',
+            message: 'Configuração indisponível.',
+          },
+          404,
+        ),
       onPut: (body) => {
         putBody = body;
         return jsonResponse({ ...composition, revision: 3 });
@@ -1159,16 +1221,18 @@ describe('ProductPricingPage composition editor', () => {
     expect(await screen.findByLabelText('Nome')).toHaveValue('Embalagem');
     expect(screen.getByRole('button', { name: 'Salvar composição' })).toBeEnabled();
     expect(screen.getByText('Revisão atual:')).toHaveTextContent('2');
-    await user.click(screen.getByRole('button', { name: 'Adicionar componente' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar componente' }));
     const names = screen.getAllByLabelText('Nome');
-    await user.type(names[1]!, 'Catálogo');
+    fireEvent.change(names[1]!, { target: { value: 'Catálogo' } });
     const sources = screen.getAllByLabelText('Origem do custo');
-    await user.selectOptions(sources[1]!, 'CATALOG');
+    fireEvent.change(sources[1]!, { target: { value: 'CATALOG' } });
     expect(screen.queryByRole('option', { name: /Produto alvo/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Produto sem custo/ })).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText('Produto do catálogo'), sourceProductId);
-    await user.click(screen.getByRole('button', { name: 'Mover componente 2 para cima' }));
-    await user.click(screen.getByRole('button', { name: 'Salvar composição' }));
+    fireEvent.change(screen.getByLabelText('Produto do catálogo'), {
+      target: { value: sourceProductId },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Mover componente 2 para cima' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar composição' }));
     await waitFor(() => expect(putBody).toBeDefined());
     const sentComponents = putBody?.components as Array<Record<string, unknown>>;
     expect(sentComponents.map(({ description }) => description)).toEqual(['Catálogo', 'Embalagem']);
@@ -1270,5 +1334,393 @@ describe('ProductPricingPage composition editor', () => {
     expect(afterCancel.defaultPrevented).toBe(false);
     await user.click(screen.getByRole('link', { name: 'Sair da página' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/fora'));
+  });
+  it.each(['OWNER', 'ADMIN', 'OPERATIONS'] as const)(
+    'creates one finalized version from a confirmed persisted calculation for %s',
+    async (role) => {
+      const user = userEvent.setup();
+      const { requested } = setupFetch({ role });
+      renderPage();
+      const save = await screen.findByRole('button', { name: 'Salvar versão' });
+      expect(save).toBeDisabled();
+      await user.click(screen.getByRole('button', { name: 'Confirmar simulação no servidor' }));
+      expect(
+        await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+      ).toBeVisible();
+      expect(save).toBeEnabled();
+      await user.dblClick(save);
+      expect(await screen.findByText(/Confirmação utilizada/)).toBeVisible();
+      expect(save).toBeDisabled();
+      const posts = requested.filter(
+        ({ path, method }) => path.endsWith('/versions') && method === 'POST',
+      );
+      expect(posts).toHaveLength(1);
+      expect(posts[0]?.body).toEqual({ expectedCompositionRevision: composition.revision });
+      expect(requested.filter(({ path }) => path.endsWith('/simulations'))).toHaveLength(1);
+      expect(
+        requested.some(
+          ({ path, method }) =>
+            method !== 'GET' &&
+            (path.endsWith('/composition') ||
+              path.includes('/adoptions') ||
+              path === `/api/products/${productId}`),
+        ),
+      ).toBe(false);
+      expect(screen.getAllByText(new RegExp(versionForPage().id)).length).toBeGreaterThan(0);
+    },
+  );
+
+  it('requires a saved, unchanged composition and a PERSISTED confirmation', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch();
+    renderPage();
+    const save = await screen.findByRole('button', { name: 'Salvar versão' });
+    expect(save).toBeDisabled();
+    await user.clear(screen.getByLabelText('Custo unitário persistido'));
+    await user.type(screen.getByLabelText('Custo unitário persistido'), '5');
+    await user.click(screen.getByRole('button', { name: 'Confirmar simulação no servidor' }));
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    expect(save).toBeDisabled();
+    expect(screen.getByText(/Uma simulação DRAFT não pode ser salva como versão/)).toBeVisible();
+    expect(
+      requested.some(({ path, method }) => path.endsWith('/versions') && method === 'POST'),
+    ).toBe(false);
+  });
+
+  it('does not authorize a version from a simulation for another product, revision, input or margin origin', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      onSimulationPost: (body, call) => {
+        const response = authoritativeSimulation(body);
+        return jsonResponse(
+          call === 1
+            ? { ...response, productId: '99999999-9999-4999-8999-999999999999' }
+            : call === 2
+              ? {
+                  ...response,
+                  configuration: {
+                    ...response.configuration,
+                    revisionId: '99999999-9999-4999-8999-999999999999',
+                  },
+                }
+              : call === 3
+                ? {
+                    ...response,
+                    resolvedInput: {
+                      ...response.resolvedInput,
+                      components: [{ ...response.resolvedInput.components[0]!, quantity: '99' }],
+                    },
+                  }
+                : {
+                    ...response,
+                    effectiveDesiredMargin: {
+                      ...response.effectiveDesiredMargin,
+                      origin: 'COPIED',
+                    },
+                  },
+        );
+      },
+    });
+    renderPage();
+    const save = await screen.findByRole('button', { name: 'Salvar versão' });
+    for (const call of [1, 2, 3, 4]) {
+      await user.click(screen.getByRole('button', { name: 'Confirmar simulação no servidor' }));
+      await waitFor(() =>
+        expect(requested.filter(({ path }) => path.endsWith('/simulations'))).toHaveLength(call),
+      );
+      expect(
+        await screen.findByText(/Os dados autoritativos diferem da prévia local/),
+      ).toHaveAttribute('role', 'alert');
+      expect(save).toBeDisabled();
+    }
+    expect(
+      requested.filter(({ path, method }) => path.endsWith('/versions') && method === 'POST'),
+    ).toHaveLength(0);
+  });
+
+  it('keeps creation disabled for a new composition and after a semantic draft change', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({ initialComposition: null });
+    renderPage();
+    expect(await screen.findByRole('button', { name: 'Salvar versão' })).toBeDisabled();
+    expect(
+      requested.some(({ path, method }) => path.endsWith('/versions') && method === 'POST'),
+    ).toBe(false);
+    const cost = screen.getByLabelText('Margem desejada (%)');
+    await user.type(cost, '25');
+    expect(screen.getByRole('button', { name: 'Salvar versão' })).toBeDisabled();
+  });
+
+  it('keeps confirmation current across equivalent decimal text, then disables creation after a real change', async () => {
+    const user = userEvent.setup();
+    setupFetch();
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    const save = screen.getByRole('button', { name: 'Salvar versão' });
+    expect(save).toBeEnabled();
+    const quantity = screen.getByLabelText('Quantidade');
+    await user.clear(quantity);
+    await user.type(quantity, '01,00');
+    expect(save).toBeEnabled();
+    await user.clear(quantity);
+    await user.type(quantity, '2');
+    expect(save).toBeDisabled();
+    expect(
+      screen.getByText('Esta confirmação está desatualizada porque o rascunho foi alterado.'),
+    ).toBeVisible();
+  });
+
+  it('uses the current commercial price only as adoptedPrice in creation', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({ product: { ...targetProduct, salePrice: '88.5' } });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Salvar versão' }));
+    expect(await screen.findByText(/Confirmação utilizada/)).toBeVisible();
+    const post = requested.find(
+      ({ path, method }) => path.endsWith('/versions') && method === 'POST',
+    );
+    expect(post?.body).toEqual({
+      expectedCompositionRevision: composition.revision,
+      adoptedPrice: '88.5',
+    });
+    expect(requested.some(({ path }) => path.includes('/adoptions'))).toBe(false);
+  });
+
+  it('lets FINANCE read the history and detail without a creation action', async () => {
+    const user = userEvent.setup();
+    const version = versionForPage();
+    const {
+      id,
+      number,
+      compositionRevision,
+      minimumPriceCommercial,
+      suggestedPriceCommercial,
+      analyzedPrice,
+      classification,
+      formulaVersion,
+      snapshotSchemaVersion,
+      currency,
+      finalizedAt,
+      createdByUserId,
+      createdAt,
+    } = version;
+    const { requested } = setupFetch({
+      role: 'FINANCE',
+      onVersionList: () =>
+        jsonResponse({
+          data: [
+            {
+              id,
+              number,
+              compositionRevision,
+              minimumPriceCommercial,
+              suggestedPriceCommercial,
+              analyzedPrice,
+              classification,
+              formulaVersion,
+              snapshotSchemaVersion,
+              currency,
+              finalizedAt,
+              createdByUserId,
+              createdAt,
+              isAdopted: true,
+            },
+          ],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+      onVersionDetail: () => jsonResponse({ ...version, isAdopted: true }),
+    });
+    renderPage();
+    expect(await screen.findByText('Preço atual originado desta versão')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Salvar versão' })).not.toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: `Ver detalhe da versão ${number}` });
+    await user.click(trigger);
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    expect(await screen.findByText('Entradas congeladas')).toBeVisible();
+    expect(screen.getByText('Origens dos componentes')).toBeVisible();
+    expect(requested.some(({ path }) => path.endsWith(`/versions/${id}`))).toBe(true);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+    expect(
+      requested.some(({ path, method }) => path.includes('/versions') && method !== 'GET'),
+    ).toBe(false);
+  });
+
+  it('paginates history without inferring an adopted version outside the page', async () => {
+    const user = userEvent.setup();
+    const version = versionForPage();
+    const {
+      id,
+      number,
+      compositionRevision,
+      minimumPriceCommercial,
+      suggestedPriceCommercial,
+      analyzedPrice,
+      classification,
+      formulaVersion,
+      snapshotSchemaVersion,
+      currency,
+      finalizedAt,
+      createdByUserId,
+      createdAt,
+    } = version;
+    const item = {
+      id,
+      number,
+      compositionRevision,
+      minimumPriceCommercial,
+      suggestedPriceCommercial,
+      analyzedPrice,
+      classification,
+      formulaVersion,
+      snapshotSchemaVersion,
+      currency,
+      finalizedAt,
+      createdByUserId,
+      createdAt,
+      isAdopted: false,
+    };
+    const { requested } = setupFetch({
+      onVersionList: (page) =>
+        jsonResponse({
+          data: [{ ...item, number: page === 1 ? 5 : 4 }],
+          pagination: { page, pageSize: 20, total: 21, totalPages: 2 },
+        }),
+    });
+    renderPage();
+    expect(await screen.findByText('Versão 5')).toBeVisible();
+    expect(screen.getByText('Não adotada atualmente')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Próxima' }));
+    expect(await screen.findByText('Versão 4')).toBeVisible();
+    expect(screen.getByText('Não adotada atualmente')).toBeVisible();
+    expect(
+      requested.filter(
+        ({ path, search }) => path.endsWith('/versions') && search.includes('page=2'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('retries failed history and detail reads without unmounting the composition editor', async () => {
+    const user = userEvent.setup();
+    const version = versionForPage();
+    const {
+      id,
+      number,
+      compositionRevision,
+      minimumPriceCommercial,
+      suggestedPriceCommercial,
+      analyzedPrice,
+      classification,
+      formulaVersion,
+      snapshotSchemaVersion,
+      currency,
+      finalizedAt,
+      createdByUserId,
+      createdAt,
+    } = version;
+    let listCalls = 0;
+    let detailCalls = 0;
+    setupFetch({
+      onVersionList: () => {
+        listCalls += 1;
+        return listCalls === 1
+          ? jsonResponse(
+              { statusCode: 500, code: 'INTERNAL_ERROR', message: 'Não foi possível listar.' },
+              500,
+            )
+          : jsonResponse({
+              data: [
+                {
+                  id,
+                  number,
+                  compositionRevision,
+                  minimumPriceCommercial,
+                  suggestedPriceCommercial,
+                  analyzedPrice,
+                  classification,
+                  formulaVersion,
+                  snapshotSchemaVersion,
+                  currency,
+                  finalizedAt,
+                  createdByUserId,
+                  createdAt,
+                  isAdopted: false,
+                },
+              ],
+              pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+            });
+      },
+      onVersionDetail: () => {
+        detailCalls += 1;
+        return detailCalls === 1
+          ? jsonResponse(
+              { statusCode: 500, code: 'INTERNAL_ERROR', message: 'Não foi possível abrir.' },
+              500,
+            )
+          : jsonResponse({ ...version, isAdopted: false });
+      },
+    });
+    renderPage();
+    expect(await screen.findByText('Não foi possível listar.')).toBeVisible();
+    expect(screen.getByLabelText('Nome')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    await user.click(
+      await screen.findByRole('button', { name: `Ver detalhe da versão ${number}` }),
+    );
+    expect(await screen.findByText('Não foi possível abrir.')).toBeVisible();
+    expect(screen.getByLabelText('Nome')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByText('Entradas congeladas')).toBeVisible();
+  });
+
+  it('invalidates confirmation after a version revision conflict and requires an explicit successful reload', async () => {
+    const user = userEvent.setup();
+    let compositionGets = 0;
+    const { requested } = setupFetch({
+      onVersionPost: () =>
+        jsonResponse(
+          { statusCode: 409, code: 'PRICING_REVISION_CONFLICT', message: 'Conflito de revisão.' },
+          409,
+        ),
+      onCompositionGet: () => {
+        compositionGets += 1;
+        return jsonResponse(composition);
+      },
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Salvar versão' }));
+    expect(await screen.findByText('A composição mudou enquanto você editava.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salvar versão' })).toBeDisabled();
+    expect(
+      screen.queryByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).not.toBeInTheDocument();
+    expect(compositionGets).toBe(1);
+    await user.click(screen.getByRole('button', { name: 'Recarregar composição' }));
+    expect(await screen.findByText(/Composição recarregada/)).toBeVisible();
+    expect(compositionGets).toBe(2);
+    expect(screen.getByRole('button', { name: 'Salvar versão' })).toBeDisabled();
+    expect(
+      requested.filter(({ path, method }) => path.endsWith('/versions') && method === 'POST'),
+    ).toHaveLength(1);
   });
 });
