@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { formatBrl, percentageFractionToInput } from './format-pricing';
-import type { PricingVersionDetail } from './pricing-versions-contracts';
+import { PricingAdoptionDialog } from './pricing-adoption-dialog';
+import type { PricingVersionDetail, PricingVersionList } from './pricing-versions-contracts';
 import { usePricingVersionDetailQuery, usePricingVersionsQuery } from './use-pricing-versions';
 
 function DateText({ value }: { value: string }) {
@@ -274,12 +275,21 @@ function VersionDetail({ version }: { version: PricingVersionDetail }) {
 export function PricingVersionsPanel({
   productId,
   createdVersionId,
+  canAdopt,
+  canAdoptBelowMinimum,
+  onPriceMayHaveChanged,
 }: {
   productId: string;
   createdVersionId?: string;
+  canAdopt: boolean;
+  canAdoptBelowMinimum: boolean;
+  onPriceMayHaveChanged: () => void;
 }) {
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [adoptionVersion, setAdoptionVersion] = useState<PricingVersionList['data'][number] | null>(
+    null,
+  );
   const list = usePricingVersionsQuery(productId, page, 20, true);
   const detail = usePricingVersionDetailQuery(productId, selectedId);
   return (
@@ -343,6 +353,12 @@ export function PricingVersionsPanel({
                     >
                       Ver detalhe da versão {version.number}
                     </Button>
+                    {canAdopt &&
+                      (version.classification !== 'BELOW_MINIMUM' || canAdoptBelowMinimum) && (
+                        <Button type="button" onClick={() => setAdoptionVersion(version)}>
+                          Adotar versão {version.number}
+                        </Button>
+                      )}
                   </div>
                 </li>
               ))}
@@ -414,6 +430,17 @@ export function PricingVersionsPanel({
             </Dialog.Viewport>
           </Dialog.Portal>
         </Dialog.Root>
+        {adoptionVersion && (
+          <PricingAdoptionDialog
+            key={`${productId}:${adoptionVersion.id}`}
+            productId={productId}
+            version={adoptionVersion}
+            canAdopt={canAdopt}
+            canAdoptBelowMinimum={canAdoptBelowMinimum}
+            onClose={() => setAdoptionVersion(null)}
+            onPriceMayHaveChanged={onPriceMayHaveChanged}
+          />
+        )}
       </CardContent>
     </Card>
   );

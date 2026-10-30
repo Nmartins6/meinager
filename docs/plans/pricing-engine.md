@@ -110,10 +110,12 @@ fontes oficiais.
       (Marco 4D.2, 25/10/2026).
 - [x] Implementar criação de versão e histórico visual somente leitura na web
       (Marco 4D.3, 26/10/2026).
+- [x] Implementar adoção explícita de versão na web, com confirmação especial
+      abaixo do mínimo (Marco 4D.4, 27/10/2026).
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
-- [x] Atualizar a matriz de rastreabilidade até o histórico web do Marco 4D.3.
+- [x] Atualizar a matriz de rastreabilidade até a adoção web do Marco 4D.4.
 - [ ] Registrar os resultados finais.
 
 ## Descobertas
@@ -2792,3 +2794,45 @@ git status --short
   aprovou 338 testes em 50 arquivos; a raiz aprovou 586 testes (77 pacote, 171
   API, 338 web), além de typecheck, lint e build. Nenhum backend, schema,
   migration, fórmula ou banco foi alterado ou utilizado nesta revisão.
+
+### Marco 4D.4 — adoção web — 27/10/2026
+
+- A adoção parte somente de uma versão finalizada apresentada no histórico. O
+  diálogo confirma o preço analisado congelado; abaixo do mínimo exige papel
+  OWNER/ADMIN, confirmação explícita e justificativa não vazia. FINANCE mantém
+  leitura, OPERATIONS adota somente versões que não estejam abaixo do mínimo e
+  VIEWER continua sem consultas internas.
+- O POST envia `versionId` e, quando necessários, confirmação e justificativa.
+  Contratos Zod estritos validam entrada e resposta, inclusive produto e versão
+  solicitados; o frontend não envia preço, resultado ou snapshot. A resposta
+  idempotente é exibida como confirmação do estado pelo servidor, sem afirmar
+  que ocorreu uma nova transição. Falhas mantêm o diálogo e o rascunho.
+- Sucesso invalida resumo comercial, consultas de produtos e o prefixo de listas
+  e detalhes de versões. Não altera cache histórico congelado nem composição;
+  a confirmação de simulação anterior é descartada para impedir criação de
+  versão baseada no preço antigo. Não há retry automático da mutation.
+- Validação executada: 356 testes web em 52 arquivos; typecheck, lint, test e
+  build da web e da raiz aprovados. Os pipelines raiz aprovaram 604 testes
+  (77 pacote, 171 API, 356 web). Integração com orçamentos/pedidos e acabamento
+  integral do Marco 4E permanecem pendentes. Nenhum banco foi usado.
+
+### Revisão crítica do Marco 4D.4 — 28/10/2026
+
+- A justificativa permanecia em `mutation.variables` do TanStack Query após a
+  resposta. A adoção agora usa estado local ao diálogo, sem criar entrada no
+  `MutationCache`; o texto continua editável em erro e é descartado após
+  sucesso ou fechamento. O restante das mutations não foi alterado.
+- Falhas de rede, respostas 2xx incompatíveis e erros 5xx deixam o resultado da
+  transação desconhecido. Nesses casos, a web invalida resumo, listas de
+  produtos, detalhe do produto original e versões mesmo após desmontagem,
+  preserva o diálogo e oferece verificação explícita ou nova tentativa. A
+  confirmação antiga da simulação é descartada também nesses cenários.
+- Uma resposta tardia da adoção não altera a nova seleção; uma simulação
+  iniciada antes da adoção não restaura autorização para criar versão ao
+  terminar depois. Retries idempotentes de uma versão abaixo do mínimo já
+  indicada como adotada usam apenas `versionId`; novas transições exigem
+  confirmação e justificativa, verificadas pelo backend.
+- Testes direcionados da revisão: 65 aprovados em dois arquivos. A suíte web
+  oficial aprovou 361 testes em 52 arquivos e a raiz aprovou 609 testes (77
+  pacote, 171 API e 361 web), além de typecheck, lint e build. Nenhum banco,
+  backend, schema, migration, fórmula ou dependência foi alterado ou usado.

@@ -69,6 +69,8 @@ export function ProductPricingPage() {
             productId={productId}
             canEdit={permissions.editComposition}
             canSimulate={permissions.simulatePricing}
+            canAdopt={permissions.adoptPricing}
+            canAdoptBelowMinimum={permissions.adoptBelowMinimum}
           />
         </Suspense>
       )}

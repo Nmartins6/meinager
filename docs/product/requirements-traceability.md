@@ -182,6 +182,26 @@ aprovou 338 testes em 50 arquivos, e a raiz aprovou 586 testes. O estado de
 `PREC-CA-038` permanece `IMPLEMENTED`; adoção web, orçamentos e pedidos não foram
 promovidos.
 
+Marco 4D.4 implementado em 27/10/2026. A web permite adoção explícita de versão
+finalizada pelo histórico, com confirmação e justificativa abaixo do mínimo
+restritas a OWNER/ADMIN. OPERATIONS pode adotar versões normais; FINANCE mantém
+somente leitura e VIEWER não consulta dados internos. Contratos runtime validam
+entrada, resposta e identificadores; a mutation invalida resumo, produtos e
+projeção dinâmica de versões sem alterar cache histórico ou rascunho. A suíte
+web aprovou 356 testes em 52 arquivos e os pipelines raiz aprovaram 604 testes.
+Integrações comerciais e Marco 4E permanecem pendentes; seus estados não foram
+promovidos.
+
+Revisão crítica do Marco 4D.4 em 28/10/2026: a justificativa não fica mais em
+`mutation.variables`; a adoção não cria entrada no `MutationCache`. Resultado
+desconhecido por falha de rede, resposta 2xx inválida ou erro 5xx força
+releitura do estado comercial sem afirmar rollback, inclusive após desmontagem.
+Uma simulação anterior não volta a autorizar criação de versão após adoção.
+Retry idempotente da versão abaixo do mínimo já adotada preserva a semântica
+do backend. A suíte web aprovou 361 testes em 52 arquivos e a raiz aprovou 609
+testes. Estados dos requisitos de integração comercial e Marco 4E não foram
+promovidos.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.
@@ -392,13 +412,13 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Preço adotado
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                     | Implementação esperada                       |
-| ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `PREC-CA-029` e `PREC-CA-031` | `IMPLEMENTED` | A versão sugerida ou personalizada é validada e adotada atomicamente; o produto recebe preço e ponteiro com auditoria | Comprovado por unitários e E2E do Marco 3D.1 |
-| `PREC-CA-030` e `PREC-CA-032` | `PARTIAL`     | Criação de versão recalcula preços personalizados; adoção usa sua análise e classificação congeladas                  | Exposição e adoção pela interface pendentes  |
-| `PREC-CA-033`                 | `IMPLEMENTED` | Somente OWNER/ADMIN confirmam preço abaixo do mínimo, com confirmação e justificativa; OPERATIONS recebe 403          | Comprovado por unitários e E2E               |
-| `PREC-CA-034`                 | `PARTIAL`     | Simulação e versão não alteram preço; edição comum omite `salePrice`; resumo e ação manual são explícitos na web      | Adoção pela interface permanece pendente     |
-| `PREC-RN-028` a `PREC-RN-031` | `PARTIAL`     | Backend analisa preço personalizado, congela a memória e adota exatamente `analyzedPrice`, inclusive abaixo do mínimo | Fluxo e alertas da interface pendentes       |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                            | Implementação esperada                                          |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `PREC-CA-029` e `PREC-CA-031` | `IMPLEMENTED` | A versão sugerida ou personalizada é validada e adotada atomicamente; o produto recebe preço e ponteiro com auditoria                        | Comprovado por unitários e E2E do Marco 3D.1                    |
+| `PREC-CA-030` e `PREC-CA-032` | `PARTIAL`     | Criação de versão recalcula preços personalizados; adoção usa sua análise e classificação congeladas                                         | Exposição e adoção pela interface pendentes                     |
+| `PREC-CA-033`                 | `IMPLEMENTED` | Somente OWNER/ADMIN confirmam preço abaixo do mínimo, com confirmação e justificativa; OPERATIONS recebe 403                                 | Comprovado por unitários e E2E                                  |
+| `PREC-CA-034`                 | `PARTIAL`     | Simulação e versão não alteram preço; edição comum omite `salePrice`; resumo e ação manual são explícitos na web                             | Adoção pela interface permanece pendente                        |
+| `PREC-RN-028` a `PREC-RN-031` | `PARTIAL`     | Backend analisa preço personalizado e adota `analyzedPrice`; a web confirma adoção, exige justificativa abaixo do mínimo e preserva rascunho | Integração comercial e validação integral do Marco 4E pendentes |
 
 ### Decomposição e explicação
 
@@ -481,11 +501,11 @@ renderiza coluna, valor, placeholder ou indicação de custo para `VIEWER`.
 
 ### Interface
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                           | Implementação esperada                      |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `PREC-CA-054` a `PREC-CA-057` | `PARTIAL`     | Resumo, formulários, prévia e histórico diferenciam entradas, resultados, mínimo, sugerido, preço atual, avisos, erros e estados acessíveis | Adoção pela interface ainda pendente        |
-| Recálculo local               | `IMPLEMENTED` | Web consome o pacote compartilhado, recalcula sem rede e possui prova síncrona representativa abaixo de 100 ms                              | Resultado local não é autoridade financeira |
-| Validação autoritativa        | `PARTIAL`     | Simulação e criação de versão são acionadas pela web sem enviar resultado do cliente; backend também valida adoção                          | Adoção pela interface pendente              |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                      | Implementação esperada                                |
+| ----------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `PREC-CA-054` a `PREC-CA-057` | `PARTIAL`     | Resumo, formulários, prévia, histórico e diálogo de adoção diferenciam mínimo, preço analisado, papéis, confirmação e erros acessíveis | Acabamento e validação integral do Marco 4E pendentes |
+| Recálculo local               | `IMPLEMENTED` | Web consome o pacote compartilhado, recalcula sem rede e possui prova síncrona representativa abaixo de 100 ms                         | Resultado local não é autoridade financeira           |
+| Validação autoritativa        | `PARTIAL`     | Simulação e criação de versão são acionadas pela web sem enviar resultado do cliente; backend também valida adoção                     | Adoção pela interface pendente                        |
 
 ### Auditoria e segurança
 

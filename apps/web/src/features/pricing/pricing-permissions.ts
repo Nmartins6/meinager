@@ -7,6 +7,8 @@ export interface PricingPermissions {
   setManualPrice: boolean;
   editComposition: boolean;
   simulatePricing: boolean;
+  adoptPricing: boolean;
+  adoptBelowMinimum: boolean;
   viewInternalPricing: boolean;
   viewConfiguration: boolean;
   editConfiguration: boolean;
@@ -20,6 +22,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     setManualPrice: true,
     editComposition: true,
     simulatePricing: true,
+    adoptPricing: true,
+    adoptBelowMinimum: true,
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: true,
@@ -31,6 +35,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     setManualPrice: true,
     editComposition: true,
     simulatePricing: true,
+    adoptPricing: true,
+    adoptBelowMinimum: true,
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: true,
@@ -42,6 +48,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     setManualPrice: false,
     editComposition: true,
     simulatePricing: true,
+    adoptPricing: true,
+    adoptBelowMinimum: false,
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: false,
@@ -53,6 +61,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     setManualPrice: false,
     editComposition: false,
     simulatePricing: false,
+    adoptPricing: false,
+    adoptBelowMinimum: false,
     viewInternalPricing: true,
     viewConfiguration: true,
     editConfiguration: false,
@@ -64,6 +74,8 @@ export const pricingPermissions: Record<OrganizationRole, PricingPermissions> = 
     setManualPrice: false,
     editComposition: false,
     simulatePricing: false,
+    adoptPricing: false,
+    adoptBelowMinimum: false,
     viewInternalPricing: false,
     viewConfiguration: false,
     editConfiguration: false,
@@ -79,6 +91,8 @@ export function getPricingPermissions(role: OrganizationRole | undefined): Prici
       setManualPrice: false,
       editComposition: false,
       simulatePricing: false,
+      adoptPricing: false,
+      adoptBelowMinimum: false,
       viewInternalPricing: false,
       viewConfiguration: false,
       editConfiguration: false,

@@ -14,6 +14,7 @@ import type { PricingComposition } from '@/features/pricing/pricing-composition-
 import type { PricingConfiguration } from '@/features/pricing/pricing-configuration-contracts';
 import type { PricingProfileItem } from '@/features/pricing/pricing-profiles-contracts';
 import { pricingSimulationResponseSchema } from '@/features/pricing/pricing-simulation-contracts';
+import { pricingQueryKeys } from '@/features/pricing/pricing-query-keys';
 import { pricingVersionFixture } from '@/features/pricing/pricing-versions-test-fixtures';
 
 import { ProductPricingPage } from './product-pricing-page';
@@ -216,6 +217,10 @@ interface FetchOptions {
   onVersionPost?: (body: Record<string, unknown>, call: number) => Response | Promise<Response>;
   onVersionList?: (page: number) => Response;
   onVersionDetail?: (versionId: string) => Response;
+  onAdoptionPost?: (
+    body: Record<string, unknown>,
+    call: number,
+  ) => Response | undefined | Promise<Response | undefined>;
 }
 
 function versionForPage() {
@@ -236,6 +241,65 @@ function versionForPage() {
           revision: composition.revision,
         },
       },
+    },
+  };
+}
+
+function listedVersion(overrides: Record<string, string | boolean> = {}) {
+  const {
+    id,
+    number,
+    compositionRevision,
+    minimumPriceCommercial,
+    suggestedPriceCommercial,
+    analyzedPrice,
+    classification,
+    formulaVersion,
+    snapshotSchemaVersion,
+    currency,
+    finalizedAt,
+    createdByUserId,
+    createdAt,
+  } = versionForPage();
+  return {
+    id,
+    number,
+    compositionRevision,
+    minimumPriceCommercial,
+    suggestedPriceCommercial,
+    analyzedPrice,
+    classification,
+    formulaVersion,
+    snapshotSchemaVersion,
+    currency,
+    finalizedAt,
+    createdByUserId,
+    createdAt,
+    isAdopted: false,
+    ...overrides,
+  };
+}
+
+function adoptionSuccessBody() {
+  return {
+    product: {
+      id: productId,
+      currency: 'BRL',
+      salePrice: '12.5',
+      adoptedPricingVersionId: versionForPage().id,
+    },
+    adoption: {
+      id: '8f5f68d7-54cb-4e48-8edc-9ff7a08a0474',
+      productId,
+      versionId: versionForPage().id,
+      previousVersionId: null,
+      previousPrice: null,
+      newPrice: '12.5',
+      classification: 'DESIRED_MARGIN_MET',
+      belowMinimumConfirmed: false,
+      justification: null,
+      createdByUserId: userId,
+      createdAt: timestamp,
     },
   };
 }
@@ -362,6 +426,7 @@ function setupFetch(options: FetchOptions = {}) {
   let linkedProfileGets = 0;
   let simulationPosts = 0;
   let versionPosts = 0;
+  let adoptionPosts = 0;
   let hasComposition = options.initialComposition !== null;
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -388,6 +453,13 @@ function setupFetch(options: FetchOptions = {}) {
       return (
         (await options.onSimulationPost?.(body ?? {}, simulationPosts)) ??
         jsonResponse(authoritativeSimulation(body ?? {}))
+      );
+    }
+    if (url.pathname === `/api/pricing/products/${productId}/adoptions` && method === 'POST') {
+      adoptionPosts += 1;
+      return (
+        (await options.onAdoptionPost?.(body ?? {}, adoptionPosts)) ??
+        jsonResponse(adoptionSuccessBody(), 201)
       );
     }
     if (url.pathname === `/api/pricing/products/${productId}/versions` && method === 'GET') {
@@ -1722,5 +1794,360 @@ describe('ProductPricingPage composition editor', () => {
     expect(
       requested.filter(({ path, method }) => path.endsWith('/versions') && method === 'POST'),
     ).toHaveLength(1);
+  });
+});
+
+describe('adoption from pricing history', () => {
+  it.each(['OWNER', 'ADMIN', 'OPERATIONS'] as const)(
+    'lets %s confirm a normal version once without saving composition',
+    async (role) => {
+      const user = userEvent.setup();
+      let resolveAdoption!: (response: Response) => void;
+      const pending = new Promise<Response>((resolve) => {
+        resolveAdoption = resolve;
+      });
+      const { requested } = setupFetch({
+        role,
+        onVersionList: () =>
+          jsonResponse({
+            data: [listedVersion()],
+            pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+          }),
+        onAdoptionPost: () => pending,
+      });
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: 'Adotar versão 4' }));
+      expect(await screen.findByRole('dialog', { name: 'Adotar versão 4' })).toBeVisible();
+      await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+      expect(screen.getByRole('button', { name: 'Confirmando...' })).toBeDisabled();
+      expect(requested.filter((item) => item.path.endsWith('/adoptions'))).toHaveLength(1);
+      resolveAdoption(jsonResponse(adoptionSuccessBody(), 201));
+      expect(await screen.findByText(/O servidor confirmou que o preço atual/)).toBeVisible();
+      expect(requested.filter((item) => item.path.endsWith('/adoptions'))).toHaveLength(1);
+      expect(requested.find((item) => item.path.endsWith('/adoptions'))?.body).toEqual({
+        versionId: versionForPage().id,
+      });
+      expect(requested.filter((item) => ['PUT', 'PATCH'].includes(item.method))).toHaveLength(0);
+      expect(
+        requested.some((item) => /\/orders|\/quotes|\/inventory|\/financial/.test(item.path)),
+      ).toBe(false);
+    },
+  );
+
+  it.each(['OWNER', 'ADMIN'] as const)(
+    'requires %s to confirm and justify a below-minimum adoption',
+    async (role) => {
+      const user = userEvent.setup();
+      const { requested } = setupFetch({
+        role,
+        onVersionList: () =>
+          jsonResponse({
+            data: [listedVersion({ classification: 'BELOW_MINIMUM' })],
+            pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+          }),
+      });
+      const { client } = renderPage();
+      await user.click(await screen.findByRole('button', { name: 'Adotar versão 4' }));
+      await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+      expect(screen.getByText('Confirme a adoção e informe uma justificativa.')).toBeVisible();
+      expect(requested.filter((item) => item.path.endsWith('/adoptions'))).toHaveLength(0);
+      await user.click(screen.getByRole('checkbox', { name: /Confirmo explicitamente/ }));
+      await user.type(screen.getByLabelText('Justificativa'), '  Motivo  ');
+      await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+      await waitFor(() =>
+        expect(requested.filter((item) => item.path.endsWith('/adoptions'))).toHaveLength(1),
+      );
+      expect(requested.find((item) => item.path.endsWith('/adoptions'))?.body).toEqual({
+        versionId: versionForPage().id,
+        belowMinimumConfirmed: true,
+        justification: 'Motivo',
+      });
+      expect(await screen.findByText(/O servidor confirmou que o preço atual/)).toBeVisible();
+      expect(client.getMutationCache().getAll()).toEqual([]);
+    },
+  );
+
+  it('rechecks an already adopted below-minimum version without new evidence', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion({ classification: 'BELOW_MINIMUM', isAdopted: true })],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+      onAdoptionPost: () =>
+        jsonResponse({
+          ...adoptionSuccessBody(),
+          adoption: {
+            ...adoptionSuccessBody().adoption,
+            classification: 'BELOW_MINIMUM',
+            belowMinimumConfirmed: true,
+            justification: 'Motivo original',
+          },
+        }),
+    });
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Adotar versão 4' }));
+    expect(screen.getByText(/já consta como origem do preço atual/)).toBeVisible();
+    expect(screen.queryByLabelText('Justificativa')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(await screen.findByText(/O servidor confirmou que o preço atual/)).toBeVisible();
+    expect(requested.find((item) => item.path.endsWith('/adoptions'))?.body).toEqual({
+      versionId: versionForPage().id,
+    });
+  });
+
+  it('discards a canceled below-minimum justification without retaining mutation variables', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion({ classification: 'BELOW_MINIMUM' })],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+    });
+    const { client } = renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Adotar versão 4' }));
+    await user.type(screen.getByLabelText('Justificativa'), 'Motivo privado');
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(client.getMutationCache().getAll()).toEqual([]);
+    await user.click(screen.getByRole('button', { name: 'Adotar versão 4' }));
+    expect(screen.getByLabelText('Justificativa')).toHaveValue('');
+    expect(screen.getByRole('checkbox', { name: /Confirmo explicitamente/ })).not.toBeChecked();
+    expect(requested.some((item) => item.path.endsWith('/adoptions'))).toBe(false);
+  });
+
+  it('does not expose adoption to FINANCE or VIEWER', async () => {
+    const { requested } = setupFetch({
+      role: 'FINANCE',
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion()],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+    });
+    renderPage();
+    expect(await screen.findByText('Histórico de versões')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Adotar versão/ })).not.toBeInTheDocument();
+    expect(requested.some((item) => item.path.endsWith('/adoptions'))).toBe(false);
+  });
+
+  it('keeps the dialog and a dirty composition draft after an error, then retries explicitly', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion()],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+      onAdoptionPost: (_body, call) =>
+        call === 1
+          ? jsonResponse(
+              { statusCode: 409, code: 'PRICING_CONCURRENT_MODIFICATION', message: 'Conflito.' },
+              409,
+            )
+          : undefined,
+    });
+    renderPage();
+    const quantity = await screen.findByLabelText('Quantidade');
+    await user.clear(quantity);
+    await user.type(quantity, '2');
+    await user.click(screen.getByRole('button', { name: 'Adotar versão 4' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(await screen.findByText(/O preço mudou simultaneamente/)).toBeVisible();
+    expect(quantity).toHaveValue('2');
+    expect(screen.getByRole('button', { name: 'Salvar versão', hidden: true })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(await screen.findByText(/O servidor confirmou que o preço atual/)).toBeVisible();
+    expect(quantity).toHaveValue('2');
+    expect(requested.filter((item) => item.path.endsWith('/adoptions'))).toHaveLength(2);
+    expect(
+      requested.filter((item) => item.path.endsWith('/composition') && item.method === 'PUT'),
+    ).toHaveLength(0);
+  });
+
+  it('hides below-minimum action from OPERATIONS', async () => {
+    const { requested } = setupFetch({
+      role: 'OPERATIONS',
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion({ classification: 'BELOW_MINIMUM' })],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+    });
+    renderPage();
+    expect(await screen.findByText('Histórico de versões')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Adotar versão/ })).not.toBeInTheDocument();
+    expect(requested.some((item) => item.path.endsWith('/adoptions'))).toBe(false);
+  });
+
+  it('cancels without a request and explains an out-of-range historical price', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion({ analyzedPrice: '1234567890123.00' })],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+    });
+    renderPage();
+    const trigger = await screen.findByRole('button', { name: 'Adotar versão 4' });
+    await user.click(trigger);
+    expect(screen.getByText(/não possui preço analisado representável/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Confirmar adoção' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('dialog', { name: 'Adotar versão 4' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(requested.some((item) => item.path.endsWith('/adoptions'))).toBe(false);
+  });
+
+  it('does not present a network failure as a rollback and allows an explicit retry', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion()],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+      onAdoptionPost: (_body, call) => {
+        if (call === 1) throw new Error('socket closed');
+        return undefined;
+      },
+    });
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Adotar versão 4' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(
+      await screen.findByText(/Não foi possível confirmar o resultado da operação/),
+    ).toBeVisible();
+    expect(screen.queryByText('socket closed')).not.toBeInTheDocument();
+    expect(requested.filter((item) => item.path.endsWith('/adoptions'))).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(await screen.findByText(/O servidor confirmou que o preço atual/)).toBeVisible();
+    expect(requested.filter((item) => item.path.endsWith('/adoptions'))).toHaveLength(2);
+  });
+
+  it('expires a prior authoritative simulation when adoption succeeds', async () => {
+    const user = userEvent.setup();
+    setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion()],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salvar versão' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Adotar versão 4' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(await screen.findByText(/O servidor confirmou que o preço atual/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salvar versão', hidden: true })).toBeDisabled();
+  });
+
+  it('ignores a simulation started before adoption when its response arrives afterward', async () => {
+    const user = userEvent.setup();
+    let resolveSimulation!: (response: Response) => void;
+    let requestBody: Record<string, unknown> = {};
+    const pending = new Promise<Response>((resolve) => {
+      resolveSimulation = resolve;
+    });
+    setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion()],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+      onSimulationPost: (body) => {
+        requestBody = body;
+        return pending;
+      },
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(screen.getByRole('button', { name: 'Confirmando simulação...' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Adotar versão 4' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(await screen.findByText(/O servidor confirmou que o preço atual/)).toBeVisible();
+    await act(async () => {
+      resolveSimulation(jsonResponse(authoritativeSimulation(requestBody)));
+    });
+    expect(
+      screen.queryByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Salvar versão', hidden: true })).toBeDisabled();
+  });
+
+  it('shows a safe error for an invalid successful response and leaves the dialog open', async () => {
+    const user = userEvent.setup();
+    const { requested } = setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion()],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+      onAdoptionPost: () => jsonResponse({ ...adoptionSuccessBody(), sql: 'SELECT secret' }, 201),
+    });
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmar simulação no servidor' }),
+    );
+    expect(
+      await screen.findByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salvar versão' })).toBeEnabled();
+    await user.click(await screen.findByRole('button', { name: 'Adotar versão 4' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(
+      await screen.findByText(/Não foi possível confirmar o resultado da operação/),
+    ).toBeVisible();
+    expect(screen.queryByText('SELECT secret')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Adotar versão 4' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salvar versão', hidden: true })).toBeDisabled();
+    await waitFor(() =>
+      expect(requested.filter((item) => item.path.endsWith('/summary')).length).toBeGreaterThan(1),
+    );
+    expect(screen.getByRole('button', { name: 'Verificar preço atual' })).toBeVisible();
+  });
+
+  it('ignores a successful adoption response that arrives after leaving this product', async () => {
+    const user = userEvent.setup();
+    let resolveAdoption!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      resolveAdoption = resolve;
+    });
+    const { requested } = setupFetch({
+      onVersionList: () =>
+        jsonResponse({
+          data: [listedVersion()],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        }),
+      onAdoptionPost: () => pending,
+    });
+    const { router, client } = renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Adotar versão 4' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar adoção' }));
+    expect(requested.filter((item) => item.path.endsWith('/adoptions'))).toHaveLength(1);
+    await act(async () => {
+      await router.navigate('/fora');
+    });
+    expect(screen.getByText('Página externa')).toBeVisible();
+    await act(async () => {
+      resolveAdoption(jsonResponse(adoptionSuccessBody(), 201));
+    });
+    expect(screen.getByText('Página externa')).toBeVisible();
+    expect(screen.queryByText(/O servidor confirmou que o preço atual/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        client.getQueryState(pricingQueryKeys.products.summary(productId))?.isInvalidated,
+      ).toBe(true),
+    );
   });
 });

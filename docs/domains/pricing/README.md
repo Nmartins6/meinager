@@ -157,8 +157,13 @@ com a prévia e nunca salva composição, cria versão ou altera preço. O Marco
 acrescentou criação explícita de versões finalizadas somente após simulação
 `PERSISTED` vigente e em paridade, além de lista paginada e detalhe histórico
 somente leitura. A lista e o detalhe exibem `isAdopted` recebido da API, sem
-inferir adoção pelo preço. A adoção na web e a integração da origem comercial
-com orçamentos e pedidos continuam pendentes.
+inferir adoção pelo preço. O Marco 4D.4 acrescentou a adoção explícita a partir
+do histórico: o backend determina o preço pelo `analyzedPrice` congelado;
+OWNER/ADMIN/OPERATIONS podem adotar normalmente, e somente OWNER/ADMIN podem
+confirmar uma versão abaixo do mínimo com justificativa. O resultado atualiza
+resumo comercial e projeção dinâmica `isAdopted`, sem substituir um rascunho da
+composição. A integração da origem comercial com orçamentos e pedidos continua
+pendente.
 
 O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
 10/10/2026 sem implementar código. O Marco 4B.1 concluiu o pacote puro do motor,
@@ -189,7 +194,8 @@ internos de versões. O backend o calcula do ponteiro atual do produto por
 projeção relacional, sem persistência, escrita, auditoria ou alteração do
 snapshot; `VIEWER` e o resumo comercial não recebem o campo. A alteração manual
 do preço limpa o ponteiro e faz todas as versões retornarem `false`. A interface
-de adoção permanece pendente no Marco 4D.4.
+de adoção foi implementada no Marco 4D.4, mantendo a projeção dinâmica da API
+como fonte do indicador no histórico.
 
 ## Processo de alteração
 

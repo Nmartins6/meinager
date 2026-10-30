@@ -21,10 +21,14 @@ export function PricingCompositionEditor({
   productId,
   canEdit,
   canSimulate,
+  canAdopt,
+  canAdoptBelowMinimum,
 }: {
   productId: string;
   canEdit: boolean;
   canSimulate: boolean;
+  canAdopt: boolean;
+  canAdoptBelowMinimum: boolean;
 }) {
   const queryClient = useQueryClient();
   const compositionQuery = usePricingCompositionQuery(productId, true);
@@ -172,6 +176,8 @@ export function PricingCompositionEditor({
         composition={composition}
         canEdit={canEdit}
         canSimulate={canSimulate}
+        canAdopt={canAdopt}
+        canAdoptBelowMinimum={canAdoptBelowMinimum}
         profiles={profilesQuery.data}
         catalogProducts={catalogProducts}
         configuration={configurationQuery.data}

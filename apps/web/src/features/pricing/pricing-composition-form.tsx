@@ -87,6 +87,8 @@ interface PricingCompositionFormProps {
   composition: PricingComposition | null;
   canEdit: boolean;
   canSimulate: boolean;
+  canAdopt: boolean;
+  canAdoptBelowMinimum: boolean;
   profiles: PricingProfileItem[];
   catalogProducts: PricingCatalogProductOption[];
   configuration?: PricingConfiguration;
@@ -223,6 +225,8 @@ export function PricingCompositionForm({
   composition,
   canEdit,
   canSimulate,
+  canAdopt,
+  canAdoptBelowMinimum,
   profiles,
   catalogProducts,
   configuration,
@@ -744,7 +748,17 @@ export function PricingCompositionForm({
           </CardContent>
         </Card>
       )}
-      <PricingVersionsPanel productId={productId} createdVersionId={createdVersionId} />
+      <PricingVersionsPanel
+        productId={productId}
+        createdVersionId={createdVersionId}
+        canAdopt={canAdopt}
+        canAdoptBelowMinimum={canAdoptBelowMinimum}
+        onPriceMayHaveChanged={() => {
+          simulationGeneration.current += 1;
+          setAuthoritativeSimulation(undefined);
+          simulationMutation.reset();
+        }}
+      />
 
       <Card>
         <CardHeader>
