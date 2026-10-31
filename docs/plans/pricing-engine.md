@@ -112,6 +112,10 @@ fontes oficiais.
       (Marco 4D.3, 26/10/2026).
 - [x] Implementar adoção explícita de versão na web, com confirmação especial
       abaixo do mínimo (Marco 4D.4, 27/10/2026).
+- [x] Executar revisão integrada por código e testes de componentes e corrigir
+      erros de resposta e rolagem de diálogos (Marco 4E.1, 31/10/2026).
+- [ ] Verificar responsividade e acessibilidade em navegador real e executar
+      fluxo web → API → PostgreSQL em infraestrutura descartável.
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -129,6 +133,21 @@ Cada descoberta deve conter:
 - descrição;
 - evidência;
 - impacto no plano.
+
+### Marco 4E.1 — Revisão integrada da interface — 31/10/2026
+
+- As leituras de configuração, perfis, composição e resumo comercial exibiam a
+  mensagem técnica do validador quando uma resposta HTTP 2xx era incompatível
+  com o contrato. A fronteira web agora conserva a validação estrita e apresenta
+  uma mensagem genérica; quatro testes de regressão cobrem os endpoints.
+- Os diálogos de adoção, detalhe histórico e descarte da composição não tinham
+  limite de altura e rolagem interna em viewport pequena. O CSS agora limita a
+  altura à viewport, permite rolagem e quebra texto longo. A eficácia visual em
+  360 px, 768 px, 1280 px e zoom de 200% ainda precisa ser medida em navegador.
+- Não há executável de navegador nem Playwright/Puppeteer instalado no workspace.
+  O runner atual usa Vitest com JSDOM; seus testes provam comportamento de
+  componentes com mocks, não inspeção visual nem fluxo real com PostgreSQL.
+  Nenhuma dependência ou banco foi adicionado ou utilizado nesta revisão.
 
 ### Marco 4D.3 — Contrato histórico da API — 26/10/2026
 
@@ -1002,6 +1021,14 @@ Após sucesso, outra versão exige nova simulação explícita. A criação inva
 apenas listas de versões do produto; detalhes históricos permanecem no cache e
 `isAdopted` é lido dinamicamente dos GETs. A interface não oferece adoção.
 
+### Revisão web — Marco 4E.1
+
+Respostas de precificação incompatíveis com schemas runtime continuam sendo
+rejeitadas, mas sem exibir diagnósticos do validador na interface. Diálogos
+extensos devem permitir rolagem dentro da viewport. A validação visual e o
+fluxo integrado com banco descartável permanecem etapas separadas; o Marco 4E
+não está concluído.
+
 ### Snapshot runtime e versões — Marco 3C.3
 
 O snapshot v1 é um contrato persistido estrito, validado antes da gravação e na
@@ -1858,6 +1885,9 @@ Nenhuma interface ou dependência foi implementada.
   adoção na interface permanecem nos Marcos 4D.2–4D.4.
 - **Marco 4E — Acabamento e validação:** responsividade, acessibilidade, estados,
   teste visual e fluxo integral por papel.
+- **Marco 4E.1 — Revisão integrada por código e componentes (31/10/2026):**
+  contratos e estados revisados, correções pontuais de mensagem segura e
+  rolagem de diálogos; inspeção em navegador e fluxo integrado real pendentes.
 
 ### Experiência esperada
 
@@ -2836,3 +2866,20 @@ git status --short
   oficial aprovou 361 testes em 52 arquivos e a raiz aprovou 609 testes (77
   pacote, 171 API e 361 web), além de typecheck, lint e build. Nenhum banco,
   backend, schema, migration, fórmula ou dependência foi alterado ou usado.
+
+### Marco 4E.1 — revisão por código e componentes — 31/10/2026
+
+- Quatro testes novos comprovam que respostas 2xx inválidas de resumo,
+  configuração, composição e perfis são rejeitadas com mensagem segura. Foram
+  mantidos os schemas runtime estritos e a validação da API como autoridade.
+- Diálogos de adoção, detalhe e descarte da composição receberam limite de
+  altura e rolagem local para evitar corte do conteúdo em viewport pequena.
+  Esta correção de CSS ainda requer inspeção em navegador real.
+- Testes direcionados: 97 aprovados em quatro arquivos. A suíte web oficial
+  aprovou 365 testes em 53 arquivos; a raiz aprovou 613 testes (77 motor, 171
+  API e 365 web). Typecheck, lint e build da web e da raiz passaram.
+- A evidência desta rodada é de código e componentes com mocks. Não houve
+  inspeção em navegador nem fluxo real web → API → PostgreSQL. O próximo recorte
+  do Marco 4E deve validar 360/768/1280 px, zoom de 200%, teclado/foco e o
+  percurso integrado em infraestrutura descartável; o Marco 4E permanece
+  aberto. Orçamentos e pedidos continuam no Marco 5.

@@ -6,13 +6,14 @@ import {
   type PricingComposition,
   type PutPricingCompositionInput,
 } from './pricing-composition-contracts';
+import { parsePricingResponse } from './parse-pricing-response';
 
 export async function getPricingComposition(productId: string): Promise<PricingComposition | null> {
   try {
     const response = await apiRequest(
       `/pricing/products/${encodeURIComponent(productId)}/composition`,
     );
-    return pricingCompositionSchema.parse(await response.json());
+    return parsePricingResponse(response, pricingCompositionSchema);
   } catch (error) {
     if (
       error instanceof ApiError &&
@@ -38,5 +39,5 @@ export async function putPricingComposition(
       body: JSON.stringify(parsed),
     },
   );
-  return pricingCompositionSchema.parse(await response.json());
+  return parsePricingResponse(response, pricingCompositionSchema);
 }

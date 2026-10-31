@@ -6,11 +6,12 @@ import {
   type ManualProductPriceInput,
   type PricingProductSummary,
 } from './pricing-contracts';
+import { parsePricingResponse } from './parse-pricing-response';
 
 export async function getPricingProductSummary(productId: string): Promise<PricingProductSummary> {
   const response = await apiRequest(`/pricing/products/${encodeURIComponent(productId)}/summary`);
 
-  return pricingProductSummarySchema.parse(await response.json());
+  return parsePricingResponse(response, pricingProductSummarySchema);
 }
 
 export async function setManualProductPrice(

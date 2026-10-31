@@ -13,6 +13,7 @@ import {
   type UpdatePricingProfileInput,
   updatePricingProfileInputSchema,
 } from './pricing-profiles-contracts';
+import { parsePricingResponse } from './parse-pricing-response';
 
 export async function listPricingProfiles(
   filters: PricingProfileListFilters,
@@ -22,12 +23,12 @@ export async function listPricingProfiles(
   parameters.set('pageSize', String(filters.pageSize ?? 20));
   if (filters.isActive !== undefined) parameters.set('isActive', String(filters.isActive));
   const response = await apiRequest(`/pricing/profiles?${parameters.toString()}`);
-  return pricingProfilesListSchema.parse(await response.json());
+  return parsePricingResponse(response, pricingProfilesListSchema);
 }
 
 export async function getPricingProfile(profileId: string): Promise<PricingProfileDetail> {
   const response = await apiRequest(`/pricing/profiles/${profileId}`);
-  return pricingProfileDetailSchema.parse(await response.json());
+  return parsePricingResponse(response, pricingProfileDetailSchema);
 }
 
 export async function createPricingProfile(
@@ -39,7 +40,7 @@ export async function createPricingProfile(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(parsed),
   });
-  return pricingProfileDetailSchema.parse(await response.json());
+  return parsePricingResponse(response, pricingProfileDetailSchema);
 }
 
 export async function updatePricingProfile(
@@ -52,7 +53,7 @@ export async function updatePricingProfile(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(parsed),
   });
-  return pricingProfileDetailSchema.parse(await response.json());
+  return parsePricingResponse(response, pricingProfileDetailSchema);
 }
 
 export async function deactivatePricingProfile(
@@ -65,5 +66,5 @@ export async function deactivatePricingProfile(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(parsed),
   });
-  return pricingProfileDetailSchema.parse(await response.json());
+  return parsePricingResponse(response, pricingProfileDetailSchema);
 }

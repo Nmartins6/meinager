@@ -6,10 +6,11 @@ import {
   type UpdatePricingConfigurationInput,
   updatePricingConfigurationInputSchema,
 } from './pricing-configuration-contracts';
+import { parsePricingResponse } from './parse-pricing-response';
 
 export async function getPricingConfiguration(): Promise<PricingConfiguration> {
   const response = await apiRequest('/pricing/configuration');
-  return pricingConfigurationSchema.parse(await response.json());
+  return parsePricingResponse(response, pricingConfigurationSchema);
 }
 
 export async function updatePricingConfiguration(
@@ -22,5 +23,5 @@ export async function updatePricingConfiguration(
     body: JSON.stringify(parsedInput),
   });
 
-  return pricingConfigurationSchema.parse(await response.json());
+  return parsePricingResponse(response, pricingConfigurationSchema);
 }

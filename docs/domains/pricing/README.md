@@ -197,6 +197,12 @@ do preço limpa o ponteiro e faz todas as versões retornarem `false`. A interfa
 de adoção foi implementada no Marco 4D.4, mantendo a projeção dinâmica da API
 como fonte do indicador no histórico.
 
+O Marco 4E.1 revisou os fluxos web com testes de componentes e tratou respostas
+2xx incompatíveis sem expor diagnósticos do validador. Diálogos longos passaram
+a ter rolagem limitada à viewport. Inspeção visual em navegador e fluxo real
+web → API → PostgreSQL descartável ainda não foram comprovados; o Marco 4E
+permanece aberto.
+
 ## Processo de alteração
 
 Toda mudança em fórmula ou significado financeiro deverá:

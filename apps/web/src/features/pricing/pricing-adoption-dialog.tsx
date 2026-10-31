@@ -123,10 +123,10 @@ export function PricingAdoptionDialog({
     >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/45" />
-        <Dialog.Viewport className="fixed inset-0 z-50 grid place-items-center p-4">
+        <Dialog.Viewport className="fixed inset-0 z-50 grid place-items-center overflow-y-auto p-4">
           <Dialog.Popup
             initialFocus={cancelRef}
-            className="w-full max-w-md rounded-xl bg-background p-6 shadow-xl outline-none"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto break-words rounded-xl bg-background p-6 shadow-xl outline-none"
           >
             <Dialog.Title className="text-lg font-semibold">
               Adotar versão {version.number}
