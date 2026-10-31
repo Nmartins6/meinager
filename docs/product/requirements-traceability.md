@@ -211,6 +211,18 @@ componentes com mocks e inspeção de código; não comprova visual em navegador
 nem fluxo real web → API → PostgreSQL. `PREC-CA-054` a `PREC-CA-057` continuam
 `PARTIAL`, e a integração comercial continua pendente.
 
+Preparação do piloto em 31/10/2026: um teste Playwright em navegador real,
+sem mocks HTTP, percorreu cadastro fictício, precificação, versão, adoção e
+preço manual em PostgreSQL descartável. FINANCE, VIEWER e isolamento entre
+organizações tiveram verificações representativas; 360/768/1280 px e foco do
+detalhe foram exercitados. A evidência está em
+`docs/pilot/casa-nacoli-preparation.md` e não promove o Marco 4E ou requisitos
+de orçamento, pedido, zoom real, fluxo de membros e operação em homologação.
+O teste integrado passou uma vez na execução final; as bases descartáveis da
+execução e da prova de falha foram removidas. As suítes oficiais passaram com
+365 testes web, 171 API e 77 do motor, total de 613. Os estados da matriz não
+foram promovidos por essa amostra.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.

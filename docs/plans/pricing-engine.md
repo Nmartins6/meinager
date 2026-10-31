@@ -114,8 +114,12 @@ fontes oficiais.
       abaixo do mínimo (Marco 4D.4, 27/10/2026).
 - [x] Executar revisão integrada por código e testes de componentes e corrigir
       erros de resposta e rolagem de diálogos (Marco 4E.1, 31/10/2026).
+- [x] Preparar primeiro percurso real do piloto em navegador, API e PostgreSQL
+      descartável, com teste representativo de papéis e larguras 360/768/1280 px
+      (31/10/2026; evidência em `docs/pilot/casa-nacoli-preparation.md`).
 - [ ] Verificar responsividade e acessibilidade em navegador real e executar
-      fluxo web → API → PostgreSQL em infraestrutura descartável.
+      a matriz completa, zoom real de 200% e os demais fluxos web → API →
+      PostgreSQL em infraestrutura descartável.
 - [ ] Implementar a interface web.
 - [ ] Integrar snapshots com orçamentos e pedidos.
 - [ ] Executar validação completa.
@@ -133,6 +137,23 @@ Cada descoberta deve conter:
 - descrição;
 - evidência;
 - impacto no plano.
+
+### Preparação do piloto — 31/10/2026
+
+- Um percurso Playwright real, sem mocks HTTP, passou em API e PostgreSQL
+  descartável. A prova de falha controlada e a execução bem-sucedida removeram
+  suas bases marcadas; o banco normal não recebeu dados de teste. Evidência:
+  `apps/web/test/pilot/` e `docs/pilot/casa-nacoli-preparation.md`.
+- Uma captura real em 360 px revelou corte interno de percentuais extensos na
+  prévia. `PricingResultDetails` passou a quebrar o texto de valores sem mudar
+  cálculo ou arredondamento; o teste de navegador verifica o valor visível nas
+  três larguras. Zoom real de 200% e auditoria visual integral seguem pendentes.
+- O modelo atual representa insumos como `Product` e `CATALOG`, com mesma
+  unidade normalizada e custo efetivo congelado. Não há conversão de unidades,
+  rateio genérico por pedido nem precificação por lote; decisões de arte,
+  prensa e custo do kit MDF estão registradas no documento do piloto.
+- `OrganizationMember` existe, mas a aplicação não possui convite nem aceite
+  para adicionar Carol como ADMIN. Fixtures do E2E não resolvem essa lacuna.
 
 ### Marco 4E.1 — Revisão integrada da interface — 31/10/2026
 
@@ -999,6 +1020,17 @@ rastreabilidade; não representam o estado atual do marco.
   papéis mantêm o contrato anterior.
 
 ## Decisões tomadas
+
+### Primeira automação do piloto — 31/10/2026
+
+O comando `PILOT_TEST_CONFIRM_DISPOSABLE=YES pnpm pilot:test` cria seu próprio
+contêiner PostgreSQL efêmero ligado somente a `127.0.0.1`, bases descartáveis
+marcadas, API e web locais e executa Playwright sem HTTP mocks. Falhas não
+geram trace com credenciais; logs e capturas ficam em `/tmp`. As duas skills
+foram preparadas em
+`docs/agent-skills/`, mas ainda não são descobertas neste agente porque o
+diretório `.agents` está montado somente para leitura. Não foi definida regra
+comercial nova para insumos ou fluxo de convite.
 
 ### Custos fixos
 
@@ -2883,3 +2915,29 @@ git status --short
   do Marco 4E deve validar 360/768/1280 px, zoom de 200%, teclado/foco e o
   percurso integrado em infraestrutura descartável; o Marco 4E permanece
   aberto. Orçamentos e pedidos continuam no Marco 5.
+
+### Preparação do piloto — percurso integrado — 31/10/2026
+
+- O Playwright passou um teste de ponta a ponta com registro, cliente, dois
+  produtos, configuração, perfil, composição `CATALOG` com mão de obra,
+  simulação, versão, adoção, preço manual e `isAdopted=false`. API e banco foram
+  reais; as bases finais e o contêiner efêmero de sufixo
+  `1b74167d975b7ed4` foram removidos. Uma falha forçada após migrations também
+  removeu o contêiner e as bases de sufixo `8f522c92772be0c9`. FINANCE,
+  VIEWER e outra organização tiveram verificações representativas. Capturas de
+  360/768/1280 px ficaram em `/tmp`.
+- Web: 365 testes em 53 arquivos; API: 171 em 21 arquivos; motor: 77.
+  Typecheck, lint, test e build da web e da raiz passaram (613 testes na raiz).
+  O Vitest exclui somente `test/pilot/**`, deixando o Playwright para o
+  runner dedicado. `maxWorkers: 4` e os timeouts existentes foram preservados.
+- O cenário ainda não comprova zoom real de 200%, orçamento, pedido, estoque,
+  financeiro, restauração ou integração completa do piloto. O Marco 4E segue
+  aberto. Requisitos e análise da próxima entrega estão em
+  `docs/pilot/casa-nacoli-preparation.md`.
+- A revisão final comprovou novamente 1 percurso Playwright e uma falha
+  controlada: ambos removeram suas bases e contêineres próprios. Bootstrap e
+  fixtures agora validam o destino descartável, e a prontidão da API é
+  exclusiva da execução. Testes direcionados da página (62) e pipelines raiz
+  passaram com 365 testes web, 171 API e 77 do motor. As decisões confirmadas
+  sobre papéis de Nicolas/Carol, uso local, custos informados por usuários e
+  arte por jogo estão em `docs/pilot/casa-nacoli-preparation.md`.

@@ -30,9 +30,9 @@ function percentage(value: string | null): string {
 
 function ResultValue({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border bg-background p-3">
+    <div className="min-w-0 rounded-lg border bg-background p-3">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-lg font-semibold">{value}</dd>
+      <dd className="mt-1 break-words text-lg font-semibold">{value}</dd>
     </div>
   );
 }

@@ -15,6 +15,7 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "test:e2e": "turbo test:e2e",
+    "pilot:test": "node apps/web/test/pilot/pilot-postgres.cjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:up": "docker compose up -d",
