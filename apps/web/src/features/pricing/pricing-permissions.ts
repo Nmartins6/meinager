@@ -1,6 +1,6 @@
 import type { AuthResponse } from '@/lib/api';
 
-export type OrganizationRole = AuthResponse['organization']['role'];
+export type OrganizationRole = NonNullable<AuthResponse['organization']>['role'];
 
 export interface PricingPermissions {
   viewCommercialSummary: boolean;

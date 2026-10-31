@@ -10,7 +10,10 @@ describe('SessionService', () => {
     session: {
       create: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      update: vi.fn().mockResolvedValue({ contextVersion: 1 }),
+      findFirst: vi.fn(),
     },
+    organizationMember: { findFirst: vi.fn(), findMany: vi.fn() },
   };
 
   const configServiceMock = {
@@ -49,6 +52,7 @@ describe('SessionService', () => {
     expect(prismaMock.session.create).toHaveBeenCalledWith({
       data: {
         userId: 'user-id',
+        activeOrganizationId: null,
         tokenHash: service.hashToken(session.token),
         expiresAt: session.expiresAt,
         ipAddress: '127.0.0.1',
@@ -77,5 +81,75 @@ describe('SessionService', () => {
         revokedAt: expect.any(Date),
       },
     });
+  });
+
+  it('denies an unauthorized organization switch', async () => {
+    prismaMock.organizationMember.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      service.switchOrganization('session', 'user', 'foreign'),
+    ).rejects.toThrow();
+    expect(prismaMock.session.update).not.toHaveBeenCalled();
+  });
+
+  it('switches only the current session after checking an active membership', async () => {
+    prismaMock.organizationMember.findFirst.mockResolvedValueOnce({
+      role: 'ADMIN',
+      organization: { id: 'organization', name: 'Casa', slug: 'casa' },
+    });
+    const result = await service.switchOrganization(
+      'session-a',
+      'user',
+      'organization',
+    );
+    expect(result.role).toBe('ADMIN');
+    expect(result.contextVersion).toBe(1);
+    expect(prismaMock.session.update).toHaveBeenCalledWith({
+      where: {
+        id: 'session-a',
+        userId: 'user',
+        revokedAt: null,
+        expiresAt: { gt: expect.any(Date) },
+      },
+      data: {
+        activeOrganizationId: 'organization',
+        contextVersion: { increment: 1 },
+      },
+      select: { contextVersion: true },
+    });
+  });
+
+  it('rejects a session whose selected membership has been deactivated', async () => {
+    prismaMock.session.findFirst.mockResolvedValueOnce({
+      id: 'session',
+      activeOrganizationId: 'organization',
+      contextVersion: 0,
+      user: { id: 'user', name: 'Name', email: 'user@example.invalid' },
+    });
+    prismaMock.organizationMember.findFirst.mockResolvedValueOnce(null);
+    await expect(service.findAuthenticated('token')).resolves.toBeNull();
+  });
+
+  it('uses the current membership role on every request', async () => {
+    prismaMock.session.findFirst.mockResolvedValue({
+      id: 'session',
+      activeOrganizationId: 'organization',
+      contextVersion: 0,
+      user: { id: 'user', name: 'Name', email: 'user@example.invalid' },
+    });
+    prismaMock.organizationMember.findFirst
+      .mockResolvedValueOnce({
+        role: 'VIEWER',
+        organization: { id: 'organization', name: 'Casa', slug: 'casa' },
+      })
+      .mockResolvedValueOnce({
+        role: 'ADMIN',
+        organization: { id: 'organization', name: 'Casa', slug: 'casa' },
+      });
+    expect((await service.findAuthenticated('token'))?.organization.role).toBe(
+      'VIEWER',
+    );
+    expect((await service.findAuthenticated('token'))?.organization.role).toBe(
+      'ADMIN',
+    );
   });
 });

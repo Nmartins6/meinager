@@ -268,3 +268,234 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
   );
   expect(browserErrors).toEqual([]);
 });
+
+test('convite exige aceite e seleção explícita com contas separadas', async ({ page, browser }) => {
+  const runId = randomBytes(5).toString('hex');
+  const ownerEmail = `owner-${runId}@example.invalid`;
+  const invitedEmail = `admin-${runId}@example.invalid`;
+  const newEmail = `new-${runId}@example.invalid`;
+  const password = `Pilot-${runId}-Pass!`;
+  const organizationName = `Casa Nacoli fictícia ${runId}`;
+  const otherOrganizationName = `Outra empresa fictícia ${runId}`;
+
+  async function register(
+    currentPage: typeof page,
+    name: string,
+    email: string,
+    organization: string,
+  ) {
+    await currentPage.goto('/cadastro');
+    await currentPage.getByLabel('Nome completo').fill(name);
+    await currentPage.getByLabel('E-mail').fill(email);
+    await currentPage.getByLabel('Senha', { exact: true }).fill(password);
+    await currentPage.getByLabel('Confirme a senha').fill(password);
+    await currentPage.getByLabel('Nome da empresa').fill(organization);
+    await currentPage.getByRole('button', { name: 'Criar minha conta' }).click();
+    await expect(currentPage).toHaveURL(/\/app\/?$/);
+  }
+
+  await register(page, 'Proprietário fictício', ownerEmail, organizationName);
+  const ownerSession = await page.context().request.get(`${process.env.PILOT_API_URL}/api/auth/me`);
+  const ownerOrganizationId = (await ownerSession.json()).organization.id;
+  await page.goto('/app/membros');
+  await page.getByLabel('E-mail do destinatário').fill(invitedEmail);
+  await page.getByLabel('Papel').selectOption('ADMIN');
+  await page.getByRole('button', { name: 'Criar convite' }).click();
+  const link = await page.getByLabel('Link do convite').inputValue();
+  expect(link).toMatch(/\/convites\/[A-Za-z0-9_-]{43}$/);
+  await expect(page.getByRole('listitem').filter({ hasText: invitedEmail })).toBeVisible();
+
+  const existing = await browser.newContext({ baseURL: process.env.PILOT_WEB_URL });
+  try {
+    const invited = await existing.newPage();
+    await register(invited, 'Admin fictícia', invitedEmail, otherOrganizationName);
+    await invited.goto(link);
+    await expect(invited.getByRole('button', { name: 'Aceitar convite' })).toBeVisible();
+    await invited.getByRole('button', { name: 'Aceitar convite' }).click();
+    await expect(invited.getByText('Convite aceito. Seu vínculo foi criado.')).toBeVisible();
+    await invited.getByRole('link', { name: 'Selecionar organização' }).click();
+    await expect(invited.getByRole('button', { name: new RegExp(organizationName) })).toBeVisible();
+    await invited.getByRole('button', { name: new RegExp(organizationName) }).click();
+    await expect(invited).toHaveURL(/\/app\/?$/);
+    await expect(invited.getByText(organizationName)).toBeVisible();
+    await invited.goto('/app/produtos/precificacao/perfis');
+    await invited.getByRole('button', { name: 'Criar perfil', exact: true }).click();
+    await invited.getByLabel('Nome', { exact: true }).fill(`Rascunho ${runId}`);
+    await invited.getByRole('link', { name: 'Trocar organização' }).click();
+    const discard = invited.getByRole('dialog', { name: 'Descartar alterações não salvas?' });
+    await expect(discard).toBeVisible();
+    await discard.getByRole('button', { name: 'Continuar editando' }).click();
+    await expect(invited.getByLabel('Nome', { exact: true })).toHaveValue(`Rascunho ${runId}`);
+    await invited.getByRole('link', { name: 'Trocar organização' }).click();
+    await discard.getByRole('button', { name: 'Descartar e sair' }).click();
+    await expect(invited).toHaveURL(/\/selecionar-organizacao$/);
+    await invited.getByRole('button', { name: new RegExp(organizationName) }).click();
+    await expect(invited).toHaveURL(/\/app\/?$/);
+    await invited.goto('/app/membros');
+    await expect(
+      invited.getByText('Apenas o proprietário pode administrar convites.'),
+    ).toBeVisible();
+
+    const secondTab = await existing.newPage();
+    await secondTab.goto('/app');
+    await expect(secondTab.getByText(organizationName)).toBeVisible();
+    const delayedClientName = `Leitura antiga ${runId}`;
+    const createdClient = await page
+      .context()
+      .request.post(`${process.env.PILOT_API_URL}/api/clients`, {
+        data: { name: delayedClientName },
+      });
+    expect(createdClient.status()).toBe(201);
+    let releaseRead: (() => void) | undefined;
+    let markFetched: (() => void) | undefined;
+    const readFetched = new Promise<void>((resolve) => (markFetched = resolve));
+    const readGate = new Promise<void>((resolve) => (releaseRead = resolve));
+    await secondTab.route('**/api/clients**', async (route) => {
+      const response = await route.fetch();
+      markFetched?.();
+      await readGate;
+      await route.fulfill({ response }).catch(() => undefined);
+    });
+    const oldReadNavigation = secondTab.goto('/app/clientes').catch(() => null);
+    await readFetched;
+    await invited.getByRole('link', { name: 'Trocar organização' }).click();
+    await invited.getByRole('button', { name: new RegExp(otherOrganizationName) }).click();
+    await expect(invited).toHaveURL(/\/app\/?$/);
+    await expect(invited.getByText(otherOrganizationName)).toBeVisible();
+    releaseRead?.();
+    await oldReadNavigation;
+    await expect(secondTab.getByText(otherOrganizationName)).toBeVisible();
+    await expect(secondTab.getByText(delayedClientName)).toHaveCount(0);
+    await secondTab.unroute('**/api/clients**');
+    const staleContext = await existing.request.post(
+      `${process.env.PILOT_API_URL}/api/organization/invitations`,
+      {
+        headers: { 'X-Organization-Context': ownerOrganizationId },
+        data: { email: `stale-${runId}@example.invalid`, role: 'ADMIN' },
+      },
+    );
+    expect(staleContext.status()).toBe(409);
+    await invited.getByRole('link', { name: 'Trocar organização' }).click();
+    await invited.getByRole('button', { name: new RegExp(organizationName) }).click();
+    await expect(invited.getByText(organizationName)).toBeVisible();
+    await expect(secondTab.getByText(organizationName)).toBeVisible();
+    const staleSameOrganization = await existing.request.post(
+      `${process.env.PILOT_API_URL}/api/clients`,
+      {
+        headers: {
+          'X-Organization-Context': ownerOrganizationId,
+          'X-Organization-Context-Version': '1',
+        },
+        data: { name: `Escrita antiga ${runId}` },
+      },
+    );
+    expect(staleSameOrganization.status()).toBe(409);
+    const activeContext = await existing.request.get(`${process.env.PILOT_API_URL}/api/auth/me`);
+    const activeVersion = (await activeContext.json()).contextVersion as number;
+    let releaseMutation: (() => void) | undefined;
+    let markCommitted: (() => void) | undefined;
+    const mutationCommitted = new Promise<void>((resolve) => (markCommitted = resolve));
+    const mutationGate = new Promise<void>((resolve) => (releaseMutation = resolve));
+    await secondTab.route('**/api/clients', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      const response = await route.fetch();
+      expect(response.status()).toBe(201);
+      markCommitted?.();
+      await mutationGate;
+      await route.fulfill({ response }).catch(() => undefined);
+    });
+    const pendingClientName = `Mutação anterior ${runId}`;
+    await secondTab.evaluate(
+      ({ apiUrl, organizationId, contextVersion, name }) => {
+        void fetch(`${apiUrl}/api/clients`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Organization-Context': organizationId,
+            'X-Organization-Context-Version': String(contextVersion),
+          },
+          body: JSON.stringify({ name }),
+        }).catch(() => undefined);
+      },
+      {
+        apiUrl: process.env.PILOT_API_URL!,
+        organizationId: ownerOrganizationId,
+        contextVersion: activeVersion,
+        name: pendingClientName,
+      },
+    );
+    await mutationCommitted;
+    await invited.getByRole('link', { name: 'Trocar organização' }).click();
+    await invited.getByRole('button', { name: new RegExp(otherOrganizationName) }).click();
+    releaseMutation?.();
+    await expect(secondTab.getByText(otherOrganizationName)).toBeVisible();
+    const otherClients = await existing.request.get(`${process.env.PILOT_API_URL}/api/clients`);
+    expect(JSON.stringify((await otherClients.json()).data)).not.toContain(pendingClientName);
+    const originalClients = await page
+      .context()
+      .request.get(`${process.env.PILOT_API_URL}/api/clients`);
+    expect(JSON.stringify((await originalClients.json()).data)).toContain(pendingClientName);
+    await secondTab.unroute('**/api/clients');
+    const ownerStillActive = await page
+      .context()
+      .request.get(`${process.env.PILOT_API_URL}/api/auth/me`);
+    expect((await ownerStillActive.json()).organization.id).toBe(ownerOrganizationId);
+    await secondTab.close();
+
+    await invited.goto('/login');
+    await invited.getByLabel('E-mail').fill(invitedEmail);
+    await invited.getByLabel('Senha').fill(password);
+    await invited.getByRole('button', { name: 'Entrar', exact: true }).click();
+    await expect(invited).toHaveURL(/\/selecionar-organizacao$/);
+  } finally {
+    await existing.close();
+  }
+
+  await page.getByLabel('E-mail do destinatário').fill(newEmail);
+  await page.getByRole('button', { name: 'Criar convite' }).click();
+  const newLink = await page.getByLabel('Link do convite').inputValue();
+  const fresh = await browser.newContext({ baseURL: process.env.PILOT_WEB_URL });
+  try {
+    const recipient = await fresh.newPage();
+    await recipient.goto(newLink);
+    await expect(recipient.getByRole('button', { name: 'Criar conta' })).toBeVisible();
+    await recipient.getByLabel('Nome').fill('Nova pessoa fictícia');
+    await recipient.getByLabel('E-mail').fill(newEmail);
+    await recipient.getByLabel('Senha').fill(password);
+    await recipient.getByRole('button', { name: 'Criar conta' }).click();
+    await expect(recipient.getByRole('button', { name: 'Aceitar convite' })).toBeVisible();
+    const before = await fresh.request.get(`${process.env.PILOT_API_URL}/api/auth/me`);
+    expect((await before.json()).organizations).toEqual([]);
+    expect((await fresh.request.get(`${process.env.PILOT_API_URL}/api/clients`)).status()).toBe(
+      401,
+    );
+    await recipient.getByRole('button', { name: 'Aceitar convite' }).click();
+    await expect(recipient.getByText('Convite aceito. Seu vínculo foi criado.')).toBeVisible();
+  } finally {
+    await fresh.close();
+  }
+
+  const revocableEmail = `revoke-${runId}@example.invalid`;
+  await page.getByLabel('E-mail do destinatário').fill(revocableEmail);
+  await page.getByRole('button', { name: 'Criar convite' }).click();
+  const revocableLink = await page.getByLabel('Link do convite').inputValue();
+  await page.getByRole('button', { name: `Revogar convite de ${revocableEmail}` }).click();
+  const dialog = page.getByRole('dialog', { name: 'Revogar convite' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancelar' }).click();
+  await expect(page.getByRole('listitem').filter({ hasText: revocableEmail })).toContainText(
+    'PENDING',
+  );
+  await page.getByRole('button', { name: `Revogar convite de ${revocableEmail}` }).click();
+  await dialog.getByRole('button', { name: 'Confirmar revogação' }).click();
+  await expect(page.getByRole('listitem').filter({ hasText: revocableEmail })).toContainText(
+    'REVOKED',
+  );
+  await expect(page.getByLabel('Link do convite')).toHaveCount(0);
+  const revokedToken = new URL(revocableLink).pathname.split('/').pop();
+  const revokedInfo = await page
+    .context()
+    .request.get(`${process.env.PILOT_API_URL}/api/auth/invitations/${revokedToken}`);
+  expect((await revokedInfo.json()).status).toBe('REVOKED');
+});

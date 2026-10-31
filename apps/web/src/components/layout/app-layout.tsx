@@ -47,14 +47,14 @@ export function AppLayout() {
     });
   }
 
-  if (!auth) {
+  if (!auth?.organization) {
     return null;
   }
 
   return (
     <main className="min-h-screen bg-muted">
       <header className="border-b bg-background">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <NavLink to="/app" className="flex items-center gap-3">
             <span className="grid size-10 place-items-center rounded-xl bg-primary font-bold text-primary-foreground">
               M
@@ -66,10 +66,20 @@ export function AppLayout() {
             </div>
           </NavLink>
 
-          <Button variant="outline" onClick={handleLogout} disabled={logoutMutation.isPending}>
-            <LogOut data-icon="inline-start" />
-            {logoutMutation.isPending ? 'Saindo...' : 'Sair'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <NavLink to="/selecionar-organizacao" className="text-sm underline">
+              Trocar organização
+            </NavLink>
+            {auth.organization.role === 'OWNER' && (
+              <NavLink to="/app/membros" className="text-sm underline">
+                Membros e convites
+              </NavLink>
+            )}
+            <Button variant="outline" onClick={handleLogout} disabled={logoutMutation.isPending}>
+              <LogOut data-icon="inline-start" />
+              {logoutMutation.isPending ? 'Saindo...' : 'Sair'}
+            </Button>
+          </div>
         </div>
 
         <nav

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useCurrentUserQuery } from './use-current-user-query';
+import { useSessionQuery } from './use-current-user-query';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const location = useLocation();
-  const currentUserQuery = useCurrentUserQuery();
+  const currentUserQuery = useSessionQuery();
 
   if (currentUserQuery.isPending) {
     return (
@@ -22,6 +22,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (currentUserQuery.isError) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!currentUserQuery.data.organization) {
+    return <Navigate to="/selecionar-organizacao" replace />;
   }
 
   return children;

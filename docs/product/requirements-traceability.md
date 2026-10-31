@@ -218,6 +218,25 @@ organizações tiveram verificações representativas; 360/768/1280 px e foco do
 detalhe foram exercitados. A evidência está em
 `docs/pilot/casa-nacoli-preparation.md` e não promove o Marco 4E ou requisitos
 de orçamento, pedido, zoom real, fluxo de membros e operação em homologação.
+Esta frase registra o estado da primeira entrega do piloto. A entrega posterior
+de membros acrescentou convite, aceite e troca explícita de organização; o
+runner Playwright aprovou três testes com API e PostgreSQL descartável, incluindo
+sessão legada revogada pela nova migration, isolamento entre sessões, alteração
+de papel, desativação de vínculo e rollback da auditoria. A migration de convites
+foi aplicada somente nas bases descartáveis; a aplicação ao banco normal e a
+operação com Nicolas e Carol reais continuam pendentes. O mecanismo de convite
+local não verifica a posse da caixa de e-mail. Na rodada, typecheck, lint,
+test e build da raiz passaram com 184 testes API, 366 web e 77 do motor,
+totalizando 627.
+Revisão de segurança posterior: a geração do contexto passou a distinguir
+também A → B → A. O E2E descartável comprovou isolamento em `clients`,
+resposta de leitura atrasada, mutação iniciada antes da troca, rascunho
+protegido, corrida entre aceite e revogação, sessão expirada e logout.
+A migration foi repetida sobre baseline populado com preservação dos registros
+e revogação somente da sessão legada ativa. Os pipelines raiz passaram com
+184 testes API, 368 web e 77 do motor, total de 629. O estado dos convites
+permanece `PARTIAL` até aplicação autorizada da migration no ambiente do
+piloto; a verificação de e-mail segue necessária antes de abertura pública.
 O teste integrado passou uma vez na execução final; as bases descartáveis da
 execução e da prova de falha foram removidas. As suítes oficiais passaram com
 365 testes web, 171 API e 77 do motor, total de 613. Os estados da matriz não
@@ -289,6 +308,7 @@ O schema Prisma possui modelos para:
 
 - usuários e organizações;
 - membros e sessões;
+- convites para membros e organização ativa por sessão, ainda não migrados no banco normal;
 - auditoria;
 - clientes;
 - produtos;
@@ -315,32 +335,33 @@ composição.
 
 ## 4. Situação dos módulos gerais
 
-| Área                             | Estado        | Evidência atual                                                                                                | Trabalho necessário                             |
-| -------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Autenticação                     | `IMPLEMENTED` | `apps/api/src/auth` e `apps/web/src/features/auth`                                                             | Preservar                                       |
-| Sessões                          | `IMPLEMENTED` | `apps/api/src/auth/session`                                                                                    | Preservar                                       |
-| Autorização por papel            | `IMPLEMENTED` | `apps/api/src/auth/authorization`                                                                              | Reutilizar na precificação                      |
-| Isolamento por organização       | `IMPLEMENTED` | Serviços existentes e modelos organizacionais                                                                  | Cobrir novos recursos                           |
-| Auditoria                        | `PARTIAL`     | Modelo `AuditLog` e usos existentes                                                                            | Adicionar ações de precificação                 |
-| Clientes                         | `IMPLEMENTED` | `apps/api/src/clients` e páginas de clientes                                                                   | Preservar                                       |
-| LTV de clientes                  | `PENDING`     | Sem evidência específica                                                                                       | Implementar em evolução posterior               |
-| Produtos e serviços              | `IMPLEMENTED` | `apps/api/src/products` e páginas de produtos                                                                  | Estender sem quebrar preços atuais              |
-| Estoque                          | `IMPLEMENTED` | `apps/api/src/inventory`                                                                                       | Permitir referência a insumos                   |
-| Categorias financeiras           | `IMPLEMENTED` | `FinancialCategory.type` (`FIXED_EXPENSE`) no schema e `apps/api/src/finance/categories/categories.service.ts` | Reutilizar classificação explícita já existente |
-| Contas financeiras               | `IMPLEMENTED` | `apps/api/src/finance/accounts`                                                                                | Preservar                                       |
-| Lançamentos                      | `IMPLEMENTED` | `apps/api/src/finance/entries`                                                                                 | Reutilizar futuramente nos agregados            |
-| Baixas financeiras               | `IMPLEMENTED` | `apps/api/src/finance/settlements`                                                                             | Reutilizar para receita realizada               |
-| Períodos financeiros             | `IMPLEMENTED` | `apps/api/src/finance/periods`                                                                                 | Reutilizar na janela de faturamento             |
-| Resumo financeiro                | `IMPLEMENTED` | `apps/api/src/finance/summary`                                                                                 | Estender futuramente                            |
-| Recorrência financeira           | `VERIFY`      | Nenhum módulo específico identificado                                                                          | Inspecionar antes de planejar                   |
-| Orçamentos                       | `IMPLEMENTED` | `apps/api/src/quotes` e páginas de orçamentos                                                                  | Acrescentar referência opcional de precificação |
-| Pedidos                          | `IMPLEMENTED` | `apps/api/src/orders` e páginas de pedidos                                                                     | Preservar snapshots                             |
-| Fluxos de pedidos                | `IMPLEMENTED` | `apps/api/src/order-workflows`                                                                                 | Não alterar pela precificação                   |
-| Calendário                       | `PENDING`     | Nenhum módulo identificado                                                                                     | Evolução posterior                              |
-| Notificações                     | `PENDING`     | Nenhum módulo identificado                                                                                     | Evolução posterior                              |
-| Metas                            | `PENDING`     | Nenhum módulo identificado                                                                                     | Evolução posterior                              |
-| Ponto de equilíbrio              | `PENDING`     | Nenhum módulo identificado                                                                                     | Evolução posterior                              |
-| Backup e criptografia em repouso | `VERIFY`      | Responsabilidade de infraestrutura                                                                             | Documentar no plano de implantação              |
+| Área                              | Estado        | Evidência atual                                                                                                                    | Trabalho necessário                                                                  |
+| --------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Autenticação                      | `IMPLEMENTED` | `apps/api/src/auth` e `apps/web/src/features/auth`                                                                                 | Preservar                                                                            |
+| Sessões                           | `IMPLEMENTED` | `apps/api/src/auth/session`                                                                                                        | Preservar                                                                            |
+| Convites e seleção de organização | `PARTIAL`     | API, web e três testes Playwright com banco descartável; migration de convites e revogação de sessões legadas testadas somente ali | Aplicar migration em ambiente autorizado; verificar e-mail antes de abertura pública |
+| Autorização por papel             | `IMPLEMENTED` | `apps/api/src/auth/authorization`                                                                                                  | Reutilizar na precificação                                                           |
+| Isolamento por organização        | `IMPLEMENTED` | Serviços existentes e modelos organizacionais                                                                                      | Cobrir novos recursos                                                                |
+| Auditoria                         | `PARTIAL`     | Modelo `AuditLog` e usos existentes                                                                                                | Adicionar ações de precificação                                                      |
+| Clientes                          | `IMPLEMENTED` | `apps/api/src/clients` e páginas de clientes                                                                                       | Preservar                                                                            |
+| LTV de clientes                   | `PENDING`     | Sem evidência específica                                                                                                           | Implementar em evolução posterior                                                    |
+| Produtos e serviços               | `IMPLEMENTED` | `apps/api/src/products` e páginas de produtos                                                                                      | Estender sem quebrar preços atuais                                                   |
+| Estoque                           | `IMPLEMENTED` | `apps/api/src/inventory`                                                                                                           | Permitir referência a insumos                                                        |
+| Categorias financeiras            | `IMPLEMENTED` | `FinancialCategory.type` (`FIXED_EXPENSE`) no schema e `apps/api/src/finance/categories/categories.service.ts`                     | Reutilizar classificação explícita já existente                                      |
+| Contas financeiras                | `IMPLEMENTED` | `apps/api/src/finance/accounts`                                                                                                    | Preservar                                                                            |
+| Lançamentos                       | `IMPLEMENTED` | `apps/api/src/finance/entries`                                                                                                     | Reutilizar futuramente nos agregados                                                 |
+| Baixas financeiras                | `IMPLEMENTED` | `apps/api/src/finance/settlements`                                                                                                 | Reutilizar para receita realizada                                                    |
+| Períodos financeiros              | `IMPLEMENTED` | `apps/api/src/finance/periods`                                                                                                     | Reutilizar na janela de faturamento                                                  |
+| Resumo financeiro                 | `IMPLEMENTED` | `apps/api/src/finance/summary`                                                                                                     | Estender futuramente                                                                 |
+| Recorrência financeira            | `VERIFY`      | Nenhum módulo específico identificado                                                                                              | Inspecionar antes de planejar                                                        |
+| Orçamentos                        | `IMPLEMENTED` | `apps/api/src/quotes` e páginas de orçamentos                                                                                      | Acrescentar referência opcional de precificação                                      |
+| Pedidos                           | `IMPLEMENTED` | `apps/api/src/orders` e páginas de pedidos                                                                                         | Preservar snapshots                                                                  |
+| Fluxos de pedidos                 | `IMPLEMENTED` | `apps/api/src/order-workflows`                                                                                                     | Não alterar pela precificação                                                        |
+| Calendário                        | `PENDING`     | Nenhum módulo identificado                                                                                                         | Evolução posterior                                                                   |
+| Notificações                      | `PENDING`     | Nenhum módulo identificado                                                                                                         | Evolução posterior                                                                   |
+| Metas                             | `PENDING`     | Nenhum módulo identificado                                                                                                         | Evolução posterior                                                                   |
+| Ponto de equilíbrio               | `PENDING`     | Nenhum módulo identificado                                                                                                         | Evolução posterior                                                                   |
+| Backup e criptografia em repouso  | `VERIFY`      | Responsabilidade de infraestrutura                                                                                                 | Documentar no plano de implantação                                                   |
 
 ## 5. Rastreabilidade da precificação
 

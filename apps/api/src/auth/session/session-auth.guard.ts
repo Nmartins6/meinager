@@ -1,5 +1,6 @@
 import {
   CanActivate,
+  ConflictException,
   ExecutionContext,
   Injectable,
   UnauthorizedException,
@@ -34,6 +35,25 @@ export class SessionAuthGuard implements CanActivate {
 
     if (!authenticatedSession) {
       throw new UnauthorizedException('Sessão inválida ou expirada.');
+    }
+
+    const expectedOrganizationId = request.get('x-organization-context');
+    const expectedContextVersion = request.get(
+      'x-organization-context-version',
+    );
+    if (
+      (expectedOrganizationId !== undefined &&
+        expectedContextVersion === undefined) ||
+      (expectedOrganizationId === undefined &&
+        expectedContextVersion !== undefined) ||
+      (expectedOrganizationId &&
+        expectedOrganizationId !== authenticatedSession.organization.id) ||
+      (expectedContextVersion !== undefined &&
+        expectedContextVersion !== String(authenticatedSession.contextVersion))
+    ) {
+      throw new ConflictException(
+        'O contexto da organização mudou. Recarregue a página.',
+      );
     }
 
     (request as AuthenticatedRequest).auth = authenticatedSession;

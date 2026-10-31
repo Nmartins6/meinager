@@ -1,6 +1,6 @@
 /* Owns a disposable PostgreSQL database, localhost servers and browser test. */
 const assert = require('node:assert/strict');
-const { randomBytes } = require('node:crypto');
+const { randomBytes, randomUUID } = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 const { createRequire } = require('node:module');
 const net = require('node:net');
@@ -188,6 +188,81 @@ async function createOwned(admin, name) {
   console.log(`CREATED ${name}`);
 }
 
+async function verifyLegacySessionMigration() {
+  const client = new Client({ connectionString: disposableUrl(cleanupProbe) });
+  await client.connect();
+  try {
+    const migrationDirectory = path.join(root, 'apps/api/prisma/migrations');
+    const legacyMigrations = fs
+      .readdirSync(migrationDirectory, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() && entry.name !== '20261031150000_add_organization_invitations',
+      )
+      .map((entry) => entry.name)
+      .sort();
+    assert.equal(legacyMigrations.length, 16);
+    for (const name of legacyMigrations) {
+      await client.query(
+        fs.readFileSync(path.join(migrationDirectory, name, 'migration.sql'), 'utf8'),
+      );
+    }
+    const userId = randomUUID();
+    const organizationId = randomUUID();
+    const sessionId = randomUUID();
+    const revokedSessionId = randomUUID();
+    const auditId = randomUUID();
+    await client.query(
+      "INSERT INTO users (id, name, email, normalized_email, password_hash, updated_at) VALUES ($1, 'Legacy user', 'legacy@example.invalid', 'legacy@example.invalid', 'dummy-hash', now())",
+      [userId],
+    );
+    await client.query(
+      "INSERT INTO organizations (id, name, slug, updated_at) VALUES ($1, 'Legacy organization', 'legacy-organization', now())",
+      [organizationId],
+    );
+    await client.query(
+      "INSERT INTO organization_members (id, organization_id, user_id, role, updated_at) VALUES ($3, $1, $2, 'OWNER', now())",
+      [organizationId, userId, randomUUID()],
+    );
+    await client.query(
+      "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES ($1, $2, 'legacy-active-token-hash', now() + interval '1 day')",
+      [sessionId, userId],
+    );
+    await client.query(
+      "INSERT INTO sessions (id, user_id, token_hash, expires_at, revoked_at) VALUES ($1, $2, 'legacy-revoked-token-hash', now() + interval '1 day', now() - interval '1 day')",
+      [revokedSessionId, userId],
+    );
+    await client.query(
+      "INSERT INTO audit_logs (id, organization_id, actor_user_id, action, entity_type, entity_id) VALUES ($3, $1, $2, 'legacy.event', 'organization', $4)",
+      [organizationId, userId, auditId, organizationId],
+    );
+    const migration = fs.readFileSync(
+      path.join(migrationDirectory, '20261031150000_add_organization_invitations/migration.sql'),
+      'utf8',
+    );
+    await client.query(migration);
+    const oldSession = await client.query(
+      'SELECT revoked_at, active_organization_id, context_version FROM sessions WHERE id = $1',
+      [sessionId],
+    );
+    assert.ok(oldSession.rows[0]?.revoked_at);
+    assert.equal(oldSession.rows[0]?.active_organization_id, null);
+    assert.equal(oldSession.rows[0]?.context_version, 0);
+    const preserved = await client.query(
+      'SELECT (SELECT count(*) FROM users) AS users, (SELECT count(*) FROM organizations) AS organizations, (SELECT count(*) FROM organization_members) AS members, (SELECT count(*) FROM audit_logs WHERE id = $1) AS audit, (SELECT revoked_at FROM sessions WHERE id = $2) AS prior_revocation',
+      [auditId, revokedSessionId],
+    );
+    assert.equal(Number(preserved.rows[0].users), 1);
+    assert.equal(Number(preserved.rows[0].organizations), 1);
+    assert.equal(Number(preserved.rows[0].members), 1);
+    assert.equal(Number(preserved.rows[0].audit), 1);
+    assert.ok(preserved.rows[0].prior_revocation);
+    console.log('LEGACY_SESSION_REVOKED_IN_POPULATED_BASELINE_MIGRATION_PROBE');
+  } finally {
+    await client.end();
+  }
+}
+
 async function dropOwned(admin, name) {
   if (!owned.has(name)) return;
   const row = await admin.query(
@@ -289,9 +364,10 @@ async function main() {
     let failureProbePassed = false;
     try {
       await createOwned(admin, cleanupProbe);
+      await verifyLegacySessionMigration();
       throw new Error('controlled failure');
     } catch (error) {
-      assert.equal(error.message, 'controlled failure');
+      if (error.message !== 'controlled failure') throw error;
       failureProbePassed = true;
     } finally {
       await dropOwned(admin, cleanupProbe);
@@ -358,6 +434,7 @@ async function main() {
         'test',
         '--config',
         'playwright.pilot.config.ts',
+        ...(process.env.PILOT_TEST_GREP ? ['--grep', process.env.PILOT_TEST_GREP] : []),
       ],
       {
         ...environment,

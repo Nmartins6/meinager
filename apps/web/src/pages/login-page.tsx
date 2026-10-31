@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ChartNoAxesCombined, CheckCircle2, LockKeyhole } from 'lucide-react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ const benefits = [
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const loginMutation = useLoginMutation();
 
   const {
@@ -42,8 +43,16 @@ export function LoginPage() {
 
   function handleValidSubmit(data: LoginFormData) {
     loginMutation.mutate(data, {
-      onSuccess: () => {
-        navigate('/app', { replace: true });
+      onSuccess: (result) => {
+        const from = (location.state as { from?: string } | null)?.from;
+        navigate(
+          from?.startsWith('/convites/')
+            ? from
+            : result.organization
+              ? '/app'
+              : '/selecionar-organizacao',
+          { replace: true },
+        );
       },
     });
   }

@@ -129,6 +129,8 @@ model User {
   authTokens            AuthToken[]
   auditLogs             AuditLog[]                  @relation("AuditActor")
   orderStageTransitions SalesOrderStageTransition[] @relation("OrderStageTransitionActor")
+  invitationsCreated    OrganizationInvitation[]    @relation("InvitationCreator")
+  invitationsAccepted   OrganizationInvitation[]    @relation("InvitationAcceptor")
 
   organizationPricingConfigurationCreated         OrganizationPricingConfiguration[]         @relation("OrganizationPricingConfigurationCreatedBy")
   organizationPricingConfigurationUpdated         OrganizationPricingConfiguration[]         @relation("OrganizationPricingConfigurationUpdatedBy")
@@ -171,6 +173,7 @@ model Organization {
   orderWorkflows        OrderWorkflow[]
   orderWorkflowStages   OrderWorkflowStage[]
   orderStageTransitions SalesOrderStageTransition[]
+  invitations           OrganizationInvitation[]
 
   organizationPricingConfigurationRecords         OrganizationPricingConfiguration[]         @relation("OrganizationPricingConfigurationOrganization")
   organizationPricingConfigurationRevisionRecords OrganizationPricingConfigurationRevision[] @relation("OrganizationPricingConfigurationRevisionOrganization")
@@ -196,8 +199,9 @@ model OrganizationMember {
   createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeSessions Session[]    @relation("SessionActiveMembership")
 
   @@unique([organizationId, userId])
   @@index([organizationId, role])
@@ -206,20 +210,46 @@ model OrganizationMember {
 }
 
 model Session {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @map("user_id") @db.Uuid
-  tokenHash  String    @unique @map("token_hash") @db.VarChar(255)
-  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
-  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
-  ipAddress  String?   @map("ip_address") @db.VarChar(45)
-  userAgent  String?   @map("user_agent") @db.VarChar(500)
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @map("user_id") @db.Uuid
+  activeOrganizationId String?   @map("active_organization_id") @db.Uuid
+  contextVersion       Int       @default(0) @map("context_version")
+  tokenHash            String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAt            DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt            DateTime? @map("revoked_at") @db.Timestamptz(3)
+  lastUsedAt           DateTime? @map("last_used_at") @db.Timestamptz(3)
+  ipAddress            String?   @map("ip_address") @db.VarChar(45)
+  userAgent            String?   @map("user_agent") @db.VarChar(500)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeMembership OrganizationMember? @relation("SessionActiveMembership", fields: [activeOrganizationId, userId], references: [organizationId, userId], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([userId, expiresAt])
+  @@index([activeOrganizationId])
   @@map("sessions")
+}
+
+model OrganizationInvitation {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  normalizedEmail  String           @map("normalized_email") @db.VarChar(254)
+  role             OrganizationRole
+  tokenHash        String           @unique @map("token_hash") @db.VarChar(64)
+  createdByUserId  String           @map("created_by_user_id") @db.Uuid
+  acceptedByUserId String?          @map("accepted_by_user_id") @db.Uuid
+  expiresAt        DateTime         @map("expires_at") @db.Timestamptz(3)
+  revokedAt        DateTime?        @map("revoked_at") @db.Timestamptz(3)
+  acceptedAt       DateTime?        @map("accepted_at") @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  creator      User         @relation("InvitationCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  acceptor     User?        @relation("InvitationAcceptor", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([normalizedEmail, expiresAt])
+  @@map("organization_invitations")
 }
 
 model AuthToken {

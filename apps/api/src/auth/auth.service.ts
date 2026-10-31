@@ -108,6 +108,7 @@ export class AuthService {
         await transaction.session.create({
           data: {
             userId: user.id,
+            activeOrganizationId: organization.id,
             tokenHash: session.tokenHash,
             expiresAt: session.expiresAt,
             ipAddress: session.ipAddress,
@@ -134,6 +135,7 @@ export class AuthService {
           session: {
             token: session.token,
             expiresAt: session.expiresAt,
+            contextVersion: 0,
           },
         };
       });
@@ -171,7 +173,6 @@ export class AuthService {
           orderBy: {
             createdAt: 'asc',
           },
-          take: 1,
           select: {
             role: true,
             organization: {
@@ -188,13 +189,18 @@ export class AuthService {
 
     const passwordHash = user?.passwordHash ?? (await this.dummyPasswordHash);
     const passwordIsValid = await verify(passwordHash, dto.password);
-    const membership = user?.memberships[0];
+    const memberships = user?.memberships ?? [];
+    const membership = memberships.length === 1 ? memberships[0] : null;
 
-    if (!user || !user.isActive || !passwordIsValid || !membership) {
+    if (!user || !user.isActive || !passwordIsValid) {
       throw new UnauthorizedException('E-mail ou senha inválidos.');
     }
 
-    const session = await this.sessionService.create(user.id, metadata);
+    const session = await this.sessionService.create(
+      user.id,
+      metadata,
+      membership?.organization.id ?? null,
+    );
 
     return {
       user: {
@@ -202,10 +208,13 @@ export class AuthService {
         name: user.name,
         email: user.email,
       },
-      organization: {
-        ...membership.organization,
-        role: membership.role,
-      },
+      organization: membership
+        ? { ...membership.organization, role: membership.role }
+        : null,
+      organizations: memberships.map(({ organization, role }) => ({
+        ...organization,
+        role,
+      })),
       session,
     };
   }

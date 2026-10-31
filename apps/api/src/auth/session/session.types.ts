@@ -3,6 +3,7 @@ import type { OrganizationRole } from '../../generated/prisma/enums.js';
 
 export interface AuthenticatedSession {
   sessionId: string;
+  contextVersion: number;
   user: {
     id: string;
     name: string;

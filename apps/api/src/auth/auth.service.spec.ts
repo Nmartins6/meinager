@@ -120,6 +120,7 @@ describe('AuthService', () => {
     expect(transactionMock.session.create).toHaveBeenCalledWith({
       data: {
         userId: user.id,
+        activeOrganizationId: organization.id,
         tokenHash: 'hashed-session-token',
         expiresAt: sessionExpiresAt,
         ipAddress: '127.0.0.1',
@@ -189,6 +190,7 @@ describe('AuthService', () => {
       session: {
         token: 'raw-session-token',
         expiresAt: sessionExpiresAt,
+        contextVersion: 0,
       },
     });
 
@@ -228,10 +230,14 @@ describe('AuthService', () => {
       }),
     );
 
-    expect(sessionServiceMock.create).toHaveBeenCalledWith(user.id, {
-      ipAddress: '127.0.0.1',
-      userAgent: 'Vitest',
-    });
+    expect(sessionServiceMock.create).toHaveBeenCalledWith(
+      user.id,
+      {
+        ipAddress: '127.0.0.1',
+        userAgent: 'Vitest',
+      },
+      organization.id,
+    );
 
     expect(result).toEqual({
       user,
@@ -243,6 +249,7 @@ describe('AuthService', () => {
         token: 'login-session-token',
         expiresAt: sessionExpiresAt,
       },
+      organizations: [{ ...organization, role: OrganizationRole.OWNER }],
     });
 
     expect(result.user).not.toHaveProperty('passwordHash');
@@ -261,6 +268,49 @@ describe('AuthService', () => {
     );
 
     expect(sessionServiceMock.create).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit selection when the user belongs to two active organizations', async () => {
+    const passwordHash = await hash('senha-segura');
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      ...user,
+      passwordHash,
+      isActive: true,
+      memberships: [
+        { role: OrganizationRole.OWNER, organization },
+        {
+          role: OrganizationRole.ADMIN,
+          organization: {
+            ...organization,
+            id: '8fbc2341-9641-4625-8c66-cff32efc5566',
+          },
+        },
+      ],
+    });
+    const result = await service.login({
+      email: user.email,
+      password: 'senha-segura',
+    });
+    expect(result.organization).toBeNull();
+    expect(result.organizations).toHaveLength(2);
+    expect(sessionServiceMock.create).toHaveBeenCalledWith(user.id, {}, null);
+  });
+
+  it('authenticates a user with no active membership without organizational access', async () => {
+    const passwordHash = await hash('senha-segura');
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      ...user,
+      passwordHash,
+      isActive: true,
+      memberships: [],
+    });
+    const result = await service.login({
+      email: user.email,
+      password: 'senha-segura',
+    });
+    expect(result.organization).toBeNull();
+    expect(result.organizations).toEqual([]);
+    expect(sessionServiceMock.create).toHaveBeenCalledWith(user.id, {}, null);
   });
 
   it('should return conflict for duplicated unique data', async () => {

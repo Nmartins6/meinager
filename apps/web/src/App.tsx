@@ -25,6 +25,21 @@ const RegisterPage = lazy(async () => {
   return { default: module.RegisterPage };
 });
 
+const SelectOrganizationPage = lazy(async () => {
+  const module = await import('@/pages/select-organization-page');
+  return { default: module.SelectOrganizationPage };
+});
+
+const MembersPage = lazy(async () => {
+  const module = await import('@/pages/members-page');
+  return { default: module.MembersPage };
+});
+
+const AcceptInvitationPage = lazy(async () => {
+  const module = await import('@/pages/accept-invitation-page');
+  return { default: module.AcceptInvitationPage };
+});
+
 const DashboardPage = lazy(async () => {
   const module = await import('@/pages/dashboard-page');
   return { default: module.DashboardPage };
@@ -196,6 +211,23 @@ const router = createBrowserRouter(
       />
 
       <Route
+        path="/selecionar-organizacao"
+        element={
+          <LazyRoute>
+            <SelectOrganizationPage />
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/convites/:token"
+        element={
+          <LazyRoute>
+            <AcceptInvitationPage />
+          </LazyRoute>
+        }
+      />
+
+      <Route
         path="/app"
         element={
           <ProtectedRoute>
@@ -203,6 +235,14 @@ const router = createBrowserRouter(
           </ProtectedRoute>
         }
       >
+        <Route
+          path="membros"
+          element={
+            <LazyRoute>
+              <MembersPage />
+            </LazyRoute>
+          }
+        />
         <Route
           index
           element={
