@@ -197,7 +197,7 @@ async function verifyLegacySessionMigration() {
       .readdirSync(migrationDirectory, { withFileTypes: true })
       .filter(
         (entry) =>
-          entry.isDirectory() && entry.name !== '20261031150000_add_organization_invitations',
+          entry.isDirectory() && entry.name < '20261031150000_add_organization_invitations',
       )
       .map((entry) => entry.name)
       .sort();
@@ -258,6 +258,66 @@ async function verifyLegacySessionMigration() {
     assert.equal(Number(preserved.rows[0].audit), 1);
     assert.ok(preserved.rows[0].prior_revocation);
     console.log('LEGACY_SESSION_REVOKED_IN_POPULATED_BASELINE_MIGRATION_PROBE');
+
+    const clientId = randomUUID();
+    const productId = randomUUID();
+    const workflowId = randomUUID();
+    const stageId = randomUUID();
+    const quoteId = randomUUID();
+    const quoteItemId = randomUUID();
+    const orderId = randomUUID();
+    const orderItemId = randomUUID();
+    await client.query(
+      "INSERT INTO clients (id, organization_id, name, updated_at) VALUES ($1, $2, 'Legacy client', now())",
+      [clientId, organizationId],
+    );
+    await client.query(
+      "INSERT INTO products (id, organization_id, name, normalized_name, unit, sale_price, updated_at) VALUES ($1, $2, 'Legacy product', 'legacy product', 'UN', 20, now())",
+      [productId, organizationId],
+    );
+    await client.query(
+      "INSERT INTO order_workflows (id, organization_id, name, normalized_name, is_default, updated_at) VALUES ($1, $2, 'Legacy workflow', 'legacy workflow', true, now())",
+      [workflowId, organizationId],
+    );
+    await client.query(
+      "INSERT INTO order_workflow_stages (id, organization_id, workflow_id, name, position, category, updated_at) VALUES ($1, $2, $3, 'Pending', 1, 'PENDING', now())",
+      [stageId, organizationId, workflowId],
+    );
+    await client.query(
+      'INSERT INTO financial_quotes (id, organization_id, client_id, number, subtotal, discount, total, updated_at) VALUES ($1, $2, $3, 1, 20, 0, 20, now())',
+      [quoteId, organizationId, clientId],
+    );
+    await client.query(
+      "INSERT INTO financial_quote_items (id, organization_id, quote_id, product_id, position, description, unit, quantity, unit_price, total, updated_at) VALUES ($1, $2, $3, $4, 1, 'Legacy product', 'UN', 1, 20, 20, now())",
+      [quoteItemId, organizationId, quoteId, productId],
+    );
+    await client.query(
+      'INSERT INTO orders (id, organization_id, quote_id, client_id, workflow_id, current_stage_id, number, subtotal, discount, total, updated_at) VALUES ($1, $2, $3, $4, $5, $6, 1, 20, 0, 20, now())',
+      [orderId, organizationId, quoteId, clientId, workflowId, stageId],
+    );
+    await client.query(
+      "INSERT INTO order_items (id, organization_id, order_id, product_id, position, description, unit, quantity, unit_price, total, updated_at) VALUES ($1, $2, $3, $4, 1, 'Legacy product', 'UN', 1, 20, 20, now())",
+      [orderItemId, organizationId, orderId, productId],
+    );
+    await client.query(
+      fs.readFileSync(
+        path.join(migrationDirectory, '20261101100000_add_commercial_price_origin/migration.sql'),
+        'utf8',
+      ),
+    );
+    const legacyDocuments = await client.query(
+      'SELECT (SELECT price_origin FROM financial_quote_items WHERE id = $1) AS quote_origin, (SELECT pricing_version_id FROM financial_quote_items WHERE id = $1) AS quote_version, (SELECT price_origin FROM order_items WHERE id = $2) AS order_origin, (SELECT pricing_version_id FROM order_items WHERE id = $2) AS order_version, (SELECT unit_price FROM financial_quote_items WHERE id = $1) AS quote_price, (SELECT unit_price FROM order_items WHERE id = $2) AS order_price',
+      [quoteItemId, orderItemId],
+    );
+    assert.deepEqual(legacyDocuments.rows[0], {
+      quote_origin: null,
+      quote_version: null,
+      order_origin: null,
+      order_version: null,
+      quote_price: '20.00',
+      order_price: '20.00',
+    });
+    console.log('LEGACY_QUOTE_AND_ORDER_PRESERVED_IN_POPULATED_MIGRATION_PROBE');
   } finally {
     await client.end();
   }
@@ -384,6 +444,22 @@ async function main() {
     await createOwned(admin, database);
     run('pnpm', ['--filter', '@meinager/api', 'exec', 'prisma', 'migrate', 'deploy'], environment);
     run('pnpm', ['--filter', '@meinager/api', 'build'], environment);
+    run(
+      'pnpm',
+      [
+        '--filter',
+        '@meinager/api',
+        'exec',
+        'vitest',
+        'run',
+        '--config',
+        './vitest.config.e2e.ts',
+        'test/quotes.e2e-spec.ts',
+        'test/orders.e2e-spec.ts',
+        'test/products.e2e-spec.ts',
+      ],
+      environment,
+    );
     if (process.env.PILOT_TEST_FORCE_FAILURE === 'AFTER_MIGRATIONS') {
       throw new Error('Controlled pilot failure after migrations');
     }

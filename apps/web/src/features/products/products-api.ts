@@ -13,6 +13,7 @@ export const productSchema = z.object({
   unit: z.string(),
   directCost: z.string().nullable().optional(),
   salePrice: z.string().nullable(),
+  adoptedPricingVersionId: z.string().uuid().nullable().optional(),
   trackInventory: z.boolean(),
   minimumStock: z.string().nullable(),
   notes: z.string().nullable(),

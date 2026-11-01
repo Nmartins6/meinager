@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, Trash2 } from 'lucide-react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
@@ -15,6 +16,10 @@ const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 const quoteItemSchema = z.object({
   productId: z.string(),
+  sourceItemId: z.string(),
+  priceSelection: z.enum(['CATALOG_NOW', 'MANUAL', 'PRESERVE']),
+  expectedProductUpdatedAt: z.string(),
+  expectedAdoptedPricingVersionId: z.string(),
   description: z
     .string()
     .trim()
@@ -145,6 +150,10 @@ function formatCents(value: bigint): string {
 function createEmptyItem(): QuoteFormData['items'][number] {
   return {
     productId: '',
+    sourceItemId: '',
+    priceSelection: 'MANUAL',
+    expectedProductUpdatedAt: '',
+    expectedAdoptedPricingVersionId: '',
     description: '',
     unit: 'UN',
     quantity: '1',
@@ -154,12 +163,18 @@ function createEmptyItem(): QuoteFormData['items'][number] {
 }
 
 interface QuoteFormProps {
-  clients: Client[];
-  products: Product[];
+  clients: Pick<Client, 'id' | 'name'>[];
+  products: Pick<
+    Product,
+    'id' | 'name' | 'unit' | 'salePrice' | 'updatedAt' | 'adoptedPricingVersionId'
+  >[];
   isPending: boolean;
   errorMessage?: string;
   onSubmit: (data: QuoteFormData) => void;
   onCancel: () => void;
+  onRefreshCatalog?: () => Promise<
+    Pick<Product, 'id' | 'salePrice' | 'updatedAt' | 'adoptedPricingVersionId'>[]
+  >;
   initialValues?: QuoteFormData;
   submitLabel?: string;
 }
@@ -173,13 +188,17 @@ export function QuoteForm({
   submitLabel = 'Salvar orçamento',
   onSubmit,
   onCancel,
+  onRefreshCatalog,
 }: QuoteFormProps) {
+  const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
   const {
     control,
     register,
     handleSubmit,
     setValue,
     clearErrors,
+    getValues,
     formState: { errors },
   } = useForm<QuoteFormData>({
     resolver: zodResolver(quoteFormSchema),
@@ -208,6 +227,47 @@ export function QuoteForm({
   });
 
   const preview = calculatePreview(watchedItems ?? [], watchedDiscount ?? '');
+
+  async function refreshCatalog() {
+    if (!onRefreshCatalog || isRefreshingCatalog) return;
+    setIsRefreshingCatalog(true);
+    setRefreshError('');
+    try {
+      const currentProducts = await onRefreshCatalog();
+      let unavailable = false;
+      for (const [index, item] of getValues('items').entries()) {
+        if (item.priceSelection !== 'CATALOG_NOW') continue;
+        const current = currentProducts.find((product) => product.id === item.productId);
+        if (
+          !current ||
+          current.salePrice === null ||
+          current.adoptedPricingVersionId === undefined
+        ) {
+          unavailable = true;
+          continue;
+        }
+        setValue(`items.${index}.unitPrice`, current.salePrice, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        setValue(`items.${index}.expectedProductUpdatedAt`, current.updatedAt);
+        setValue(
+          `items.${index}.expectedAdoptedPricingVersionId`,
+          current.adoptedPricingVersionId ?? '',
+        );
+      }
+      if (unavailable)
+        setRefreshError(
+          'Algum produto não possui preço atual disponível. Escolha preço manual ou regularize o cadastro.',
+        );
+    } catch {
+      setRefreshError(
+        'Não foi possível atualizar o catálogo. O rascunho foi preservado; tente novamente.',
+      );
+    } finally {
+      setIsRefreshingCatalog(false);
+    }
+  }
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -285,6 +345,8 @@ export function QuoteForm({
           const productIdRegistration = register(`items.${index}.productId`);
           const itemErrors = errors.items?.[index];
           const lineTotal = preview.lineTotals[index] ?? null;
+          const currentItem = watchedItems?.[index];
+          const selectedProduct = products.find((product) => product.id === currentItem?.productId);
 
           return (
             <fieldset key={field.id} className="space-y-5 rounded-lg border p-4">
@@ -317,6 +379,20 @@ export function QuoteForm({
                       (candidate) => candidate.id === event.target.value,
                     );
 
+                    setValue(`items.${index}.sourceItemId`, '');
+                    setValue(`items.${index}.expectedProductUpdatedAt`, product?.updatedAt ?? '');
+                    setValue(
+                      `items.${index}.expectedAdoptedPricingVersionId`,
+                      product?.adoptedPricingVersionId ?? '',
+                    );
+                    setValue(
+                      `items.${index}.priceSelection`,
+                      product?.salePrice != null ? 'CATALOG_NOW' : 'MANUAL',
+                    );
+                    setValue(`items.${index}.unitPrice`, product?.salePrice ?? '', {
+                      shouldValidate: true,
+                    });
+
                     if (!product) {
                       return;
                     }
@@ -325,9 +401,6 @@ export function QuoteForm({
                       shouldValidate: true,
                     });
                     setValue(`items.${index}.unit`, product.unit, {
-                      shouldValidate: true,
-                    });
-                    setValue(`items.${index}.unitPrice`, product.salePrice ?? '', {
                       shouldValidate: true,
                     });
                     clearErrors([
@@ -344,6 +417,69 @@ export function QuoteForm({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor={`quote-item-price-source-${index}`}>Origem do preço</Label>
+                <select
+                  id={`quote-item-price-source-${index}`}
+                  value={currentItem?.priceSelection ?? 'MANUAL'}
+                  onChange={(event) => {
+                    const selection = event.target
+                      .value as QuoteFormData['items'][number]['priceSelection'];
+                    setValue(`items.${index}.priceSelection`, selection, { shouldDirty: true });
+                    if (selection === 'CATALOG_NOW' && selectedProduct?.salePrice != null) {
+                      setValue(`items.${index}.unitPrice`, selectedProduct.salePrice, {
+                        shouldValidate: true,
+                      });
+                      setValue(
+                        `items.${index}.expectedProductUpdatedAt`,
+                        selectedProduct.updatedAt,
+                      );
+                      setValue(
+                        `items.${index}.expectedAdoptedPricingVersionId`,
+                        selectedProduct.adoptedPricingVersionId ?? '',
+                      );
+                    } else if (selection === 'PRESERVE') {
+                      const original = initialValues?.items.find(
+                        (item) => item.sourceItemId === currentItem?.sourceItemId,
+                      );
+                      if (original) {
+                        setValue(`items.${index}.unitPrice`, original.unitPrice, {
+                          shouldValidate: true,
+                        });
+                      }
+                      setValue(`items.${index}.expectedProductUpdatedAt`, '');
+                      setValue(`items.${index}.expectedAdoptedPricingVersionId`, '');
+                    } else {
+                      setValue(`items.${index}.expectedProductUpdatedAt`, '');
+                      setValue(`items.${index}.expectedAdoptedPricingVersionId`, '');
+                    }
+                  }}
+                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                >
+                  {currentItem?.sourceItemId && (
+                    <option value="PRESERVE">Preservar preço histórico</option>
+                  )}
+                  {(selectedProduct?.salePrice != null ||
+                    currentItem?.priceSelection === 'CATALOG_NOW') && (
+                    <option value="CATALOG_NOW">Usar preço atual do produto</option>
+                  )}
+                  <option value="MANUAL">Definir preço manual</option>
+                </select>
+                {currentItem?.priceSelection === 'CATALOG_NOW' && (
+                  <p className="text-xs text-muted-foreground">
+                    Se o preço do produto mudar antes de salvar, será necessária nova confirmação.
+                  </p>
+                )}
+                {selectedProduct &&
+                  selectedProduct.salePrice === null &&
+                  !currentItem?.sourceItemId && (
+                    <p className="text-xs text-muted-foreground">
+                      Este produto não possui preço atual. Defina um preço manual ou regularize o
+                      cadastro.
+                    </p>
+                  )}
               </div>
 
               <div className="grid gap-5 md:grid-cols-2">
@@ -401,6 +537,7 @@ export function QuoteForm({
                     inputMode="decimal"
                     placeholder="0.00"
                     aria-invalid={Boolean(itemErrors?.unitPrice)}
+                    readOnly={currentItem?.priceSelection !== 'MANUAL'}
                     {...register(`items.${index}.unitPrice`)}
                   />
                   {itemErrors?.unitPrice && (
@@ -501,11 +638,28 @@ export function QuoteForm({
       </div>
 
       {errorMessage && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {errorMessage}
+        <div className="space-y-2">
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            {errorMessage}
+          </p>
+          {onRefreshCatalog && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending || isRefreshingCatalog}
+              onClick={() => void refreshCatalog()}
+            >
+              {isRefreshingCatalog ? 'Atualizando catálogo...' : 'Atualizar preços do catálogo'}
+            </Button>
+          )}
+        </div>
+      )}
+      {refreshError && (
+        <p role="alert" className="text-sm text-destructive">
+          {refreshError}
         </p>
       )}
 
@@ -514,7 +668,7 @@ export function QuoteForm({
           Cancelar
         </Button>
 
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" disabled={isPending || isRefreshingCatalog}>
           {isPending ? 'Salvando...' : submitLabel}
         </Button>
       </div>

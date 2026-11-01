@@ -44,6 +44,8 @@ const quote = {
     {
       id: 'c932a51d-744d-465c-8b48-afd8ec2561d0',
       productId: 'd92413f3-bd0c-4086-88f6-6fa45c79c021',
+      priceOrigin: 'CATALOG',
+      pricingVersionId: null,
       position: 1,
       description: 'Caneca branca personalizada',
       unit: 'UN',
@@ -57,6 +59,8 @@ const quote = {
     {
       id: '2c83a51d-744d-465c-8b48-afd8ec2561d0',
       productId: null,
+      priceOrigin: null,
+      pricingVersionId: null,
       position: 2,
       description: 'Criação de arte',
       unit: 'UN',

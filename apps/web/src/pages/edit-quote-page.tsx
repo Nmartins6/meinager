@@ -4,13 +4,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
-import { useClientsQuery } from '@/features/clients/use-clients-query';
 import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { QuoteForm, type QuoteFormData } from '@/features/quotes/quote-form';
 import type { Quote } from '@/features/quotes/quotes-api';
 import { useQuoteQuery } from '@/features/quotes/use-quote-query';
 import { useUpdateQuoteMutation } from '@/features/quotes/use-update-quote-mutation';
-import { useProductsQuery } from '@/features/products/use-products-query';
+import {
+  useQuoteClientsQuery,
+  useQuoteProductsQuery,
+} from '@/features/quotes/use-quote-options-query';
 
 function quoteToFormData(quote: Quote): QuoteFormData {
   return {
@@ -20,6 +22,10 @@ function quoteToFormData(quote: Quote): QuoteFormData {
     notes: quote.notes ?? '',
     items: quote.items.map((item) => ({
       productId: item.productId ?? '',
+      sourceItemId: item.id,
+      priceSelection: 'PRESERVE',
+      expectedProductUpdatedAt: '',
+      expectedAdoptedPricingVersionId: '',
       description: item.description,
       unit: item.unit,
       quantity: item.quantity,
@@ -35,33 +41,42 @@ export function EditQuotePage() {
 
   const currentUserQuery = useCurrentUserQuery();
   const quoteQuery = useQuoteQuery(quoteId);
-  const clientsQuery = useClientsQuery({
-    isActive: true,
-    page: 1,
-    pageSize: 100,
-  });
-  const productsQuery = useProductsQuery({
-    isActive: true,
-    page: 1,
-    pageSize: 100,
-  });
-  const updateQuoteMutation = useUpdateQuoteMutation();
-
   const role = currentUserQuery.data?.organization.role;
   const canManage = role === 'OWNER' || role === 'ADMIN' || role === 'OPERATIONS';
+  const clientsQuery = useQuoteClientsQuery(canManage);
+  const productsQuery = useQuoteProductsQuery(canManage);
+  const updateQuoteMutation = useUpdateQuoteMutation();
 
   const quote = quoteQuery.data;
-  const clients = clientsQuery.data?.data ?? [];
-  const products = productsQuery.data?.data ?? [];
+  const clients = clientsQuery.data ?? [];
+  const products = productsQuery.data ?? [];
+  const clientOptions =
+    quote && !clients.some((client) => client.id === quote.client.id)
+      ? [...clients, quote.client]
+      : clients;
+  const productOptions = [...products];
+  for (const item of quote?.items ?? []) {
+    if (item.productId && !productOptions.some((product) => product.id === item.productId)) {
+      productOptions.push({
+        id: item.productId,
+        name: `${item.description} (histórico)`,
+        unit: item.unit,
+        salePrice: null,
+        adoptedPricingVersionId: undefined,
+        updatedAt: '',
+      } as (typeof products)[number]);
+    }
+  }
 
   const isLoadingDependencies =
     currentUserQuery.isPending ||
     quoteQuery.isPending ||
-    clientsQuery.isPending ||
-    productsQuery.isPending;
+    (canManage && (clientsQuery.isPending || productsQuery.isPending));
 
   const dependencyError =
-    currentUserQuery.error ?? quoteQuery.error ?? clientsQuery.error ?? productsQuery.error;
+    currentUserQuery.error ??
+    quoteQuery.error ??
+    (canManage ? (clientsQuery.error ?? productsQuery.error) : null);
 
   function handleSubmit(data: QuoteFormData) {
     if (!quote) {
@@ -78,6 +93,15 @@ export function EditQuotePage() {
           notes: data.notes.trim() || null,
           items: data.items.map((item) => ({
             productId: item.productId || undefined,
+            sourceItemId:
+              item.priceSelection === 'PRESERVE' ? item.sourceItemId || undefined : undefined,
+            priceSelection: item.priceSelection,
+            expectedProductUpdatedAt:
+              item.priceSelection === 'CATALOG_NOW' ? item.expectedProductUpdatedAt : undefined,
+            expectedAdoptedPricingVersionId:
+              item.priceSelection === 'CATALOG_NOW'
+                ? item.expectedAdoptedPricingVersionId || null
+                : undefined,
             description: item.description.trim(),
             unit: item.unit.trim().toUpperCase(),
             quantity: item.quantity.trim(),
@@ -123,12 +147,26 @@ export function EditQuotePage() {
       )}
 
       {dependencyError && (
-        <p
-          role="alert"
-          className="mt-8 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {dependencyError.message}
-        </p>
+        <div className="mt-8 space-y-3">
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            Não foi possível carregar o orçamento e suas opções.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={quoteQuery.isFetching || clientsQuery.isFetching || productsQuery.isFetching}
+            onClick={() => {
+              if (quoteQuery.isError) void quoteQuery.refetch();
+              if (clientsQuery.isError) void clientsQuery.refetch();
+              if (productsQuery.isError) void productsQuery.refetch();
+            }}
+          >
+            Tentar novamente
+          </Button>
+        </div>
       )}
 
       {!isLoadingDependencies && !dependencyError && !canManage && (
@@ -155,7 +193,7 @@ export function EditQuotePage() {
         !dependencyError &&
         canManage &&
         quote?.status === 'DRAFT' &&
-        clients.length === 0 && (
+        clientOptions.length === 0 && (
           <Card className="mt-8">
             <CardContent className="py-12 text-center">
               <p className="font-medium">Nenhum cliente ativo disponível</p>
@@ -170,7 +208,7 @@ export function EditQuotePage() {
         !dependencyError &&
         canManage &&
         quote?.status === 'DRAFT' &&
-        clients.length > 0 && (
+        clientOptions.length > 0 && (
           <Card className="mt-8">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -190,12 +228,19 @@ export function EditQuotePage() {
             <CardContent>
               <QuoteForm
                 key={quote.id}
-                clients={clients}
-                products={products}
+                clients={clientOptions}
+                products={productOptions}
                 initialValues={quoteToFormData(quote)}
                 submitLabel="Salvar alterações"
                 isPending={updateQuoteMutation.isPending}
                 errorMessage={updateQuoteMutation.error?.message}
+                onRefreshCatalog={async () => {
+                  const refreshed = await productsQuery.refetch();
+                  if (refreshed.isError || !refreshed.data)
+                    throw new Error('Falha ao atualizar catálogo.');
+                  updateQuoteMutation.reset();
+                  return refreshed.data;
+                }}
                 onSubmit={handleSubmit}
                 onCancel={() => navigate(`/app/financeiro/orcamentos/${quote.id}`)}
               />

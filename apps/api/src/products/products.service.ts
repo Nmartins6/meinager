@@ -38,12 +38,10 @@ const productSelectWithoutDirectCost = {
 const productSelectWithDirectCost = {
   ...productSelectWithoutDirectCost,
   directCost: true,
-} satisfies Prisma.ProductSelect;
-
-const productMutationSelect = {
-  ...productSelectWithDirectCost,
   adoptedPricingVersionId: true,
 } satisfies Prisma.ProductSelect;
+
+const productMutationSelect = productSelectWithDirectCost;
 
 type ProductWithoutDirectCostResponse = Prisma.ProductGetPayload<{
   select: typeof productSelectWithoutDirectCost;

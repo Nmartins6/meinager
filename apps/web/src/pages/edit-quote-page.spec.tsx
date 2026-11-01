@@ -41,6 +41,7 @@ const product = {
   unit: 'UN',
   directCost: '12.500000',
   salePrice: '29.90',
+  adoptedPricingVersionId: null,
   trackInventory: true,
   minimumStock: null,
   notes: null,
@@ -74,6 +75,8 @@ const quote = {
     {
       id: 'c932a51d-744d-465c-8b48-afd8ec2561d0',
       productId: product.id,
+      priceOrigin: null,
+      pricingVersionId: null,
       position: 1,
       description: product.name,
       unit: product.unit,
@@ -212,6 +215,8 @@ describe('EditQuotePage', () => {
           items: [
             {
               productId: product.id,
+              sourceItemId: quote.items[0].id,
+              priceSelection: 'PRESERVE',
               description: product.name,
               unit: 'UN',
               quantity: '3',
@@ -222,6 +227,41 @@ describe('EditQuotePage', () => {
         }),
       }),
     );
+  });
+
+  it('keeps an inactive historical product and client selectable for preservation', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/auth/me')) return jsonResponse(authenticatedUser);
+      if (url.includes('/clients?') || url.includes('/products?'))
+        return jsonResponse(paginatedResponse([]));
+      if (url.endsWith(`/quotes/${quote.id}`) && init?.method === 'PATCH')
+        return jsonResponse(quote);
+      if (url.endsWith(`/quotes/${quote.id}`)) return jsonResponse(quote);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+    expect(
+      await screen.findByRole('option', {
+        name: `${quote.items[0].description} (histórico) — ${quote.items[0].unit}`,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Cliente')).toHaveValue(client.id);
+    expect(screen.getByLabelText('Origem do preço')).toHaveValue('PRESERVE');
+    await user.click(screen.getByRole('button', { name: 'Salvar alterações' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Detalhe do orçamento' }),
+    ).toBeInTheDocument();
+    const sent = fetchMock.mock.calls.find(
+      ([url, init]) => String(url).endsWith(`/quotes/${quote.id}`) && init?.method === 'PATCH',
+    );
+    expect(JSON.parse(String(sent?.[1]?.body)).items[0]).toMatchObject({
+      sourceItemId: quote.items[0].id,
+      priceSelection: 'PRESERVE',
+      unitPrice: quote.items[0].unitPrice,
+    });
   });
 
   it('should deny a viewer direct access to quote editing', async () => {

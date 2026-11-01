@@ -198,6 +198,15 @@ export function OrderPage() {
                         <tr key={item.id} className="border-t bg-background">
                           <td className="px-4 py-3">
                             <p className="font-medium">{item.description}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {item.priceOrigin === 'CATALOG'
+                                ? item.pricingVersionId
+                                  ? 'Preço do produto com versão adotada no orçamento'
+                                  : 'Preço do produto no orçamento'
+                                : item.priceOrigin === 'MANUAL'
+                                  ? 'Preço definido manualmente no orçamento'
+                                  : 'Origem do preço não registrada'}
+                            </p>
                             {item.notes && (
                               <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p>
                             )}

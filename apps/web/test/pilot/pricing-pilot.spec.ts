@@ -3,6 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
+function canonicalDecimal(value: string) {
+  return value.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+
 test('percursos fictícios de precificação usam API e PostgreSQL descartável', async ({
   page,
   browser,
@@ -12,6 +16,11 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
   const ownerEmail = `nicolas-${runId}@example.invalid`;
   const password = `Pilot-${runId}-Pass!`;
   let productId = '';
+  let clientId = '';
+  let quoteId = '';
+  let orderId = '';
+  let adoptedVersionId = '';
+  let adoptedPrice = '';
   const writes: string[] = [];
   const browserErrors: string[] = [];
   page.on('pageerror', (error) => browserErrors.push(error.name));
@@ -43,6 +52,14 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
     await page.getByRole('button', { name: 'Salvar cliente' }).click();
     await expect(page).toHaveURL(/\/app\/clientes$/);
     await expect(page.getByText(`${prefix} Cliente`)).toBeVisible();
+    const clients = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/clients?page=1&pageSize=100`,
+    );
+    expect(clients.status()).toBe(200);
+    clientId = (await clients.json()).data.find(
+      (client: { name: string }) => client.name === `${prefix} Cliente`,
+    )?.id;
+    expect(clientId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   await test.step('caneca branca e produto personalizados cadastrados na interface', async () => {
@@ -117,11 +134,118 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
       .getByRole('button', { name: 'Fechar' })
       .click();
     await expect(page.getByText('Preço atual originado desta versão').first()).toBeVisible();
+    const versions = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/pricing/products/${productId}/versions`,
+    );
+    expect(versions.status()).toBe(200);
+    const version = (await versions.json()).data[0];
+    adoptedVersionId = version.id;
+    adoptedPrice = version.analyzedPrice;
+  });
+
+  await test.step('troca de versão com o mesmo preço invalida a confirmação anterior', async () => {
+    const observed = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/products/${productId}`,
+    );
+    expect(observed.status()).toBe(200);
+    const product = await observed.json();
+    expect(product.adoptedPricingVersionId).toBe(adoptedVersionId);
+    await page.getByRole('button', { name: 'Confirmar simulação no servidor' }).click();
+    await expect(
+      page.getByText('Cálculo confirmado pelo servidor e idêntico à prévia local.'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Salvar versão' }).click();
+    await expect(page.getByRole('status').filter({ hasText: /Versão nº 2 criada/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Adotar versão 2' }).click();
+    await page
+      .getByRole('dialog', { name: 'Adotar versão 2' })
+      .getByRole('button', { name: 'Confirmar adoção' })
+      .click();
+    await expect(
+      page.getByRole('dialog', { name: 'Adotar versão 2' }).getByRole('status'),
+    ).toContainText('vinculado');
+    await page
+      .getByRole('dialog', { name: 'Adotar versão 2' })
+      .getByRole('button', { name: 'Fechar' })
+      .click();
+    const versions = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/pricing/products/${productId}/versions`,
+    );
+    expect(versions.status()).toBe(200);
+    const latest = (await versions.json()).data[0];
+    expect(latest.id).not.toBe(adoptedVersionId);
+    expect(latest.analyzedPrice).toBe(adoptedPrice);
+    const stale = await page.request.post(`${process.env.PILOT_API_URL}/api/quotes`, {
+      data: {
+        clientId,
+        items: [
+          {
+            productId,
+            description: product.name,
+            unit: product.unit,
+            quantity: '1',
+            unitPrice: adoptedPrice,
+            priceSelection: 'CATALOG_NOW',
+            expectedProductUpdatedAt: product.updatedAt,
+            expectedAdoptedPricingVersionId: adoptedVersionId,
+          },
+        ],
+      },
+    });
+    expect(stale.status()).toBe(409);
+    adoptedVersionId = latest.id;
+  });
+
+  await test.step('orçamento e pedido congelam preço e origem adotados', async () => {
+    await page.goto('/app/financeiro/orcamentos/novo');
+    await page.getByLabel('Cliente').selectOption({ label: `${prefix} Cliente` });
+    await page
+      .getByLabel('Item do catálogo opcional')
+      .selectOption({ label: `${prefix} Caneca personalizada — UN` });
+    await expect(page.getByLabel('Origem do preço')).toHaveValue('CATALOG_NOW');
+    await expect(page.getByLabel('Preço unitário')).toHaveValue(canonicalDecimal(adoptedPrice));
+    await page.getByRole('button', { name: 'Salvar orçamento' }).click();
+    await expect(page).toHaveURL(/\/app\/financeiro\/orcamentos$/);
+    await page.getByRole('button', { name: 'Orçamento #1' }).click();
+    quoteId = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+    await expect(page.getByText('Preço do produto com versão adotada na criação')).toBeVisible();
+    await page.getByRole('button', { name: 'Enviar orçamento' }).click();
+    await page.getByRole('button', { name: 'Aprovar orçamento' }).click();
+    await page.getByRole('button', { name: 'Criar pedido' }).click();
+    await expect(page).toHaveURL(/\/app\/financeiro\/pedidos\/[0-9a-f-]+$/);
+    orderId = new URL(page.url()).pathname.split('/').at(-1) ?? '';
+    await expect(page.getByText('Preço do produto com versão adotada no orçamento')).toBeVisible();
+    const quoteResponse = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/quotes/${quoteId}`,
+    );
+    const orderResponse = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/orders/${orderId}`,
+    );
+    expect(quoteResponse.status()).toBe(200);
+    expect(orderResponse.status()).toBe(200);
+    const quoteItem = (await quoteResponse.json()).items[0];
+    const orderItem = (await orderResponse.json()).items[0];
+    expect(quoteItem).toMatchObject({
+      unitPrice: canonicalDecimal(adoptedPrice),
+      priceOrigin: 'CATALOG',
+      pricingVersionId: adoptedVersionId,
+    });
+    expect(orderItem).toMatchObject({
+      unitPrice: canonicalDecimal(adoptedPrice),
+      priceOrigin: 'CATALOG',
+      pricingVersionId: adoptedVersionId,
+    });
+    expect(JSON.stringify(quoteItem)).not.toMatch(/directCost|margin|deductions|snapshot/i);
+    expect(JSON.stringify(orderItem)).not.toMatch(/directCost|margin|deductions|snapshot/i);
+  });
+
+  await test.step('preço manual posterior não altera orçamento nem pedido', async () => {
+    await page.goto(`/app/produtos/${productId}/precificacao`);
     await page.getByRole('button', { name: 'Definir preço manual' }).click();
     await page
       .getByRole('dialog', { name: 'Definir preço manual' })
       .getByLabel('Preço de venda')
-      .fill('99.00');
+      .fill(canonicalDecimal(adoptedPrice));
     await page
       .getByRole('dialog', { name: 'Definir preço manual' })
       .getByRole('button', { name: 'Confirmar preço' })
@@ -135,7 +259,27 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
       .getByRole('dialog', { name: 'Definir preço manual' })
       .getByRole('button', { name: 'Cancelar' })
       .click();
-    await expect(page.getByText('Não adotada atualmente')).toBeVisible();
+    await expect(page.getByText('Não adotada atualmente').first()).toBeVisible();
+    const currentProduct = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/products/${productId}`,
+    );
+    expect(currentProduct.status()).toBe(200);
+    expect(await currentProduct.json()).toMatchObject({
+      salePrice: canonicalDecimal(adoptedPrice),
+      adoptedPricingVersionId: null,
+    });
+    for (const [path, label] of [
+      [`quotes/${quoteId}`, 'quote'],
+      [`orders/${orderId}`, 'order'],
+    ] as const) {
+      const response = await page.request.get(`${process.env.PILOT_API_URL}/api/${path}`);
+      expect(response.status(), label).toBe(200);
+      expect((await response.json()).items[0]).toMatchObject({
+        unitPrice: canonicalDecimal(adoptedPrice),
+        priceOrigin: 'CATALOG',
+        pricingVersionId: adoptedVersionId,
+      });
+    }
   });
 
   await test.step('papéis internos e isolamento da organização', async () => {
@@ -317,7 +461,7 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
     await expect(invited.getByRole('button', { name: new RegExp(organizationName) })).toBeVisible();
     await invited.getByRole('button', { name: new RegExp(organizationName) }).click();
     await expect(invited).toHaveURL(/\/app\/?$/);
-    await expect(invited.getByText(organizationName)).toBeVisible();
+    await expect(invited.getByText(organizationName, { exact: true })).toBeVisible();
     await invited.goto('/app/produtos/precificacao/perfis');
     await invited.getByRole('button', { name: 'Criar perfil', exact: true }).click();
     await invited.getByLabel('Nome', { exact: true }).fill(`Rascunho ${runId}`);
@@ -338,7 +482,7 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
 
     const secondTab = await existing.newPage();
     await secondTab.goto('/app');
-    await expect(secondTab.getByText(organizationName)).toBeVisible();
+    await expect(secondTab.getByText(organizationName, { exact: true })).toBeVisible();
     const delayedClientName = `Leitura antiga ${runId}`;
     const createdClient = await page
       .context()
@@ -361,10 +505,10 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
     await invited.getByRole('link', { name: 'Trocar organização' }).click();
     await invited.getByRole('button', { name: new RegExp(otherOrganizationName) }).click();
     await expect(invited).toHaveURL(/\/app\/?$/);
-    await expect(invited.getByText(otherOrganizationName)).toBeVisible();
+    await expect(invited.getByText(otherOrganizationName, { exact: true })).toBeVisible();
     releaseRead?.();
     await oldReadNavigation;
-    await expect(secondTab.getByText(otherOrganizationName)).toBeVisible();
+    await expect(secondTab.getByText(otherOrganizationName, { exact: true })).toBeVisible();
     await expect(secondTab.getByText(delayedClientName)).toHaveCount(0);
     await secondTab.unroute('**/api/clients**');
     const staleContext = await existing.request.post(
@@ -377,8 +521,8 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
     expect(staleContext.status()).toBe(409);
     await invited.getByRole('link', { name: 'Trocar organização' }).click();
     await invited.getByRole('button', { name: new RegExp(organizationName) }).click();
-    await expect(invited.getByText(organizationName)).toBeVisible();
-    await expect(secondTab.getByText(organizationName)).toBeVisible();
+    await expect(invited.getByText(organizationName, { exact: true })).toBeVisible();
+    await expect(secondTab.getByText(organizationName, { exact: true })).toBeVisible();
     const staleSameOrganization = await existing.request.post(
       `${process.env.PILOT_API_URL}/api/clients`,
       {
@@ -394,7 +538,9 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
     const activeVersion = (await activeContext.json()).contextVersion as number;
     let releaseMutation: (() => void) | undefined;
     let markCommitted: (() => void) | undefined;
+    let markDelivered: (() => void) | undefined;
     const mutationCommitted = new Promise<void>((resolve) => (markCommitted = resolve));
+    const mutationDelivered = new Promise<void>((resolve) => (markDelivered = resolve));
     const mutationGate = new Promise<void>((resolve) => (releaseMutation = resolve));
     await secondTab.route('**/api/clients', async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
@@ -403,6 +549,7 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
       markCommitted?.();
       await mutationGate;
       await route.fulfill({ response }).catch(() => undefined);
+      markDelivered?.();
     });
     const pendingClientName = `Mutação anterior ${runId}`;
     await secondTab.evaluate(
@@ -429,7 +576,8 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
     await invited.getByRole('link', { name: 'Trocar organização' }).click();
     await invited.getByRole('button', { name: new RegExp(otherOrganizationName) }).click();
     releaseMutation?.();
-    await expect(secondTab.getByText(otherOrganizationName)).toBeVisible();
+    await mutationDelivered;
+    await expect(secondTab.getByText(otherOrganizationName, { exact: true })).toBeVisible();
     const otherClients = await existing.request.get(`${process.env.PILOT_API_URL}/api/clients`);
     expect(JSON.stringify((await otherClients.json()).data)).not.toContain(pendingClientName);
     const originalClients = await page

@@ -21,6 +21,8 @@ const quoteClientSchema = z.object({
 const quoteItemSchema = z.object({
   id: z.string().uuid(),
   productId: z.string().uuid().nullable(),
+  priceOrigin: z.enum(['CATALOG', 'MANUAL']).nullable(),
+  pricingVersionId: z.string().uuid().nullable(),
   position: z.number().int().positive(),
   description: z.string(),
   unit: z.string(),
@@ -93,6 +95,10 @@ export interface ListQuotesInput {
 
 export interface QuoteItemInput {
   productId?: string;
+  sourceItemId?: string;
+  priceSelection?: 'CATALOG_NOW' | 'MANUAL' | 'PRESERVE';
+  expectedProductUpdatedAt?: string;
+  expectedAdoptedPricingVersionId?: string | null;
   description: string;
   unit: string;
   quantity: string;

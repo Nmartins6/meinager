@@ -325,6 +325,7 @@ describe('ProductsService', () => {
 
     const select = prismaMock.product.findFirst.mock.calls[0]?.[0].select;
     expect(select).not.toHaveProperty('directCost');
+    expect(select).not.toHaveProperty('adoptedPricingVersionId');
   });
 
   it.each([
@@ -337,7 +338,10 @@ describe('ProductsService', () => {
 
     expect(prismaMock.product.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        select: expect.objectContaining({ directCost: true }),
+        select: expect.objectContaining({
+          directCost: true,
+          adoptedPricingVersionId: true,
+        }),
       }),
     );
   });
@@ -347,6 +351,7 @@ describe('ProductsService', () => {
 
     const select = prismaMock.product.findMany.mock.calls[0]?.[0].select;
     expect(select).not.toHaveProperty('directCost');
+    expect(select).not.toHaveProperty('adoptedPricingVersionId');
   });
 
   it.each([
@@ -359,7 +364,10 @@ describe('ProductsService', () => {
 
     expect(prismaMock.product.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        select: expect.objectContaining({ directCost: true }),
+        select: expect.objectContaining({
+          directCost: true,
+          adoptedPricingVersionId: true,
+        }),
       }),
     );
   });

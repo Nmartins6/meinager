@@ -472,12 +472,12 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Histórico e snapshots
 
-| Critérios                     | Estado        | Base reutilizável                                                                                                                                          | Implementação esperada                            |
-| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças                         | Adoção não faz parte destes critérios             |
-| `PREC-CA-038`                 | `IMPLEMENTED` | GET paginado e detalhe validado exibem versões finalizadas com `isAdopted` dinâmico; a web pagina, abre detalhe e identifica textualmente a versão adotada | Preservar a leitura histórica nos próximos fluxos |
-| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                                                     | Comprovado no Marco 3C.3                          |
-| `PREC-RN-036` a `PREC-RN-038` | `PARTIAL`     | Versões e auditoria de cálculo/adoção implementadas; snapshots comerciais de orçamento/pedido já existem                                                   | Integrar referências aos documentos comerciais    |
+| Critérios                     | Estado        | Base reutilizável                                                                                                                                                                     | Implementação esperada                            |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `PREC-CA-035` a `PREC-CA-037` | `IMPLEMENTED` | POST cria versão finalizada imutável com snapshot v1, projeções, autoria, fórmula e auditoria; E2E prova preservação após mudanças                                                    | Adoção não faz parte destes critérios             |
+| `PREC-CA-038`                 | `IMPLEMENTED` | GET paginado e detalhe validado exibem versões finalizadas com `isAdopted` dinâmico; a web pagina, abre detalhe e identifica textualmente a versão adotada                            | Preservar a leitura histórica nos próximos fluxos |
+| `PREC-RN-035`                 | `IMPLEMENTED` | Cada cálculo salvo recebe número sequencial e snapshot imutável; concorrência real cria números únicos                                                                                | Comprovado no Marco 3C.3                          |
+| `PREC-RN-036` a `PREC-RN-038` | `IMPLEMENTED` | Versões e auditoria permanecem imutáveis; itens comerciais guardam preço, origem e versão opcional. Replay populado e percurso real preservam os documentos após alteração do produto | Provas em PostgreSQL descartável e Playwright     |
 
 ### Integração com produtos
 
@@ -488,17 +488,17 @@ tipo importáveis sem artefato versionado. A web não foi alterada.
 
 ### Integração com orçamentos
 
-| Critérios     | Estado    | Base reutilizável                       | Implementação esperada                   |
-| ------------- | --------- | --------------------------------------- | ---------------------------------------- |
-| `PREC-CA-040` | `PARTIAL` | `FinancialQuote` e `FinancialQuoteItem` | Preservar origem opcional do preço       |
-| `PREC-RN-036` | `PARTIAL` | Snapshot comercial existente            | Garantir imutabilidade e rastreabilidade |
+| Critérios     | Estado        | Base reutilizável                                                                                                                                                                | Implementação esperada                          |
+| ------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `PREC-CA-040` | `IMPLEMENTED` | `FinancialQuoteItem` guarda preço, origem e versão opcional capturados na transação; 59 E2E e Playwright real cobrem conflito de preço/origem, reordenação e histórico congelado | Sem inferência retroativa para legado           |
+| `PREC-RN-036` | `IMPLEMENTED` | Seleção explícita de catálogo/manual/histórico; replay populado e edição por quantidade/desconto preservam preço e referência                                                    | Dados internos não entram no contrato comercial |
 
 ### Integração com pedidos
 
-| Critérios     | Estado    | Base reutilizável               | Implementação esperada           |
-| ------------- | --------- | ------------------------------- | -------------------------------- |
-| `PREC-CA-041` | `PARTIAL` | `SalesOrder` e `SalesOrderItem` | Copiar referência do orçamento   |
-| `PREC-RN-037` | `PARTIAL` | Conversão já preserva itens     | Não recalcular durante conversão |
+| Critérios     | Estado        | Base reutilizável                                                                                                         | Implementação esperada                   |
+| ------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `PREC-CA-041` | `IMPLEMENTED` | `SalesOrderItem` copia preço, origem e versão do orçamento aprovado; Playwright verifica o pedido após mudança do produto | Sem recálculo ou consulta à adoção atual |
+| `PREC-RN-037` | `IMPLEMENTED` | `OrdersService` copia o snapshot comercial; replay populado preserva pedidos antigos com origem nula                      | Referência histórica permanece válida    |
 
 ### Integração com estoque e financeiro
 

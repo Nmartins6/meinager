@@ -727,5 +727,49 @@ Nenhuma decisão essencial permanece aberta para iniciar os Marcos 3B, 3C ou 3D.
 
 - A ADR-008 aprovou a estratégia de compartilhar a prévia decimal com a web e
   a extensão interna `isAdopted` para o histórico do Marco 4.
-- A semântica de origem do preço em itens comerciais editáveis permanece uma
-  decisão do Marco 5.
+- A semântica de origem do preço em itens comerciais editáveis foi definida
+  para o Marco 5 em 01/11/2026, conforme a seção seguinte.
+
+## Complemento aprovado para o Marco 5 — origem do preço comercial
+
+Cada item de orçamento e pedido guarda `priceOrigin` anulável (`CATALOG` ou
+`MANUAL`) e `pricingVersionId` anulável. Nulo em ambos significa origem não
+registrada, inclusive nos documentos anteriores à migration. `CATALOG` exige
+produto; `MANUAL` nunca referencia versão. A referência opcional usa chave
+composta de organização, produto e versão; o backend só captura uma versão
+`FINALIZED` que esteja adotada naquele produto no momento da escolha. Uma
+versão posteriormente substituída continua válida no documento histórico.
+
+Na criação de orçamento, a escolha explícita `CATALOG_NOW` recebe o preço
+observado, `expectedProductUpdatedAt` e a referência adotada observada
+(`expectedAdoptedPricingVersionId`, anulável) apenas para detectar mudança entre
+a tela e o salvamento. A lista e o detalhe internos de produtos expõem a
+referência somente aos papéis que já podem consultar custos; o resumo comercial
+e a resposta para `VIEWER` não a expõem. Dentro da mesma transação, o backend
+bloqueia os produtos em ordem crescente, lê `salePrice` e
+`adoptedPricingVersionId` atuais, compara preço, timestamp e referência
+observados e grava os valores do banco. A confirmação protege tanto o valor
+quanto a origem versionada observada, inclusive quando o preço permanece igual.
+Divergência retorna conflito
+para nova confirmação; preço nulo exige preço manual ou regularização do
+produto. `MANUAL` usa o valor informado, inclusive quando igual ao preço de
+catálogo, e não guarda referência de versão. Não se oferece versão não adotada
+como fonte direta nesta entrega.
+
+Na edição de rascunho, `PRESERVE` exige `sourceItemId` pertencente ao orçamento
+e produto/preço unitário iguais ao item anterior; cada `sourceItemId` pode ser
+usado uma única vez por atualização, inclusive após reordenação. Quantidade,
+descrição e desconto podem mudar sem recapturar preço ou origem.
+`CATALOG_NOW` é uma atualização explícita
+do preço atual. Trocar produto invalida a preservação anterior. Desconto não
+altera a procedência do preço unitário nem certifica que o total líquido
+esteja acima do mínimo.
+
+Requisições legadas que enviam apenas `unitPrice` continuam aceitas. Elas
+gravam origem desconhecida e nenhuma versão; nunca recebem associação
+versionada por coincidência numérica. Atualização legada sem `items` preserva
+os itens; ao substituir a coleção sem decisão explícita, os novos itens ficam
+com origem desconhecida. A conversão copia preço e origem dos itens do
+orçamento aprovado sem consultar produto, versão ou motor. Os contratos
+comerciais expõem apenas os campos de origem, sem custos, margens, deduções ou
+snapshot interno.

@@ -56,6 +56,11 @@ enum QuoteStatus {
   CANCELLED
 }
 
+enum CommercialPriceOrigin {
+  CATALOG
+  MANUAL
+}
+
 enum OrderStatus {
   PENDING
   IN_PROGRESS
@@ -385,26 +390,30 @@ model FinancialQuote {
 }
 
 model FinancialQuoteItem {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  quoteId        String   @map("quote_id") @db.Uuid
-  productId      String?  @map("product_id") @db.Uuid
-  position       Int
-  description    String   @db.VarChar(160)
-  unit           String   @db.VarChar(20)
-  quantity       Decimal  @db.Decimal(18, 6)
-  unitPrice      Decimal  @map("unit_price") @db.Decimal(14, 2)
-  total          Decimal  @db.Decimal(14, 2)
-  notes          String?  @db.Text
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String                 @map("organization_id") @db.Uuid
+  quoteId          String                 @map("quote_id") @db.Uuid
+  productId        String?                @map("product_id") @db.Uuid
+  priceOrigin      CommercialPriceOrigin? @map("price_origin")
+  pricingVersionId String?                @map("pricing_version_id") @db.Uuid
+  position         Int
+  description      String                 @db.VarChar(160)
+  unit             String                 @db.VarChar(20)
+  quantity         Decimal                @db.Decimal(18, 6)
+  unitPrice        Decimal                @map("unit_price") @db.Decimal(14, 2)
+  total            Decimal                @db.Decimal(14, 2)
+  notes            String?                @db.Text
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  quote   FinancialQuote @relation(fields: [organizationId, quoteId], references: [organizationId, id], onDelete: Cascade)
-  product Product?       @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  quote          FinancialQuote             @relation(fields: [organizationId, quoteId], references: [organizationId, id], onDelete: Cascade)
+  product        Product?                   @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  pricingVersion PricingCalculationVersion? @relation("QuoteItemPricingVersion", fields: [organizationId, productId, pricingVersionId], references: [organizationId, productId, id], onDelete: Restrict, onUpdate: Restrict, map: "financial_quote_items_pricing_version_fkey")
 
   @@unique([quoteId, position])
   @@index([organizationId, quoteId])
   @@index([organizationId, productId])
+  @@index([organizationId, productId, pricingVersionId], map: "financial_quote_items_org_product_version_idx")
   @@map("financial_quote_items")
 }
 
@@ -443,26 +452,30 @@ model SalesOrder {
 }
 
 model SalesOrderItem {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  orderId        String   @map("order_id") @db.Uuid
-  productId      String?  @map("product_id") @db.Uuid
-  position       Int
-  description    String   @db.VarChar(160)
-  unit           String   @db.VarChar(20)
-  quantity       Decimal  @db.Decimal(18, 6)
-  unitPrice      Decimal  @map("unit_price") @db.Decimal(14, 2)
-  total          Decimal  @db.Decimal(14, 2)
-  notes          String?  @db.Text
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String                 @map("organization_id") @db.Uuid
+  orderId          String                 @map("order_id") @db.Uuid
+  productId        String?                @map("product_id") @db.Uuid
+  priceOrigin      CommercialPriceOrigin? @map("price_origin")
+  pricingVersionId String?                @map("pricing_version_id") @db.Uuid
+  position         Int
+  description      String                 @db.VarChar(160)
+  unit             String                 @db.VarChar(20)
+  quantity         Decimal                @db.Decimal(18, 6)
+  unitPrice        Decimal                @map("unit_price") @db.Decimal(14, 2)
+  total            Decimal                @db.Decimal(14, 2)
+  notes            String?                @db.Text
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  order   SalesOrder @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Cascade)
-  product Product?   @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  order          SalesOrder                 @relation(fields: [organizationId, orderId], references: [organizationId, id], onDelete: Cascade)
+  product        Product?                   @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  pricingVersion PricingCalculationVersion? @relation("OrderItemPricingVersion", fields: [organizationId, productId, pricingVersionId], references: [organizationId, productId, id], onDelete: Restrict, onUpdate: Restrict, map: "order_items_pricing_version_fkey")
 
   @@unique([orderId, position])
   @@index([organizationId, orderId])
   @@index([organizationId, productId])
+  @@index([organizationId, productId, pricingVersionId], map: "order_items_org_product_version_idx")
   @@map("order_items")
 }
 
@@ -927,6 +940,8 @@ model PricingCalculationVersion {
   deductions            PricingVersionDeduction[]                 @relation("PricingVersionDeductions")
   adoptedByProducts     Product[]                                 @relation("ProductAdoptedPricingVersion")
   adoptions             PricingPriceAdoption[]                    @relation("PricingAdoptionVersion")
+  quoteItems            FinancialQuoteItem[]                      @relation("QuoteItemPricingVersion")
+  orderItems            SalesOrderItem[]                          @relation("OrderItemPricingVersion")
   subsequentAdoptions   PricingPriceAdoption[]                    @relation("PricingAdoptionPreviousVersion")
   createdBy             User                                      @relation("PricingCalculationVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "pricing_calculation_versions_created_by_fkey")
 

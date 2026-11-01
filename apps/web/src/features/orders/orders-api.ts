@@ -46,6 +46,8 @@ const orderQuoteSchema = z.object({
 const orderItemSchema = z.object({
   id: z.string().uuid(),
   productId: z.string().uuid().nullable(),
+  priceOrigin: z.enum(['CATALOG', 'MANUAL']).nullable(),
+  pricingVersionId: z.string().uuid().nullable(),
   position: z.number().int().positive(),
   description: z.string(),
   unit: z.string(),

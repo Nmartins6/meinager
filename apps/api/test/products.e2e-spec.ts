@@ -512,15 +512,26 @@ describe('Products (e2e)', () => {
           data: { role },
         });
 
-        await request(httpServer())
+        const list = await request(httpServer())
           .get('/api/products')
           .set('Cookie', sessionCookie)
           .expect(200);
 
-        await request(httpServer())
+        const detail = await request(httpServer())
           .get(`/api/products/${target.body.id}`)
           .set('Cookie', sessionCookie)
           .expect(200);
+
+        if (role === OrganizationRole.VIEWER) {
+          expect(
+            list.body.data.every(
+              (product: object) => !('adoptedPricingVersionId' in product),
+            ),
+          ).toBe(true);
+          expect(detail.body).not.toHaveProperty('adoptedPricingVersionId');
+        } else {
+          expect(detail.body).toHaveProperty('adoptedPricingVersionId', null);
+        }
 
         await request(httpServer())
           .post('/api/products')
@@ -686,6 +697,9 @@ describe('Products (e2e)', () => {
 
   afterAll(async () => {
     try {
+      if (userId) {
+        await prisma.session.deleteMany({ where: { userId } });
+      }
       if (otherOrganizationId) {
         await prisma.organization.delete({
           where: {

@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsDateString,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -17,6 +18,22 @@ const quantityPattern = /^(?=.*[1-9])(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/;
 const moneyPattern = /^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/;
 
 export class CreateQuoteItemDto {
+  @IsOptional()
+  @IsUUID('4')
+  sourceItemId?: string;
+
+  @IsOptional()
+  @IsIn(['CATALOG_NOW', 'MANUAL', 'PRESERVE'])
+  priceSelection?: 'CATALOG_NOW' | 'MANUAL' | 'PRESERVE';
+
+  @IsOptional()
+  @IsDateString()
+  expectedProductUpdatedAt?: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  expectedAdoptedPricingVersionId?: string | null;
+
   @IsOptional()
   @IsUUID('4')
   productId?: string;

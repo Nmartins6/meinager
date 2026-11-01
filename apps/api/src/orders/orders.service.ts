@@ -25,6 +25,8 @@ const orderStageSelect = {
 const orderItemSelect = {
   id: true,
   productId: true,
+  priceOrigin: true,
+  pricingVersionId: true,
   position: true,
   description: true,
   unit: true,
@@ -150,6 +152,8 @@ const sourceQuoteSelect = {
     },
     select: {
       productId: true,
+      priceOrigin: true,
+      pricingVersionId: true,
       position: true,
       description: true,
       unit: true,
@@ -192,7 +196,7 @@ function statusForStageCategory(category: OrderStageCategory): OrderStatus {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async findOne(
     organizationId: string,
@@ -246,7 +250,7 @@ export class OrdersService {
         SELECT "id"
         FROM "organizations"
         WHERE "id" = ${organizationId}
-        FOR UPDATE
+        FOR NO KEY UPDATE
       `;
 
       const existingOrder = await transaction.salesOrder.findFirst({
@@ -285,11 +289,11 @@ export class OrdersService {
           isActive: true,
           ...(dto.workflowId
             ? {
-              id: dto.workflowId,
-            }
+                id: dto.workflowId,
+              }
             : {
-              isDefault: true,
-            }),
+                isDefault: true,
+              }),
         },
         select: {
           id: true,
@@ -354,6 +358,8 @@ export class OrdersService {
           items: {
             create: quote.items.map((item) => ({
               productId: item.productId,
+              priceOrigin: item.priceOrigin,
+              pricingVersionId: item.pricingVersionId,
               position: item.position,
               description: item.description,
               unit: item.unit,

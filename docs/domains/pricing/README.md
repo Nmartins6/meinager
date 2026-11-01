@@ -166,8 +166,11 @@ do histórico: o backend determina o preço pelo `analyzedPrice` congelado;
 OWNER/ADMIN/OPERATIONS podem adotar normalmente, e somente OWNER/ADMIN podem
 confirmar uma versão abaixo do mínimo com justificativa. O resultado atualiza
 resumo comercial e projeção dinâmica `isAdopted`, sem substituir um rascunho da
-composição. A integração da origem comercial com orçamentos e pedidos continua
-pendente.
+composição. No Marco 5, itens de orçamento e pedido passam a guardar a origem
+comercial do preço e a referência opcional da versão adotada no momento da
+escolha. A interface distingue preço atual do catálogo, preço manual e preço
+histórico preservado na edição. A conversão copia esses dados do orçamento,
+sem recalcular; documentos anteriores mantêm origem desconhecida.
 
 O Marco 4A auditou a aplicação React, e a arquitetura da ADR-008 foi aprovada em
 10/10/2026 sem implementar código. O Marco 4B.1 concluiu o pacote puro do motor,

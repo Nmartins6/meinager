@@ -5,16 +5,25 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { QuoteStatus } from '../generated/prisma/enums.js';
+import {
+  CommercialPriceOrigin,
+  PricingVersionState,
+  QuoteStatus,
+} from '../generated/prisma/enums.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
-import type { CreateQuoteDto } from './dto/create-quote.dto.js';
+import type {
+  CreateQuoteDto,
+  CreateQuoteItemDto,
+} from './dto/create-quote.dto.js';
 import type { ListQuotesQueryDto } from './dto/list-quotes-query.dto.js';
 import type { UpdateQuoteDto } from './dto/update-quote.dto.js';
 
 const quoteItemSelect = {
   id: true,
   productId: true,
+  priceOrigin: true,
+  pricingVersionId: true,
   position: true,
   description: true,
   unit: true,
@@ -114,6 +123,176 @@ export interface PaginatedQuotesResponse {
 export class QuotesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async resolveItems(
+    transaction: Prisma.TransactionClient,
+    organizationId: string,
+    inputs: CreateQuoteItemDto[],
+    currentItems: Array<{
+      id: string;
+      productId: string | null;
+      unitPrice: Prisma.Decimal;
+      priceOrigin: CommercialPriceOrigin | null;
+      pricingVersionId: string | null;
+    }> = [],
+  ) {
+    const productIds = [
+      ...new Set(
+        inputs.flatMap((item) =>
+          item.priceSelection !== 'PRESERVE' && item.productId
+            ? [item.productId]
+            : [],
+        ),
+      ),
+    ].sort();
+    if (productIds.length) {
+      await transaction.$queryRaw`
+        SELECT "id" FROM "products"
+        WHERE "organization_id" = ${organizationId}::uuid
+          AND "id" IN (${Prisma.join(productIds.map((id) => Prisma.sql`${id}::uuid`))})
+        ORDER BY "id" FOR UPDATE
+      `;
+    }
+    const products = await transaction.product.findMany({
+      where: { organizationId, id: { in: productIds }, isActive: true },
+      select: {
+        id: true,
+        salePrice: true,
+        adoptedPricingVersionId: true,
+        updatedAt: true,
+      },
+    });
+    if (products.length !== productIds.length) {
+      throw new BadRequestException(
+        'Informe apenas produtos ou serviços ativos da organização.',
+      );
+    }
+    const productById = new Map(
+      products.map((product) => [product.id, product]),
+    );
+    const currentById = new Map(currentItems.map((item) => [item.id, item]));
+    const preservedItemIds = new Set<string>();
+    const versionIds = [
+      ...new Set(
+        products.flatMap((product) =>
+          product.adoptedPricingVersionId
+            ? [product.adoptedPricingVersionId]
+            : [],
+        ),
+      ),
+    ];
+    const versions = await transaction.pricingCalculationVersion.findMany({
+      where: {
+        organizationId,
+        id: { in: versionIds },
+        state: PricingVersionState.FINALIZED,
+      },
+      select: { id: true, productId: true },
+    });
+    const finalized = new Map(
+      versions.map((version) => [version.id, version.productId]),
+    );
+
+    return inputs.map((item) => {
+      const selection = item.priceSelection;
+      if (
+        selection !== 'CATALOG_NOW' &&
+        (item.expectedProductUpdatedAt !== undefined ||
+          item.expectedAdoptedPricingVersionId !== undefined)
+      ) {
+        throw new BadRequestException(
+          'A revisão do produto só é válida para preço do catálogo.',
+        );
+      }
+      if (selection !== 'PRESERVE' && item.sourceItemId !== undefined) {
+        throw new BadRequestException(
+          'A referência do item anterior só é válida para preservar o preço.',
+        );
+      }
+      let unitPrice = new Prisma.Decimal(item.unitPrice);
+      let priceOrigin: CommercialPriceOrigin | null = null;
+      let pricingVersionId: string | null = null;
+      if (selection === 'PRESERVE') {
+        if (item.sourceItemId && preservedItemIds.has(item.sourceItemId)) {
+          throw new BadRequestException(
+            'Um item anterior não pode ser preservado mais de uma vez.',
+          );
+        }
+        const current = item.sourceItemId
+          ? currentById.get(item.sourceItemId)
+          : undefined;
+        if (
+          !current ||
+          current.productId !== (item.productId ?? null) ||
+          !current.unitPrice.equals(unitPrice)
+        ) {
+          throw new ConflictException(
+            'O preço histórico do item mudou. Recarregue o orçamento.',
+          );
+        }
+        unitPrice = current.unitPrice;
+        priceOrigin = current.priceOrigin;
+        pricingVersionId = current.pricingVersionId;
+        preservedItemIds.add(current.id);
+      } else if (selection === 'CATALOG_NOW') {
+        const product = item.productId
+          ? productById.get(item.productId)
+          : undefined;
+        if (
+          !product ||
+          !item.expectedProductUpdatedAt ||
+          item.expectedAdoptedPricingVersionId === undefined
+        ) {
+          throw new BadRequestException(
+            'Selecione um produto com preço atual confirmado.',
+          );
+        }
+        if (product.salePrice === null) {
+          throw new BadRequestException(
+            'O produto não possui preço atual. Defina um preço manual.',
+          );
+        }
+        if (
+          product.updatedAt.toISOString() !==
+            new Date(item.expectedProductUpdatedAt).toISOString() ||
+          !product.salePrice.equals(unitPrice) ||
+          product.adoptedPricingVersionId !==
+            item.expectedAdoptedPricingVersionId
+        ) {
+          throw new ConflictException(
+            'O preço ou sua origem mudou. Atualize e confirme a seleção.',
+          );
+        }
+        if (
+          product.adoptedPricingVersionId &&
+          finalized.get(product.adoptedPricingVersionId) !== product.id
+        ) {
+          throw new ConflictException(
+            'A versão adotada do produto não está finalizada.',
+          );
+        }
+        unitPrice = product.salePrice;
+        priceOrigin = CommercialPriceOrigin.CATALOG;
+        pricingVersionId = product.adoptedPricingVersionId;
+      } else if (selection === 'MANUAL') {
+        priceOrigin = CommercialPriceOrigin.MANUAL;
+      }
+      const quantity = new Prisma.Decimal(item.quantity);
+      return {
+        productId: item.productId ?? null,
+        priceOrigin,
+        pricingVersionId,
+        description: item.description,
+        unit: item.unit,
+        quantity,
+        unitPrice,
+        total: quantity
+          .mul(unitPrice)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
+        notes: item.notes ?? null,
+      };
+    });
+  }
+
   async create(
     organizationId: string,
     actorUserId: string,
@@ -135,48 +314,16 @@ export class QuotesService {
         throw new NotFoundException('Cliente não encontrado ou está inativo.');
       }
 
-      const productIds = [
-        ...new Set(
-          dto.items.flatMap((item) => (item.productId ? [item.productId] : [])),
-        ),
-      ];
+      await transaction.$queryRaw`
+        SELECT "id" FROM "organizations"
+        WHERE "id" = ${organizationId} FOR NO KEY UPDATE
+      `;
 
-      if (productIds.length > 0) {
-        const activeProducts = await transaction.product.findMany({
-          where: {
-            organizationId,
-            id: {
-              in: productIds,
-            },
-            isActive: true,
-          },
-          select: {
-            id: true,
-          },
-        });
-
-        if (activeProducts.length !== productIds.length) {
-          throw new BadRequestException(
-            'Informe apenas produtos ou serviços ativos da organização.',
-          );
-        }
-      }
-
-      const items = dto.items.map((item) => {
-        const quantity = new Prisma.Decimal(item.quantity);
-        const unitPrice = new Prisma.Decimal(item.unitPrice);
-
-        const total = quantity
-          .mul(unitPrice)
-          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-
-        return {
-          ...item,
-          quantity,
-          unitPrice,
-          total,
-        };
-      });
+      const items = await this.resolveItems(
+        transaction,
+        organizationId,
+        dto.items,
+      );
 
       const subtotal = items.reduce(
         (sum, item) => sum.plus(item.total),
@@ -192,13 +339,6 @@ export class QuotesService {
       }
 
       const total = subtotal.minus(discount);
-
-      await transaction.$queryRaw`
-        SELECT "id"
-        FROM "organizations"
-        WHERE "id" = ${organizationId}
-        FOR UPDATE
-      `;
 
       const lastQuote = await transaction.financialQuote.aggregate({
         where: {
@@ -226,6 +366,8 @@ export class QuotesService {
           items: {
             create: items.map((item, index) => ({
               productId: item.productId ?? null,
+              priceOrigin: item.priceOrigin,
+              pricingVersionId: item.pricingVersionId,
               position: index + 1,
               description: item.description,
               unit: item.unit,
@@ -306,7 +448,10 @@ export class QuotesService {
               position: 'asc',
             },
             select: {
+              id: true,
               productId: true,
+              priceOrigin: true,
+              pricingVersionId: true,
               description: true,
               unit: true,
               quantity: true,
@@ -349,56 +494,19 @@ export class QuotesService {
         }
       }
 
-      if (dto.items !== undefined) {
-        const productIds = [
-          ...new Set(
-            dto.items.flatMap((item) =>
-              item.productId ? [item.productId] : [],
-            ),
-          ),
-        ];
-
-        if (productIds.length > 0) {
-          const activeProducts = await transaction.product.findMany({
-            where: {
-              organizationId,
-              id: {
-                in: productIds,
-              },
-              isActive: true,
-            },
-            select: {
-              id: true,
-            },
-          });
-
-          if (activeProducts.length !== productIds.length) {
-            throw new BadRequestException(
-              'Informe apenas produtos ou serviços ativos da organização.',
-            );
-          }
-        }
-      }
-
       const items =
-        dto.items?.map((item) => {
-          const quantity = new Prisma.Decimal(item.quantity);
-          const unitPrice = new Prisma.Decimal(item.unitPrice);
-
-          return {
-            productId: item.productId ?? null,
-            description: item.description,
-            unit: item.unit,
-            quantity,
-            unitPrice,
-            total: quantity
-              .mul(unitPrice)
-              .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
-            notes: item.notes ?? null,
-          };
-        }) ??
+        (dto.items !== undefined
+          ? await this.resolveItems(
+              transaction,
+              organizationId,
+              dto.items,
+              currentQuote.items,
+            )
+          : null) ??
         currentQuote.items.map((item) => ({
           productId: item.productId,
+          priceOrigin: item.priceOrigin,
+          pricingVersionId: item.pricingVersionId,
           description: item.description,
           unit: item.unit,
           quantity: item.quantity,
@@ -450,6 +558,8 @@ export class QuotesService {
                   deleteMany: {},
                   create: items.map((item, index) => ({
                     productId: item.productId,
+                    priceOrigin: item.priceOrigin,
+                    pricingVersionId: item.pricingVersionId,
                     position: index + 1,
                     description: item.description,
                     unit: item.unit,

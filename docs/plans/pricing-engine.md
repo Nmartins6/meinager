@@ -121,7 +121,9 @@ fontes oficiais.
       a matriz completa, zoom real de 200% e os demais fluxos web → API →
       PostgreSQL em infraestrutura descartável.
 - [ ] Implementar a interface web.
-- [ ] Integrar snapshots com orçamentos e pedidos.
+- [x] Integrar preço e origem congelados aos itens de orçamentos e pedidos
+      (Marco 5, 01/11/2026); validação no banco descartável, sem aplicar a
+      migration no banco normal.
 - [ ] Executar validação completa.
 - [x] Atualizar a matriz de rastreabilidade até a adoção web do Marco 4D.4.
 - [ ] Registrar os resultados finais.
@@ -137,6 +139,47 @@ Cada descoberta deve conter:
 - descrição;
 - evidência;
 - impacto no plano.
+
+### Marco 5 — origem comercial — 01/11/2026
+
+- O DTO anterior recebia `productId` e `unitPrice` independentes. A web copiava
+  `salePrice` ao selecionar o produto, mas deixava o valor editável; igualdade
+  numérica não revelava a decisão do usuário. Evidência:
+  `apps/api/src/quotes/dto/create-quote.dto.ts` e
+  `apps/web/src/features/quotes/quote-form.tsx`. Impacto: a captura da origem
+  exige escolha explícita, sem inferência retroativa.
+- A criação de pedido já copia os valores do orçamento sem recálculo. A edição
+  de orçamento substitui itens quando `items` é enviado. Evidência:
+  `apps/api/src/quotes/quotes.service.ts` e
+  `apps/api/src/orders/orders.service.ts`. Impacto: a origem deve ser copiada
+  junto ao snapshot comercial; preservar preço histórico na edição exige
+  identificar o item anterior.
+- O PostgreSQL descartável aprovou 47 testes E2E de orçamentos e pedidos e o
+  replay vazio das 18 migrations. O replay populado preservou itens legados de
+  orçamento e pedido com origem nula. O percurso Playwright real aprovou os
+  três cenários, incluindo precificação → adoção → orçamento → pedido → preço
+  manual, com preço e versão congelados nos dois documentos. A base
+  `meinager_pilot_95493a322dde01b2` e o contêiner temporário foram removidos.
+  Evidência: `apps/web/test/pilot/pilot-postgres.cjs` e
+  `apps/web/test/pilot/pricing-pilot.spec.ts`.
+
+### Revisão do Marco 5 — 01/11/2026
+
+- `updatedAt` e preço sozinhos não distinguem com garantia duas versões adotadas
+  com o mesmo valor, especialmente quando as atualizações compartilham o mesmo
+  milissegundo. A leitura interna de produto agora inclui a referência adotada
+  para comparação sob lock; `VIEWER` e resumo comercial continuam sem esse ID.
+  O backend sempre grava a referência atual lida na transação, nunca a enviada
+  como observação. Evidência: `apps/api/src/products/products.service.ts`,
+  `apps/api/src/quotes/quotes.service.ts` e percurso Playwright com versões
+  sucessivas de mesmo preço.
+- O modo `PRESERVE` poderia usar o mesmo `sourceItemId` duas vezes na mesma
+  atualização. A API agora o aceita no máximo uma vez; a reordenação ainda
+  preserva cada origem pelo ID original. Evidência: `quotes.e2e-spec.ts`.
+- A numeração de orçamento e pedido usa lock `FOR NO KEY UPDATE` na organização,
+  compatível com as leituras de chave estrangeira; a criação de orçamento
+  adquire esse lock antes dos produtos, ordenados por UUID. O retry da paginação
+  e a atualização explícita do preço após conflito preservam o rascunho.
 
 ### Preparação do piloto — 31/10/2026
 
@@ -1020,6 +1063,22 @@ rastreabilidade; não representam o estado atual do marco.
   papéis mantêm o contrato anterior.
 
 ## Decisões tomadas
+
+### Marco 5 — preço em documentos comerciais — 01/11/2026
+
+O complemento da ADR-007 registra a escolha explícita entre catálogo atual,
+preço manual e preservação do preço histórico. `CATALOG_NOW` bloqueia o produto
+e compara preço, revisão e versão observados antes de capturar `salePrice` e a versão
+adotada na mesma transação. `MANUAL` não referencia versão, mesmo com valor
+igual. `PRESERVE` exige o item anterior no mesmo orçamento. Versões não
+adotadas não são fonte direta nesta entrega; desconto não certifica o mínimo
+da precificação. Requisições legadas sem escolha explícita continuam com origem
+desconhecida e não ganham versão por coincidência de valores.
+
+A confirmação de catálogo protege o preço e a origem versionada observados:
+`expectedProductUpdatedAt`, `unitPrice` e
+`expectedAdoptedPricingVersionId` são comparados com o produto sob lock. A
+referência observada só detecta conflito; a referência persistida vem do banco.
 
 ### Primeira automação do piloto — 31/10/2026
 
@@ -2941,3 +3000,42 @@ git status --short
   passaram com 365 testes web, 171 API e 77 do motor. As decisões confirmadas
   sobre papéis de Nicolas/Carol, uso local, custos informados por usuários e
   arte por jogo estão em `docs/pilot/casa-nacoli-preparation.md`.
+
+### Marco 5 — origem comercial em orçamentos e pedidos — 01/11/2026
+
+- A migration aditiva cria origem e referência opcionais nos itens comerciais;
+  os dados anteriores continuam válidos com ambos nulos. O runner descartável
+  reproduziu as 18 migrations em banco vazio e aplicou a nova migration sobre
+  baseline populado, preservando preço de orçamento e pedido legados.
+- O orçamento captura `salePrice` e versão adotada sob lock do produto quando o
+  usuário escolhe catálogo. Escolha manual, mesmo com o mesmo valor, não vincula
+  versão. Edição preserva o preço e a origem congelados até atualização
+  explícita; mudança de preço ou de versão adotada entre tela e salvamento
+  retorna conflito, inclusive se o valor comercial permanecer igual.
+  Conversão em pedido copia preço, origem e referência sem recálculo.
+- Validação atual: 47 E2E de orçamentos/pedidos em PostgreSQL descartável e 3
+  testes Playwright com API e banco reais. O percurso incluiu adoção, orçamento,
+  aprovação, pedido e preço manual posterior. A base
+  `meinager_pilot_95493a322dde01b2` e seu contêiner foram removidos. A suíte
+  unitária raiz sem cache aprovou 630 testes: 77 motor, 184 API e 369 web.
+  Typecheck, lint e build da raiz passaram.
+- A migration não foi aplicada ao banco normal. Zoom real de 200%, revisão
+  visual integral do Marco 4E, outras integrações do piloto e validação em
+  ambiente de homologação continuam pendentes.
+
+### Revisão final do Marco 5 — 01/11/2026
+
+- O runner descartável aprovou o replay vazio das 18 migrations, a aplicação
+  sobre documentos legados populados, 59 E2E em três arquivos (produtos,
+  orçamentos e pedidos) e 3 cenários Playwright. Os testes cobrem a troca de
+  versão adotada com preço igual, preço manual igual limpando o ponteiro,
+  preservação após reordenação, rejeição de referência repetida ou externa,
+  isolamento organizacional e conversão sem recálculo.
+- A web aprovou o retry da paginação incompleta e a recarga explícita após
+  conflito, mantendo o rascunho. A base
+  `meinager_pilot_ee8235cbf367d5da` e o contêiner
+  `meinager_pilot_pg_ee8235cbf367d5da` foram removidos pelo runner. A
+  migration não foi aplicada ao banco normal.
+- A suíte raiz sem cache aprovou 633 testes: 77 do motor, 184 da API e 372 da
+  web. Typecheck, lint e build da raiz passaram; Prisma validate, formatação
+  dos arquivos alterados e `git diff --check` completam a revisão.

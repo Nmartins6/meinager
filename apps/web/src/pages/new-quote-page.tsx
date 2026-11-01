@@ -4,38 +4,33 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
-import { useClientsQuery } from '@/features/clients/use-clients-query';
 import { FinancialNavigation } from '@/features/finance/financial-navigation';
 import { QuoteForm, type QuoteFormData } from '@/features/quotes/quote-form';
 import { useCreateQuoteMutation } from '@/features/quotes/use-create-quote-mutation';
-import { useProductsQuery } from '@/features/products/use-products-query';
+import {
+  useQuoteClientsQuery,
+  useQuoteProductsQuery,
+} from '@/features/quotes/use-quote-options-query';
 
 export function NewQuotePage() {
   const navigate = useNavigate();
 
   const currentUserQuery = useCurrentUserQuery();
-  const clientsQuery = useClientsQuery({
-    isActive: true,
-    page: 1,
-    pageSize: 100,
-  });
-  const productsQuery = useProductsQuery({
-    isActive: true,
-    page: 1,
-    pageSize: 100,
-  });
-  const createQuoteMutation = useCreateQuoteMutation();
-
   const role = currentUserQuery.data?.organization.role;
   const canManage = role === 'OWNER' || role === 'ADMIN' || role === 'OPERATIONS';
+  const clientsQuery = useQuoteClientsQuery(canManage);
+  const productsQuery = useQuoteProductsQuery(canManage);
+  const createQuoteMutation = useCreateQuoteMutation();
 
-  const clients = clientsQuery.data?.data ?? [];
-  const products = productsQuery.data?.data ?? [];
+  const clients = clientsQuery.data ?? [];
+  const products = productsQuery.data ?? [];
 
   const isLoadingDependencies =
-    currentUserQuery.isPending || clientsQuery.isPending || productsQuery.isPending;
+    currentUserQuery.isPending ||
+    (canManage && (clientsQuery.isPending || productsQuery.isPending));
 
-  const dependencyError = currentUserQuery.error ?? clientsQuery.error ?? productsQuery.error;
+  const dependencyError =
+    currentUserQuery.error ?? (canManage ? (clientsQuery.error ?? productsQuery.error) : null);
 
   function handleSubmit(data: QuoteFormData) {
     createQuoteMutation.mutate(
@@ -46,6 +41,13 @@ export function NewQuotePage() {
         notes: data.notes.trim() || undefined,
         items: data.items.map((item) => ({
           productId: item.productId || undefined,
+          priceSelection: item.priceSelection,
+          expectedProductUpdatedAt:
+            item.priceSelection === 'CATALOG_NOW' ? item.expectedProductUpdatedAt : undefined,
+          expectedAdoptedPricingVersionId:
+            item.priceSelection === 'CATALOG_NOW'
+              ? item.expectedAdoptedPricingVersionId || null
+              : undefined,
           description: item.description.trim(),
           unit: item.unit.trim().toUpperCase(),
           quantity: item.quantity.trim(),
@@ -90,12 +92,25 @@ export function NewQuotePage() {
       )}
 
       {dependencyError && (
-        <p
-          role="alert"
-          className="mt-8 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {dependencyError.message}
-        </p>
+        <div className="mt-8 space-y-3">
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            Não foi possível carregar todas as opções do orçamento.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={clientsQuery.isFetching || productsQuery.isFetching}
+            onClick={() => {
+              if (clientsQuery.isError) void clientsQuery.refetch();
+              if (productsQuery.isError) void productsQuery.refetch();
+            }}
+          >
+            Tentar novamente
+          </Button>
+        </div>
       )}
 
       {!isLoadingDependencies && !dependencyError && !canManage && (
@@ -140,6 +155,13 @@ export function NewQuotePage() {
               products={products}
               isPending={createQuoteMutation.isPending}
               errorMessage={createQuoteMutation.error?.message}
+              onRefreshCatalog={async () => {
+                const refreshed = await productsQuery.refetch();
+                if (refreshed.isError || !refreshed.data)
+                  throw new Error('Falha ao atualizar catálogo.');
+                createQuoteMutation.reset();
+                return refreshed.data;
+              }}
               onSubmit={handleSubmit}
               onCancel={() => navigate('/app/financeiro/orcamentos')}
             />

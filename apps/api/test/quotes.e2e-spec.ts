@@ -1106,6 +1106,306 @@ describe('Quotes (e2e)', () => {
       .expect(401);
   });
 
+  it('captures catalogue or manual intent and preserves the historical unit price on edit', async () => {
+    if (!otherOrganizationId)
+      throw new Error('Other organization was not initialized');
+    const client = await createClient();
+    const product = await createProduct();
+    const priced = await prisma.product.update({
+      where: { id: product.id },
+      data: { salePrice: '20.00' },
+    });
+    const item = {
+      productId: product.id,
+      description: product.name,
+      unit: 'UN',
+      quantity: '1',
+      unitPrice: '20',
+    };
+    const catalog = await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [
+          {
+            ...item,
+            priceSelection: 'CATALOG_NOW',
+            expectedProductUpdatedAt: priced.updatedAt.toISOString(),
+            expectedAdoptedPricingVersionId: null,
+          },
+        ],
+      })
+      .expect(201);
+    expect(catalog.body.items[0]).toMatchObject({
+      priceOrigin: 'CATALOG',
+      pricingVersionId: null,
+      unitPrice: '20',
+    });
+    const manual = await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [{ ...item, priceSelection: 'MANUAL' }],
+      })
+      .expect(201);
+    expect(manual.body.items[0]).toMatchObject({
+      priceOrigin: 'MANUAL',
+      pricingVersionId: null,
+    });
+    const legacy = await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [item],
+      })
+      .expect(201);
+    expect(legacy.body.items[0]).toMatchObject({
+      priceOrigin: null,
+      pricingVersionId: null,
+    });
+
+    const preserved = await request(httpServer())
+      .patch(`/api/quotes/${catalog.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        discount: '1',
+        items: [
+          {
+            ...item,
+            quantity: '2',
+            priceSelection: 'PRESERVE',
+            sourceItemId: catalog.body.items[0].id,
+          },
+        ],
+      })
+      .expect(200);
+    expect(preserved.body.items[0]).toMatchObject({
+      unitPrice: '20',
+      priceOrigin: 'CATALOG',
+      pricingVersionId: null,
+      quantity: '2',
+    });
+    expect(preserved.body.discount).toBe('1');
+
+    const changed = await prisma.product.update({
+      where: { id: product.id },
+      data: { salePrice: '21.00' },
+    });
+    const afterCatalogChange = await request(httpServer())
+      .patch(`/api/quotes/${catalog.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        items: [
+          {
+            ...item,
+            quantity: '3',
+            priceSelection: 'PRESERVE',
+            sourceItemId: preserved.body.items[0].id,
+          },
+        ],
+      })
+      .expect(200);
+    expect(afterCatalogChange.body.items[0]).toMatchObject({
+      unitPrice: '20',
+      priceOrigin: 'CATALOG',
+      pricingVersionId: null,
+    });
+    await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [
+          {
+            ...item,
+            priceSelection: 'CATALOG_NOW',
+            expectedProductUpdatedAt: priced.updatedAt.toISOString(),
+            expectedAdoptedPricingVersionId: null,
+          },
+        ],
+      })
+      .expect(409);
+    const refreshed = await request(httpServer())
+      .patch(`/api/quotes/${catalog.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        items: [
+          {
+            ...item,
+            priceSelection: 'CATALOG_NOW',
+            unitPrice: '21',
+            expectedProductUpdatedAt: changed.updatedAt.toISOString(),
+            expectedAdoptedPricingVersionId: null,
+          },
+        ],
+      })
+      .expect(200);
+    expect(refreshed.body.items[0]).toMatchObject({
+      unitPrice: '21',
+      priceOrigin: 'CATALOG',
+      pricingVersionId: null,
+    });
+    const empty = await createProduct();
+    await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [
+          {
+            ...item,
+            productId: empty.id,
+            priceSelection: 'CATALOG_NOW',
+            expectedProductUpdatedAt: empty.updatedAt.toISOString(),
+            expectedAdoptedPricingVersionId: null,
+          },
+        ],
+      })
+      .expect(400);
+    await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [{ ...item, productId: empty.id, priceSelection: 'MANUAL' }],
+      })
+      .expect(201);
+    await request(httpServer())
+      .patch(`/api/quotes/${catalog.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        items: [
+          {
+            ...item,
+            productId: empty.id,
+            priceSelection: 'PRESERVE',
+            sourceItemId: refreshed.body.items[0].id,
+          },
+        ],
+      })
+      .expect(409);
+    await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [
+          { ...item, priceSelection: 'MANUAL', pricingVersionId: randomUUID() },
+        ],
+      })
+      .expect(400);
+    const foreign = await prisma.product.create({
+      data: {
+        organizationId: otherOrganizationId,
+        name: 'Foreign',
+        normalizedName: 'foreign',
+        unit: 'UN',
+        salePrice: '20',
+      },
+    });
+    await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [
+          {
+            ...item,
+            productId: foreign.id,
+            priceSelection: 'CATALOG_NOW',
+            expectedProductUpdatedAt: foreign.updatedAt.toISOString(),
+            expectedAdoptedPricingVersionId: null,
+          },
+        ],
+      })
+      .expect(400);
+
+    const mixed = await request(httpServer())
+      .post('/api/quotes')
+      .set('Cookie', sessionCookie)
+      .send({
+        clientId: client.id,
+        items: [
+          {
+            ...item,
+            unitPrice: '21',
+            priceSelection: 'CATALOG_NOW',
+            expectedProductUpdatedAt: changed.updatedAt.toISOString(),
+            expectedAdoptedPricingVersionId: null,
+          },
+          { ...item, unitPrice: '21', priceSelection: 'MANUAL' },
+        ],
+      })
+      .expect(201);
+    const [catalogItem, manualItem] = mixed.body.items;
+    const reordered = await request(httpServer())
+      .patch(`/api/quotes/${mixed.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        items: [
+          {
+            ...item,
+            unitPrice: '21',
+            quantity: '2',
+            description: 'Manual reordenado',
+            priceSelection: 'PRESERVE',
+            sourceItemId: manualItem.id,
+          },
+          {
+            ...item,
+            unitPrice: '21',
+            quantity: '3',
+            description: 'Catálogo reordenado',
+            priceSelection: 'PRESERVE',
+            sourceItemId: catalogItem.id,
+          },
+        ],
+      })
+      .expect(200);
+    expect(
+      reordered.body.items.map(
+        (entry: { priceOrigin: string }) => entry.priceOrigin,
+      ),
+    ).toEqual(['MANUAL', 'CATALOG']);
+    await request(httpServer())
+      .patch(`/api/quotes/${mixed.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        items: [
+          {
+            ...item,
+            unitPrice: '21',
+            priceSelection: 'PRESERVE',
+            sourceItemId: reordered.body.items[0].id,
+          },
+          {
+            ...item,
+            unitPrice: '21',
+            priceSelection: 'PRESERVE',
+            sourceItemId: reordered.body.items[0].id,
+          },
+        ],
+      })
+      .expect(400);
+    await request(httpServer())
+      .patch(`/api/quotes/${mixed.body.id}`)
+      .set('Cookie', sessionCookie)
+      .send({
+        items: [
+          {
+            ...item,
+            unitPrice: '21',
+            priceSelection: 'PRESERVE',
+            sourceItemId: refreshed.body.items[0].id,
+          },
+        ],
+      })
+      .expect(409);
+  });
+
   afterAll(async () => {
     await app?.close();
   });
