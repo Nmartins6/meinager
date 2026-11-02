@@ -6,7 +6,12 @@ const url = new URL(process.env.DATABASE_URL);
 assert.equal(process.env.PILOT_TEST_CONFIRM_DISPOSABLE, 'YES');
 assert.match(suffix, /^[a-f0-9]{16}$/);
 assert.equal(url.hostname, '127.0.0.1');
-assert.equal(url.pathname, `/meinager_pilot_${suffix}`);
+assert.equal(
+  url.pathname,
+  process.env.PILOT_TEST_RESTORED === 'YES'
+    ? `/meinager_restore_${suffix}`
+    : `/meinager_pilot_${suffix}`,
+);
 assert.equal(
   process.env.PILOT_TEST_DB_MARKER,
   `Meinager disposable pilot ${suffix}`,

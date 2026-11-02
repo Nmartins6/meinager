@@ -8,6 +8,8 @@ explicar, versionar e aplicar preços sugeridos para produtos e serviços.
 O primeiro percurso real de preparação do piloto interno, com navegador,
 API e PostgreSQL descartável, está documentado em
 [`casa-nacoli-preparation.md`](../../pilot/casa-nacoli-preparation.md).
+A conferência dos produtos e a recuperação descartável estão em
+[`casa-nacoli-final-check.md`](../../pilot/casa-nacoli-final-check.md).
 
 A precificação deve considerar custos diretos, mão de obra, embalagem,
 frete, custos fixos, impostos, taxas de venda, comissões e margem de lucro,

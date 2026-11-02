@@ -124,6 +124,11 @@ fontes oficiais.
 - [x] Integrar preço e origem congelados aos itens de orçamentos e pedidos
       (Marco 5, 01/11/2026); validação no banco descartável, sem aplicar a
       migration no banco normal.
+- [x] Conferir três composições fictícias da Casa Nacoli e provar backup,
+      restauração em base nova e leitura da cópia pela API (01/11/2026).
+- [ ] Validar custos e unidades reais com Nicolas e Carol, zoom real de 200%,
+      acessibilidade visual completa, restauração autorizada do banco real e
+      acesso pela rede local antes de liberar o piloto.
 - [ ] Executar validação completa.
 - [x] Atualizar a matriz de rastreabilidade até a adoção web do Marco 4D.4.
 - [ ] Registrar os resultados finais.
@@ -3039,3 +3044,31 @@ git status --short
 - A suíte raiz sem cache aprovou 633 testes: 77 do motor, 184 da API e 372 da
   web. Typecheck, lint e build da raiz passaram; Prisma validate, formatação
   dos arquivos alterados e `git diff --check` completam a revisão.
+
+### Preparação final do piloto — 01/11/2026
+
+- As composições fictícias de caneca, camiseta e jogo de 12 peças foram
+  conferidas por aritmética independente e quatro testes do motor. MDF por kit,
+  papel/impressão por folha, arte por jogo e minutos de produção são entradas
+  editáveis. Capacidade da A4, conversão de unidades e tempos de lote não são
+  automações disponíveis. A decisão de custo real permanece com Nicolas e Carol.
+- O Playwright com API e PostgreSQL reais e descartáveis percorreu o catálogo,
+  composição, novo cálculo após alterar `directCost`, preservação de versão
+  anterior, adoção, orçamento, pedido e preço manual posterior. As capturas
+  exercitaram 360, 768 e 1280 px nas telas principais; o título dos cadastros
+  de cliente e produto passou a ser um `h1`. A prova é representativa, sem
+  substituir inspeção de zoom real, contraste e teclado integral.
+- O runner foi dividido em duas inicializações da API para manter o rate limit
+  de produção durante a matriz de navegador, sem elevar timeouts ou desabilitar
+  guards. `pg_dump -Fc` gerou backup da base descartável; `pg_restore` criou uma
+  base nova, preservando contagens e relações históricas. A API autenticou e
+  consultou produto e versões na cópia. A restauração recusou falta de
+  confirmação e destino existente. Origem, cópia e contêiner foram removidos.
+  Evidência detalhada e roteiro de ativação: `docs/pilot/casa-nacoli-final-check.md`.
+- O Compose passa a vincular PostgreSQL apenas a `127.0.0.1` para futuras
+  inicializações. O contêiner já em execução e a rede local devem ser
+  verificados antes do piloto; nenhuma migration foi aplicada ao banco normal.
+- Nesta rodada, os pipelines raiz de typecheck, lint e test passaram: 81 testes
+  do motor (77 canônicos e quatro cenários fictícios), 184 da API e 372 da web,
+  total de 637. O runner descartável aprovou 59 E2E da API e três cenários
+  Playwright; a base restaurada tinha 18 migrations e foi consultada pela API.

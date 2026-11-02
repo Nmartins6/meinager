@@ -18,6 +18,7 @@ const container = `meinager_pilot_pg_${suffix}`;
 const postgresPassword = randomBytes(24).toString('hex');
 const database = `meinager_pilot_${suffix}`;
 const cleanupProbe = `meinager_pilot_cleanup_${suffix}`;
+const restoredDatabase = `meinager_restore_${suffix}`;
 const marker = `Meinager disposable pilot ${suffix}`;
 const owned = new Set();
 const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'meinager-pilot-evidence-'));
@@ -45,7 +46,7 @@ function isolatedEnvironment(overrides = {}) {
 }
 
 function disposableUrl(name) {
-  assert.match(name, /^meinager_pilot(?:_cleanup)?_[a-f0-9]{16}$/);
+  assert.match(name, /^(?:meinager_pilot(?:_cleanup)?|meinager_restore)_[a-f0-9]{16}$/);
   assert.ok(!['postgres', 'template0', 'template1', 'meinager'].includes(name));
   assert.ok(serverUrl, 'Pilot PostgreSQL is not started.');
   const url = new URL(serverUrl);
@@ -343,6 +344,192 @@ async function dropOwned(admin, name) {
   console.log(`REMOVED ${name}`);
 }
 
+async function verifyBackupAndRestore(admin, sourceUrl, environment, webUrl) {
+  const archive = path.join(artifacts, `pilot-${suffix}.dump`);
+  const source = new Client({ connectionString: sourceUrl });
+  await source.connect();
+  let original;
+  try {
+    const tables = [
+      'users',
+      'sessions',
+      'organizations',
+      'organization_members',
+      'audit_logs',
+      'products',
+      'organization_pricing_configurations',
+      'organization_pricing_configuration_revisions',
+      'pricing_sales_profiles',
+      'pricing_sales_profile_revisions',
+      'product_pricing_compositions',
+      'pricing_components',
+      'pricing_calculation_versions',
+      'pricing_version_components',
+      'pricing_version_deductions',
+      'pricing_price_adoptions',
+      'financial_quotes',
+      'financial_quote_items',
+      'orders',
+      'order_items',
+      '_prisma_migrations',
+    ];
+    original = {};
+    for (const table of tables) {
+      original[table] = (
+        await source.query(`SELECT count(*)::int AS total FROM ${table}`)
+      ).rows[0].total;
+    }
+    assert.ok(original.pricing_calculation_versions > 0);
+    assert.ok(original.financial_quotes > 0);
+    assert.ok(original.orders > 0);
+    assert.equal(original._prisma_migrations, 18);
+    const ownerOrganization = await source.query(
+      `SELECT m.organization_id FROM organization_members m
+       JOIN users u ON u.id = m.user_id
+       WHERE u.name = 'Nicolas Piloto Fictício' LIMIT 1`,
+    );
+    assert.equal(ownerOrganization.rowCount, 1);
+    for (const table of ['stock_movements', 'financial_entries']) {
+      const count = await source.query(
+        `SELECT count(*)::int AS total FROM ${table} WHERE organization_id = $1`,
+        [ownerOrganization.rows[0].organization_id],
+      );
+      assert.equal(count.rows[0].total, 0, `no automatic ${table} for pricing/quote/order flow`);
+    }
+    console.log('NO_AUTOMATIC_STOCK_OR_FINANCIAL_ENTRY_IN_PILOT_FLOW');
+  } finally {
+    await source.end();
+  }
+
+  run('bash', ['tools/pilot-backup.sh', container, database, archive], {
+    MEINAGER_BACKUP_CONFIRM_DATABASE: database,
+  });
+  try {
+    const existingArchive = spawnSync(
+      'bash',
+      ['tools/pilot-backup.sh', container, database, archive],
+      {
+        cwd: root,
+        env: isolatedEnvironment({ MEINAGER_BACKUP_CONFIRM_DATABASE: database }),
+        encoding: 'utf8',
+      },
+    );
+    assert.equal(existingArchive.status, 2, 'backup refuses an existing archive');
+    const withoutConfirmation = spawnSync(
+      'bash',
+      ['tools/pilot-restore.sh', container, archive, restoredDatabase],
+      { cwd: root, env: isolatedEnvironment(), encoding: 'utf8' },
+    );
+    assert.equal(
+      withoutConfirmation.status,
+      2,
+      'restore requires an exact destination confirmation',
+    );
+    run('bash', ['tools/pilot-restore.sh', container, archive, restoredDatabase], {
+      MEINAGER_RESTORE_CONFIRM_DESTINATION: restoredDatabase,
+    });
+    const existingDestination = spawnSync(
+      'bash',
+      ['tools/pilot-restore.sh', container, archive, restoredDatabase],
+      {
+        cwd: root,
+        env: isolatedEnvironment({ MEINAGER_RESTORE_CONFIRM_DESTINATION: restoredDatabase }),
+        encoding: 'utf8',
+      },
+    );
+    assert.equal(existingDestination.status, 2, 'restore refuses an existing destination');
+    await admin.query(`COMMENT ON DATABASE "${restoredDatabase}" IS '${marker}'`);
+    owned.add(restoredDatabase);
+    const restored = new Client({ connectionString: disposableUrl(restoredDatabase) });
+    await restored.connect();
+    let ownerEmail;
+    let productId;
+    try {
+      for (const [table, total] of Object.entries(original)) {
+        assert.equal(
+          (await restored.query(`SELECT count(*)::int AS total FROM ${table}`)).rows[0].total,
+          total,
+          `restored ${table}`,
+        );
+      }
+      const relationships = await restored.query(`
+        SELECT q.id, qi.pricing_version_id, oi.pricing_version_id AS order_version_id,
+               v.product_id, a.version_id AS adopted_version_id
+        FROM financial_quotes q
+        JOIN financial_quote_items qi ON qi.quote_id = q.id
+        JOIN orders o ON o.quote_id = q.id
+        JOIN order_items oi ON oi.order_id = o.id AND oi.position = qi.position
+        JOIN pricing_calculation_versions v ON v.id = qi.pricing_version_id
+        LEFT JOIN pricing_price_adoptions a ON a.product_id = v.product_id AND a.version_id = v.id
+        WHERE qi.pricing_version_id IS NOT NULL
+      `);
+      assert.ok(relationships.rows.length > 0, 'restored versioned quote and order relationship');
+      assert.ok(
+        relationships.rows.every(
+          (row) =>
+            row.pricing_version_id === row.order_version_id && row.adopted_version_id !== null,
+        ),
+      );
+      productId = relationships.rows[0].product_id;
+      const owner = await restored.query(
+        "SELECT email FROM users WHERE name = 'Nicolas Piloto Fictício' ORDER BY created_at DESC LIMIT 1",
+      );
+      ownerEmail = owner.rows[0]?.email;
+      assert.match(ownerEmail, /^nicolas-[a-f0-9]{10}@example\.invalid$/);
+    } finally {
+      await restored.end();
+    }
+
+    const restoredPort = await freePort();
+    const restoredApiUrl = `http://127.0.0.1:${restoredPort}`;
+    const restoredApi = start(
+      'node',
+      ['apps/api/test/pilot-server.mjs'],
+      {
+        ...environment,
+        DATABASE_URL: disposableUrl(restoredDatabase),
+        PILOT_TEST_RESTORED: 'YES',
+        PORT: String(restoredPort),
+        WEB_ORIGIN: webUrl,
+      },
+      'restored-api',
+    );
+    await waitFor(`${restoredApiUrl}/__pilot_ready_${suffix}`, restoredApi);
+    const fixtureId = ownerEmail.slice('nicolas-'.length, -'@example.invalid'.length);
+    const login = await fetch(`${restoredApiUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: ownerEmail, password: `Pilot-${fixtureId}-Pass!` }),
+    });
+    assert.equal(login.status, 200, 'application login against restored database');
+    const session = await login.json();
+    const cookie = login.headers.get('set-cookie')?.split(';', 1)[0];
+    assert.ok(cookie);
+    const product = await fetch(`${restoredApiUrl}/api/products/${productId}`, {
+      headers: {
+        cookie,
+        'X-Organization-Context': session.organization.id,
+        'X-Organization-Context-Version': String(session.contextVersion),
+      },
+    });
+    assert.equal(product.status, 200, 'application reads restored product');
+    const versions = await fetch(`${restoredApiUrl}/api/pricing/products/${productId}/versions`, {
+      headers: {
+        cookie,
+        'X-Organization-Context': session.organization.id,
+        'X-Organization-Context-Version': String(session.contextVersion),
+      },
+    });
+    assert.equal(versions.status, 200, 'application reads restored pricing history');
+    assert.ok((await versions.json()).data.length > 0);
+    console.log(
+      `RESTORE_VERIFIED ${restoredDatabase} migrations=${original._prisma_migrations} versions=${original.pricing_calculation_versions} quotes=${original.financial_quotes} orders=${original.orders} application=OK`,
+    );
+  } finally {
+    fs.rmSync(archive, { force: true });
+  }
+}
+
 async function freePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) =>
@@ -387,7 +574,7 @@ async function waitFor(url, child) {
 
 async function stopChildren() {
   const errors = [];
-  for (const child of children.reverse()) {
+  for (const child of children.splice(0).reverse()) {
     try {
       if (child.exitCode === null) {
         try {
@@ -412,6 +599,64 @@ async function stopChildren() {
     }
   }
   if (errors.length) throw new AggregateError(errors, 'Failed to stop pilot processes');
+}
+
+async function runBrowserRound(environment, grep, label) {
+  const apiPort = await freePort();
+  const webPort = await freePort();
+  assert.notEqual(apiPort, webPort);
+  const apiUrl = `http://127.0.0.1:${apiPort}`;
+  const webUrl = `http://127.0.0.1:${webPort}`;
+  try {
+    const api = start(
+      'node',
+      ['apps/api/test/pilot-server.mjs'],
+      { ...environment, PORT: String(apiPort), WEB_ORIGIN: webUrl },
+      `api-${label}`,
+    );
+    await waitFor(`${apiUrl}/__pilot_ready_${suffix}`, api);
+    const web = start(
+      'pnpm',
+      [
+        '--filter',
+        '@meinager/web',
+        'exec',
+        'vite',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(webPort),
+        '--strictPort',
+      ],
+      { ...environment, VITE_API_URL: `${apiUrl}/api` },
+      `web-${label}`,
+    );
+    await waitFor(webUrl, web);
+    console.log(`PILOT_URLS ${label} api=${apiUrl} web=${webUrl}`);
+    run(
+      'pnpm',
+      [
+        '--filter',
+        '@meinager/web',
+        'exec',
+        'playwright',
+        'test',
+        '--config',
+        'playwright.pilot.config.ts',
+        '--grep',
+        grep,
+      ],
+      {
+        ...environment,
+        PILOT_API_URL: apiUrl,
+        PILOT_WEB_URL: webUrl,
+        PILOT_ARTIFACTS_DIR: path.join(artifacts, `playwright-${label}`),
+      },
+    );
+    return webUrl;
+  } finally {
+    await stopChildren();
+  }
 }
 
 async function main() {
@@ -463,62 +708,12 @@ async function main() {
     if (process.env.PILOT_TEST_FORCE_FAILURE === 'AFTER_MIGRATIONS') {
       throw new Error('Controlled pilot failure after migrations');
     }
-    const apiPort = await freePort();
-    const webPort = await freePort();
-    assert.notEqual(apiPort, webPort);
-    const apiUrl = `http://127.0.0.1:${apiPort}`;
-    const webUrl = `http://127.0.0.1:${webPort}`;
-    const api = start(
-      'node',
-      ['apps/api/test/pilot-server.mjs'],
-      {
-        ...environment,
-        PORT: String(apiPort),
-        WEB_ORIGIN: webUrl,
-      },
-      'api',
-    );
-    await waitFor(`${apiUrl}/__pilot_ready_${suffix}`, api);
-    const web = start(
-      'pnpm',
-      [
-        '--filter',
-        '@meinager/web',
-        'exec',
-        'vite',
-        '--host',
-        '127.0.0.1',
-        '--port',
-        String(webPort),
-        '--strictPort',
-      ],
-      {
-        ...environment,
-        VITE_API_URL: `${apiUrl}/api`,
-      },
-      'web',
-    );
-    await waitFor(webUrl, web);
-    console.log(`PILOT_URLS api=${apiUrl} web=${webUrl}`);
-    run(
-      'pnpm',
-      [
-        '--filter',
-        '@meinager/web',
-        'exec',
-        'playwright',
-        'test',
-        '--config',
-        'playwright.pilot.config.ts',
-        ...(process.env.PILOT_TEST_GREP ? ['--grep', process.env.PILOT_TEST_GREP] : []),
-      ],
-      {
-        ...environment,
-        PILOT_API_URL: apiUrl,
-        PILOT_WEB_URL: webUrl,
-        PILOT_ARTIFACTS_DIR: path.join(artifacts, 'playwright'),
-      },
-    );
+    const firstGrep = process.env.PILOT_TEST_GREP ?? 'convites resistem|percursos fictícios';
+    const webUrl = await runBrowserRound(environment, firstGrep, 'operations');
+    if (!process.env.PILOT_TEST_GREP) {
+      await runBrowserRound(environment, 'convite exige aceite', 'invitation');
+    }
+    await verifyBackupAndRestore(admin, databaseUrl, environment, webUrl);
   } catch (error) {
     primaryError = error;
   } finally {

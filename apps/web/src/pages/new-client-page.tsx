@@ -1,7 +1,7 @@
 import { ArrowLeft, UserPlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { ClientForm, type ClientFormData } from '@/features/clients/client-form';
 import { useCreateClientMutation } from '@/features/clients/use-create-client-mutation';
 
@@ -45,7 +45,7 @@ export function NewClientPage() {
           <div className="mb-3 grid size-10 place-items-center rounded-xl bg-primary/10">
             <UserPlus className="size-5 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Novo cliente</CardTitle>
+          <h1 className="font-heading text-2xl leading-snug font-medium">Novo cliente</h1>
           <CardDescription>
             Cadastre uma pessoa ou empresa atendida pelo seu negócio.
           </CardDescription>

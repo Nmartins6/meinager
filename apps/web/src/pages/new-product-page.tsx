@@ -1,7 +1,7 @@
 import { ArrowLeft, PackagePlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { useCurrentUserQuery } from '@/features/auth/use-current-user-query';
 import { ProductForm, type ProductFormData } from '@/features/products/product-form';
 import { useCreateProductMutation } from '@/features/products/use-create-product-mutation';
@@ -77,7 +77,9 @@ export function NewProductPage() {
             <div className="mb-3 grid size-10 place-items-center rounded-xl bg-primary/10">
               <PackagePlus className="size-5 text-primary" />
             </div>
-            <CardTitle className="text-2xl">Novo produto ou serviço</CardTitle>
+            <h1 className="font-heading text-2xl leading-snug font-medium">
+              Novo produto ou serviço
+            </h1>
             <CardDescription>
               Cadastre itens do catálogo e ative o controle de estoque quando necessário.
             </CardDescription>

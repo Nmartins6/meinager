@@ -242,6 +242,23 @@ execução e da prova de falha foram removidas. As suítes oficiais passaram com
 365 testes web, 171 API e 77 do motor, total de 613. Os estados da matriz não
 foram promovidos por essa amostra.
 
+Preparação final do piloto em 01/11/2026: três cenários Playwright executados
+em navegador, API e PostgreSQL descartáveis cobriram cliente, insumo, composição,
+cálculo após alteração do custo, versão histórica, adoção, orçamento, pedido,
+preço manual e convites. Quatro testes adicionais do motor usam apenas custos
+fictícios para caneca, camiseta e jogo da memória. A base de teste com 18
+migrations foi copiada por `pg_dump -Fc` e restaurada em base nova; contagens,
+relações de versão/orçamento/pedido e consultas autenticadas da API foram
+verificadas na cópia. As bases e o contêiner foram removidos. Capturas nas
+larguras 360/768/1280 px não substituem zoom real de 200% nem inspeção completa
+de acessibilidade. Aplicação das migrations no banco real, custos reais,
+restauração autorizada e uso em rede local continuam pendentes. Esta amostra
+não promove estados da matriz. Evidência e roteiro em
+`docs/pilot/casa-nacoli-final-check.md`.
+Os pipelines raiz aprovaram 81 testes do motor, 184 da API e 372 da web (637
+no total); o runner descartável aprovou 59 E2E da API e três cenários
+Playwright. A validação ainda não inclui o zoom real de 200% nem o banco normal.
+
 A matriz deve ser atualizada durante a implementação. Um requisito somente pode
 ser marcado como implementado quando possuir evidência de código e validação
 automatizada aplicável.

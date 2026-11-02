@@ -1,5 +1,8 @@
 # Preparação do piloto interno da Casa Nacoli
 
+A conferência final dos três produtos, a prova de backup/restauração e o roteiro
+de ativação estão em [casa-nacoli-final-check.md](./casa-nacoli-final-check.md).
+
 Estado em 31/10/2026: primeira entrega de automação integrada. O piloto e o Marco 4E continuam abertos. Os dados do cenário são fictícios e são removidos com a base descartável. Nicolas usará conta individual OWNER e Carol usará conta individual ADMIN. O piloto começará na máquina/rede local, sem publicação externa.
 
 ## Execução reproduzível

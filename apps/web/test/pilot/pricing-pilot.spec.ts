@@ -282,6 +282,56 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
     }
   });
 
+  await test.step('novo custo altera cálculo futuro sem reescrever versão ou documentos', async () => {
+    const oldDetailResponse = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/pricing/products/${productId}/versions/${adoptedVersionId}`,
+    );
+    expect(oldDetailResponse.status()).toBe(200);
+    const oldDetail = await oldDetailResponse.json();
+    const oldSnapshot = JSON.stringify(oldDetail.snapshot);
+
+    await page.goto('/app/produtos');
+    await page.getByLabel('Buscar produtos e serviços').fill(`${prefix} Caneca branca`);
+    await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+    await page.getByRole('button', { name: `${prefix} Caneca branca` }).click();
+    await page.getByLabel('Custo direto opcional').fill('9.5');
+    await page.getByRole('button', { name: 'Salvar alterações' }).click();
+    await expect(page).toHaveURL(/\/app\/produtos$/);
+
+    const simulation = await page.request.post(
+      `${process.env.PILOT_API_URL}/api/pricing/products/${productId}/simulations`,
+      { data: { source: 'PERSISTED' } },
+    );
+    expect(simulation.status()).toBe(200);
+    const calculated = await simulation.json();
+    expect(calculated.result.baseCost.exact).toBe('10.75');
+    expect(calculated.result.baseCost.exact).not.toBe(oldDetail.snapshot.result.baseCost.exact);
+    const composition = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/pricing/products/${productId}/composition`,
+    );
+    expect(composition.status()).toBe(200);
+    const versionResponse = await page.request.post(
+      `${process.env.PILOT_API_URL}/api/pricing/products/${productId}/versions`,
+      { data: { expectedCompositionRevision: (await composition.json()).revision } },
+    );
+    expect(versionResponse.status()).toBe(201);
+    const newer = await versionResponse.json();
+    expect(newer.number).toBe(3);
+    const oldAgain = await page.request.get(
+      `${process.env.PILOT_API_URL}/api/pricing/products/${productId}/versions/${adoptedVersionId}`,
+    );
+    expect(oldAgain.status()).toBe(200);
+    expect(JSON.stringify((await oldAgain.json()).snapshot)).toBe(oldSnapshot);
+    for (const path of [`quotes/${quoteId}`, `orders/${orderId}`]) {
+      const response = await page.request.get(`${process.env.PILOT_API_URL}/api/${path}`);
+      expect(response.status()).toBe(200);
+      expect((await response.json()).items[0]).toMatchObject({
+        unitPrice: canonicalDecimal(adoptedPrice),
+        pricingVersionId: adoptedVersionId,
+      });
+    }
+  });
+
   await test.step('papéis internos e isolamento da organização', async () => {
     const fixturePath = fileURLToPath(
       new URL('../../../api/test/pilot-role-fixtures.cjs', import.meta.url),
@@ -379,6 +429,8 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
   });
 
   await test.step('larguras 360, 768 e 1280 px; teclado e foco', async () => {
+    await page.goto(`/app/produtos/${productId}/precificacao`);
+    await expect(page.getByRole('heading', { name: 'Precificação do produto' })).toBeVisible();
     await page.getByRole('button', { name: 'Ver detalhe da versão 1' }).click();
     const detail = page.getByRole('dialog', { name: 'Detalhe histórico da versão' });
     await expect(detail).toBeVisible();
@@ -399,6 +451,31 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
       expect(valueOverflow, `Truncated result value at ${width}px`).toBe(false);
       await page.screenshot({ path: testInfo.outputPath(`pricing-${width}.png`), fullPage: true });
     }
+
+    const screens = [
+      ['cliente', '/app/clientes/novo', 'Novo cliente'],
+      ['produto', '/app/produtos/novo', 'Novo produto ou serviço'],
+      ['configuracao', '/app/produtos/precificacao/configuracao', 'Configuração de precificação'],
+      ['perfis', '/app/produtos/precificacao/perfis', 'Perfis de venda'],
+      ['orcamento', `/app/financeiro/orcamentos/${quoteId}`, 'Orçamento #1'],
+      ['pedido', `/app/financeiro/pedidos/${orderId}`, 'Pedido #1'],
+      ['membros', '/app/membros', 'Membros e convites'],
+    ] as const;
+    for (const [screen, route, heading] of screens) {
+      await page.goto(route);
+      await expect(page.getByRole('heading', { name: heading }).first()).toBeVisible();
+      for (const width of [360, 768, 1280]) {
+        await page.setViewportSize({ width, height: 800 });
+        const overflow = await page.evaluate(
+          () => document.documentElement.scrollWidth > window.innerWidth,
+        );
+        expect(overflow, `${screen}: horizontal page overflow at ${width}px`).toBe(false);
+        await page.screenshot({
+          path: testInfo.outputPath(`${screen}-${width}.png`),
+          fullPage: true,
+        });
+      }
+    }
   });
 
   expect(writes).toContainEqual(
@@ -413,7 +490,10 @@ test('percursos fictícios de precificação usam API e PostgreSQL descartável'
   expect(browserErrors).toEqual([]);
 });
 
-test('convite exige aceite e seleção explícita com contas separadas', async ({ page, browser }) => {
+test('convite exige aceite e seleção explícita com contas separadas', async ({
+  page,
+  browser,
+}, testInfo) => {
   const runId = randomBytes(5).toString('hex');
   const ownerEmail = `owner-${runId}@example.invalid`;
   const invitedEmail = `admin-${runId}@example.invalid`;
@@ -455,6 +535,17 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
     await register(invited, 'Admin fictícia', invitedEmail, otherOrganizationName);
     await invited.goto(link);
     await expect(invited.getByRole('button', { name: 'Aceitar convite' })).toBeVisible();
+    for (const width of [360, 768, 1280]) {
+      await invited.setViewportSize({ width, height: 800 });
+      expect(
+        await invited.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+        `invite acceptance overflow at ${width}px`,
+      ).toBe(false);
+      await invited.screenshot({
+        path: testInfo.outputPath(`convite-${width}.png`),
+        fullPage: true,
+      });
+    }
     await invited.getByRole('button', { name: 'Aceitar convite' }).click();
     await expect(invited.getByText('Convite aceito. Seu vínculo foi criado.')).toBeVisible();
     await invited.getByRole('link', { name: 'Selecionar organização' }).click();
@@ -602,7 +693,9 @@ test('convite exige aceite e seleção explícita com contas separadas', async (
 
   await page.getByLabel('E-mail do destinatário').fill(newEmail);
   await page.getByRole('button', { name: 'Criar convite' }).click();
+  await expect(page.getByLabel('Link do convite')).not.toHaveValue(link);
   const newLink = await page.getByLabel('Link do convite').inputValue();
+  expect(newLink).toMatch(/\/convites\/[A-Za-z0-9_-]{43}$/);
   const fresh = await browser.newContext({ baseURL: process.env.PILOT_WEB_URL });
   try {
     const recipient = await fresh.newPage();
