@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { formatBrl, percentageFractionToInput } from './format-pricing';
+import { formatBrl, formatPercentage, percentageFractionToInput } from './format-pricing';
 import { PricingAdoptionDialog } from './pricing-adoption-dialog';
 import type { PricingVersionDetail, PricingVersionList } from './pricing-versions-contracts';
 import { usePricingVersionDetailQuery, usePricingVersionsQuery } from './use-pricing-versions';
@@ -145,11 +145,11 @@ function VersionDetail({ version }: { version: PricingVersionDetail }) {
           />
           <Fact
             label="Taxa total de deduções"
-            value={`${percentageFractionToInput(result.totalDeductionRate)}%`}
+            value={formatPercentage(result.totalDeductionRate)}
           />
           <Fact
             label="Taxa efetiva de custos fixos"
-            value={`${percentageFractionToInput(result.fixedCosts.rate)}%`}
+            value={formatPercentage(result.fixedCosts.rate)}
           />
         </dl>
       </section>
@@ -166,22 +166,8 @@ function VersionDetail({ version }: { version: PricingVersionDetail }) {
           <Fact label="Classificação" value={version.classification} />
           <Fact label="Lucro" value={formatBrl(result.analysis.profit.display)} />
           <Fact label="Lucro exato" value={result.analysis.profit.exact} />
-          <Fact
-            label="Margem efetiva"
-            value={
-              result.analysis.effectiveMargin === null
-                ? 'Não se aplica'
-                : `${percentageFractionToInput(result.analysis.effectiveMargin)}%`
-            }
-          />
-          <Fact
-            label="Desconto máximo"
-            value={
-              result.maximumDiscountRate === null
-                ? 'Não se aplica'
-                : `${percentageFractionToInput(result.maximumDiscountRate)}%`
-            }
-          />
+          <Fact label="Margem efetiva" value={formatPercentage(result.analysis.effectiveMargin)} />
+          <Fact label="Desconto máximo" value={formatPercentage(result.maximumDiscountRate)} />
           <Fact
             label="Deduções totais"
             value={formatBrl(result.analysis.totalDeductions.display)}

@@ -14,6 +14,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "start:local": "node dist/main.js",
     "lint": "oxlint src/ test/",
     "pretest": "pnpm --filter @meinager/pricing-calculator build",
     "test": "vitest run",

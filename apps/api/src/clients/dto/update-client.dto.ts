@@ -32,8 +32,9 @@ export class UpdateClientDto {
       return value;
     }
 
+    if (value.trim() && !/^[\d.\s/-]+$/.test(value)) return value;
     const digits = value.replace(/\D/g, '');
-    return digits || null;
+    return digits || (value.trim() ? value : null);
   })
   @ValidateIf((_object, value) => value !== undefined && value !== null)
   @Matches(/^(?:\d{11}|\d{14})$/, {
@@ -50,8 +51,9 @@ export class UpdateClientDto {
       return value;
     }
 
+    if (value.trim() && !/^[\d+()\s-]+$/.test(value)) return value;
     const digits = value.replace(/\D/g, '');
-    return digits || null;
+    return digits || (value.trim() ? value : null);
   })
   @ValidateIf((_object, value) => value !== undefined && value !== null)
   @Matches(/^\d{10,13}$/, {

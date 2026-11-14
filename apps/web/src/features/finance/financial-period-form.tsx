@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useId } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -72,6 +73,7 @@ const monthNames = [
 ];
 
 export function FinancialPeriodForm({ periods, onCreated, onCancel }: FinancialPeriodFormProps) {
+  const formId = useId();
   const today = new Date();
   const createMutation = useCreateFinancialPeriodMutation();
 
@@ -142,9 +144,9 @@ export function FinancialPeriodForm({ periods, onCreated, onCancel }: FinancialP
         <form className="space-y-5" onSubmit={handleSubmit(handleValidSubmit)} noValidate>
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="period-month">Mês</Label>
+              <Label htmlFor={`${formId}-period-month`}>Mês</Label>
               <select
-                id="period-month"
+                id={`${formId}-period-month`}
                 className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 aria-invalid={Boolean(errors.month)}
                 {...register('month', {
@@ -161,9 +163,9 @@ export function FinancialPeriodForm({ periods, onCreated, onCancel }: FinancialP
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="period-year">Ano</Label>
+              <Label htmlFor={`${formId}-period-year`}>Ano</Label>
               <Input
-                id="period-year"
+                id={`${formId}-period-year`}
                 type="number"
                 min={1}
                 max={9999}
@@ -177,9 +179,9 @@ export function FinancialPeriodForm({ periods, onCreated, onCancel }: FinancialP
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="revenue-source">Origem do faturamento</Label>
+            <Label htmlFor={`${formId}-revenue-source`}>Origem do faturamento</Label>
             <select
-              id="revenue-source"
+              id={`${formId}-revenue-source`}
               className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               {...register('revenueSource')}
             >
@@ -190,9 +192,9 @@ export function FinancialPeriodForm({ periods, onCreated, onCancel }: FinancialP
 
           {revenueSource === 'MANUAL_TOTAL' && (
             <div className="space-y-2">
-              <Label htmlFor="manual-revenue">Faturamento manual</Label>
+              <Label htmlFor={`${formId}-manual-revenue`}>Faturamento manual</Label>
               <Input
-                id="manual-revenue"
+                id={`${formId}-manual-revenue`}
                 type="text"
                 inputMode="decimal"
                 placeholder="0.00"

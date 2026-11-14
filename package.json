@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "turbo dev",
+    "start": "turbo start:local",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
@@ -22,6 +23,7 @@
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
     "db:generate": "pnpm --filter @meinager/api prisma:generate",
+    "db:deploy": "pnpm --filter @meinager/api exec prisma migrate deploy",
     "db:migrate": "pnpm --filter @meinager/api prisma:migrate",
     "db:status": "pnpm --filter @meinager/api prisma:status",
     "db:studio": "pnpm --filter @meinager/api prisma:studio"

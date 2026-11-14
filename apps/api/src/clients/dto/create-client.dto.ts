@@ -27,8 +27,9 @@ export class CreateClientDto {
       return value;
     }
 
+    if (value.trim() && !/^[\d.\s/-]+$/.test(value)) return value;
     const digits = value.replace(/\D/g, '');
-    return digits || undefined;
+    return digits || (value.trim() ? value : undefined);
   })
   @Matches(/^(?:\d{11}|\d{14})$/, {
     message: 'document must contain 11 or 14 digits',
@@ -41,8 +42,9 @@ export class CreateClientDto {
       return value;
     }
 
+    if (value.trim() && !/^[\d+()\s-]+$/.test(value)) return value;
     const digits = value.replace(/\D/g, '');
-    return digits || undefined;
+    return digits || (value.trim() ? value : undefined);
   })
   @Matches(/^\d{10,13}$/, {
     message: 'phone must contain between 10 and 13 digits',

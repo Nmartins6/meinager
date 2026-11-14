@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useId } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -86,6 +87,9 @@ interface ProductFormProps {
   pendingLabel: string;
   initialValues?: ProductFormData;
   showSalePrice?: boolean;
+  showDirectCost?: boolean;
+  requireDirectCost?: boolean;
+  simple?: boolean;
   onSubmit: (data: ProductFormData) => void;
   onCancel: () => void;
 }
@@ -93,6 +97,9 @@ interface ProductFormProps {
 export function ProductForm({
   initialValues = defaultValues,
   showSalePrice = true,
+  showDirectCost = true,
+  requireDirectCost = false,
+  simple = false,
   isPending,
   errorMessage,
   submitLabel,
@@ -100,6 +107,7 @@ export function ProductForm({
   onSubmit,
   onCancel,
 }: ProductFormProps) {
+  const formId = useId();
   const {
     clearErrors,
     control,
@@ -129,9 +137,9 @@ export function ProductForm({
     <form className="space-y-6" onSubmit={handleSubmit(onSubmit)} noValidate>
       <div className="grid gap-5 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="product-type">Tipo</Label>
+          <Label htmlFor={`${formId}-type`}>Tipo</Label>
           <select
-            id="product-type"
+            id={`${formId}-type`}
             className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             aria-invalid={Boolean(errors.type)}
             {...typeRegistration}
@@ -151,9 +159,9 @@ export function ProductForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="product-unit">Unidade</Label>
+          <Label htmlFor={`${formId}-unit`}>Unidade</Label>
           <Input
-            id="product-unit"
+            id={`${formId}-unit`}
             maxLength={20}
             placeholder="Ex.: UN, KG, M ou H"
             aria-invalid={Boolean(errors.unit)}
@@ -164,9 +172,9 @@ export function ProductForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="product-name">Nome</Label>
+        <Label htmlFor={`${formId}-name`}>Nome</Label>
         <Input
-          id="product-name"
+          id={`${formId}-name`}
           maxLength={150}
           placeholder="Ex.: Caneca personalizada"
           aria-invalid={Boolean(errors.name)}
@@ -175,53 +183,59 @@ export function ProductForm({
         {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="product-sku">SKU opcional</Label>
-          <Input
-            id="product-sku"
-            maxLength={60}
-            placeholder="Ex.: CAN-001"
-            aria-invalid={Boolean(errors.sku)}
-            {...register('sku')}
-          />
-          {errors.sku && <p className="text-sm text-destructive">{errors.sku.message}</p>}
-        </div>
+      {!simple && (
+        <div className="grid gap-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor={`${formId}-sku`}>SKU opcional</Label>
+            <Input
+              id={`${formId}-sku`}
+              maxLength={60}
+              placeholder="Ex.: CAN-001"
+              aria-invalid={Boolean(errors.sku)}
+              {...register('sku')}
+            />
+            {errors.sku && <p className="text-sm text-destructive">{errors.sku.message}</p>}
+          </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="product-barcode">Código de barras opcional</Label>
-          <Input
-            id="product-barcode"
-            maxLength={50}
-            aria-invalid={Boolean(errors.barcode)}
-            {...register('barcode')}
-          />
-          {errors.barcode && <p className="text-sm text-destructive">{errors.barcode.message}</p>}
+          <div className="space-y-2">
+            <Label htmlFor={`${formId}-barcode`}>Código de barras opcional</Label>
+            <Input
+              id={`${formId}-barcode`}
+              maxLength={50}
+              aria-invalid={Boolean(errors.barcode)}
+              {...register('barcode')}
+            />
+            {errors.barcode && <p className="text-sm text-destructive">{errors.barcode.message}</p>}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="grid gap-5 md:grid-cols-3">
-        <div className="space-y-2">
-          <Label htmlFor="product-direct-cost">Custo direto opcional</Label>
-          <Input
-            id="product-direct-cost"
-            type="text"
-            inputMode="decimal"
-            placeholder="0.000000"
-            aria-invalid={Boolean(errors.directCost)}
-            {...register('directCost')}
-          />
-          <p className="text-xs text-muted-foreground">Use ponto como separador decimal.</p>
-          {errors.directCost && (
-            <p className="text-sm text-destructive">{errors.directCost.message}</p>
-          )}
-        </div>
+        {showDirectCost && (
+          <div className="space-y-2">
+            <Label htmlFor={`${formId}-direct-cost`}>
+              {requireDirectCost ? 'Custo por unidade de consumo' : 'Custo direto opcional'}
+            </Label>
+            <Input
+              id={`${formId}-direct-cost`}
+              type="text"
+              inputMode="decimal"
+              placeholder="0.000000"
+              aria-invalid={Boolean(errors.directCost)}
+              {...register('directCost')}
+            />
+            <p className="text-xs text-muted-foreground">Use ponto como separador decimal.</p>
+            {errors.directCost && (
+              <p className="text-sm text-destructive">{errors.directCost.message}</p>
+            )}
+          </div>
+        )}
 
         {showSalePrice && (
           <div className="space-y-2">
-            <Label htmlFor="product-sale-price">Preço de venda opcional</Label>
+            <Label htmlFor={`${formId}-sale-price`}>Preço de venda opcional</Label>
             <Input
-              id="product-sale-price"
+              id={`${formId}-sale-price`}
               type="text"
               inputMode="decimal"
               placeholder="0.00"
@@ -238,9 +252,9 @@ export function ProductForm({
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="product-minimum-stock">Estoque mínimo opcional</Label>
+          <Label htmlFor={`${formId}-minimum-stock`}>Estoque mínimo opcional</Label>
           <Input
-            id="product-minimum-stock"
+            id={`${formId}-minimum-stock`}
             type="text"
             inputMode="decimal"
             placeholder="0.000000"
@@ -255,9 +269,12 @@ export function ProductForm({
       </div>
 
       <div className="rounded-lg border p-4">
-        <label htmlFor="product-track-inventory" className="flex cursor-pointer items-start gap-3">
+        <label
+          htmlFor={`${formId}-track-inventory`}
+          className="flex cursor-pointer items-start gap-3"
+        >
           <input
-            id="product-track-inventory"
+            id={`${formId}-track-inventory`}
             type="checkbox"
             className="mt-0.5 size-4 rounded border-input"
             disabled={productType === 'SERVICE'}
@@ -285,18 +302,20 @@ export function ProductForm({
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="product-notes">Observações opcionais</Label>
-        <textarea
-          id="product-notes"
-          rows={4}
-          maxLength={2000}
-          className="flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          aria-invalid={Boolean(errors.notes)}
-          {...register('notes')}
-        />
-        {errors.notes && <p className="text-sm text-destructive">{errors.notes.message}</p>}
-      </div>
+      {!simple && (
+        <div className="space-y-2">
+          <Label htmlFor={`${formId}-notes`}>Observações opcionais</Label>
+          <textarea
+            id={`${formId}-notes`}
+            rows={4}
+            maxLength={2000}
+            className="flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            aria-invalid={Boolean(errors.notes)}
+            {...register('notes')}
+          />
+          {errors.notes && <p className="text-sm text-destructive">{errors.notes.message}</p>}
+        </div>
+      )}
 
       {errorMessage && (
         <p

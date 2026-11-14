@@ -8,7 +8,10 @@ async function bootstrap() {
 
   configureApp(app);
 
-  await app.listen(process.env['PORT'] ?? process.env['API_PORT'] ?? 3000);
+  await app.listen(
+    process.env['PORT'] ?? process.env['API_PORT'] ?? 3000,
+    process.env['API_HOST'] ?? '127.0.0.1',
+  );
 }
 
 void bootstrap();

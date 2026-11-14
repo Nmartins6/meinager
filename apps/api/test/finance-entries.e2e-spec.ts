@@ -970,6 +970,11 @@ describe('Financial entries (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Active sessions reference membership; remove only this fixture's sessions first.
+    if (userId) {
+      await prisma.session.deleteMany({ where: { userId } });
+    }
+
     if (otherOrganizationId) {
       await prisma.$transaction([
         prisma.financialEntry.deleteMany({

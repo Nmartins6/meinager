@@ -10,7 +10,9 @@ import {
   type FieldPath,
   type UseFormRegister,
 } from 'react-hook-form';
-import { useBeforeUnload, useBlocker } from 'react-router-dom';
+import { useBeforeUnload } from 'react-router-dom';
+import { PricingDraftNavigation } from './pricing-draft-navigation';
+import { usePricingDraftBlocker } from './use-pricing-draft-blocker';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -219,7 +221,15 @@ function ParameterOriginEditor({
   );
 }
 
-export function PricingCompositionForm({
+export function PricingCompositionForm(props: PricingCompositionFormProps) {
+  return (
+    <PricingDraftNavigation>
+      <PricingCompositionFormContent {...props} />
+    </PricingDraftNavigation>
+  );
+}
+
+function PricingCompositionFormContent({
   productId,
   product,
   composition,
@@ -270,7 +280,7 @@ export function PricingCompositionForm({
   const selectedProfileId = values.profileId ?? '';
   const selectedProfileQuery = usePricingProfileQuery(selectedProfileId, selectedProfileId !== '');
   const shouldProtectDraft = canEdit && isDirty;
-  const blocker = useBlocker(shouldProtectDraft);
+  const blocker = usePricingDraftBlocker(shouldProtectDraft);
   const disabled = !canEdit || mutation.isPending || versionMutation.isPending || hasConflict;
 
   const previewState = useMemo<PricingPreviewViewState>(() => {
@@ -1078,7 +1088,7 @@ export function PricingCompositionForm({
                 Descartar alterações não salvas?
               </Dialog.Title>
               <Dialog.Description className="mt-2 text-sm text-muted-foreground">
-                Continue editando ou descarte o rascunho para seguir para outra página.
+                Continue editando ou descarte todos os rascunhos desta página para sair.
               </Dialog.Description>
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <Button

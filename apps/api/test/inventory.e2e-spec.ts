@@ -1659,6 +1659,11 @@ describe('Inventory (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Active sessions reference membership; remove only this fixture's sessions first.
+    if (userId) {
+      await prisma.session.deleteMany({ where: { userId } });
+    }
+
     try {
       if (organizationId) {
         await prisma.$transaction([

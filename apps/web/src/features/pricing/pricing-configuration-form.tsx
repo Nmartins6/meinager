@@ -2,7 +2,9 @@ import { Dialog } from '@base-ui/react/dialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCallback, useEffect, useState } from 'react';
 import { useForm, useWatch, type FieldPath, type UseFormRegister } from 'react-hook-form';
-import { useBeforeUnload, useBlocker } from 'react-router-dom';
+import { useBeforeUnload } from 'react-router-dom';
+import { PricingDraftNavigation } from './pricing-draft-navigation';
+import { usePricingDraftBlocker } from './use-pricing-draft-blocker';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -216,7 +218,15 @@ interface PricingConfigurationFormProps {
   >;
 }
 
-export function PricingConfigurationForm({
+export function PricingConfigurationForm(props: PricingConfigurationFormProps) {
+  return (
+    <PricingDraftNavigation>
+      <PricingConfigurationFormContent {...props} />
+    </PricingDraftNavigation>
+  );
+}
+
+function PricingConfigurationFormContent({
   configuration,
   canEdit,
   onCancel,
@@ -242,7 +252,7 @@ export function PricingConfigurationForm({
   const values = useWatch({ control });
   const fixedCostMode = values.fixedCostMode;
   const shouldProtectDraft = canEdit && isDirty;
-  const blocker = useBlocker(shouldProtectDraft);
+  const blocker = usePricingDraftBlocker(shouldProtectDraft);
 
   useBeforeUnload(
     useCallback(
@@ -569,8 +579,8 @@ export function PricingConfigurationForm({
                 Descartar alterações não salvas?
               </Dialog.Title>
               <Dialog.Description className="mt-2 text-sm text-muted-foreground">
-                Você possui alterações na configuração. Escolha continuar editando ou descartar o
-                rascunho para seguir para outra página.
+                Você possui alterações não salvas nesta página. Escolha continuar editando ou
+                descartar todos os rascunhos desta página para sair.
               </Dialog.Description>
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <Button

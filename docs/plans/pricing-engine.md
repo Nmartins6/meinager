@@ -51,6 +51,14 @@ fontes oficiais.
 
 ## Progresso
 
+- [x] Exploração de 13–14/11/2026: rascunhos simultâneos protegidos, contatos
+      inválidos rejeitados e regressões aprovadas; detalhes no
+      [relatório exploratório](../local/exploratory-testing.md).
+
+- [x] Preparação local de 12/11/2026: instalação documentada, comando de início
+      compilado, fixtures E2E atualizadas, cadastro guiado integrado e manual.
+      Evidências e aceite operacional em [verificação local](../local/release-check.md).
+
 - [x] Preservar os requisitos originais.
 - [x] Consolidar as regras oficiais.
 - [x] Definir as fórmulas.
@@ -126,6 +134,9 @@ fontes oficiais.
       migration no banco normal.
 - [x] Conferir três composições fictícias da Casa Nacoli e provar backup,
       restauração em base nova e leitura da cópia pela API (01/11/2026).
+- [x] Reunir cadastro de despesas, parâmetros, insumos, produto com composição
+      e cliente em uma página guiada, e apresentar indicadores financeiros na
+      página inicial (04/11/2026; sem alterar motor ou contratos).
 - [ ] Validar custos e unidades reais com Nicolas e Carol, zoom real de 200%,
       acessibilidade visual completa, restauração autorizada do banco real e
       acesso pela rede local antes de liberar o piloto.
@@ -134,6 +145,38 @@ fontes oficiais.
 - [ ] Registrar os resultados finais.
 
 ## Descobertas
+
+### Exploração de 13/11/2026
+
+O cadastro guiado montava vários `useBlocker`: abrir o perfil podia suprimir
+o aviso sobre configuração não salva. O experimento no Chromium confirmou
+navegação sem diálogo e o aviso de múltiplos blockers. Contatos com apenas
+letras também eram aceitos e normalizados como ausência na API. Casos,
+correções e limitações estão na [revisão exploratória](../local/exploratory-testing.md).
+
+Decisão desta rodada: compartilhar somente a proteção de navegação dos
+formulários de precificação, preservando seus diálogos e guard de recarga;
+validar contatos antes de normalizar. Nenhuma alteração de motor, schema,
+snapshots, permissões ou aplicação de migration ao banco normal.
+
+### Revisão local de 12/11/2026
+
+O ambiente selecionava Node 22, fixtures antigas omitiam organização ativa nas
+sessões e limpezas removiam membros antes de sessões vinculadas. O formulário
+de competência repetia IDs na página guiada. A inspeção visual também encontrou
+percentuais calculados com centenas de casas e apresentação incorreta de margem
+negativa no histórico. Os ajustes e evidências estão na seção de resultados de
+12/11 e no [relatório local](../local/release-check.md).
+
+- 04/11/2026: o financeiro já distingue despesas `FIXED_EXPENSE` e
+  `VARIABLE_EXPENSE` em categorias, lança vencimentos por competência e expõe
+  faturamento e resultado por resumo. A precificação, por sua vez, usa custos
+  unitários de componentes e parâmetros organizacionais. A importação automática
+  de agregados financeiros para a configuração continua fora do fluxo atual;
+  somar lançamentos e componentes sem critério poderia duplicar custos. Evidência:
+  `apps/web/src/features/finance/financial-entries-api.ts`,
+  `apps/api/src/finance/summary/summary.service.ts`, ADR-004 e
+  `apps/web/src/features/pricing/pricing-composition-editor.tsx`.
 
 Registre nesta seção fatos identificados durante a implementação que não eram
 evidentes no início.
@@ -1068,6 +1111,35 @@ rastreabilidade; não representam o estado atual do marco.
   papéis mantêm o contrato anterior.
 
 ## Decisões tomadas
+
+### Proteção de rascunhos e execução exploratória — 13/11/2026
+
+Os formulários de configuração, perfil e composição compartilham um único
+blocker quando montados juntos no cadastro guiado. O cancelamento preserva os
+rascunhos; a saída confirmada descarta os rascunhos da página. O backend passa
+a rejeitar contatos inválidos antes de normalizar, preservando o uso de campos
+opcionais e pontuação usual. Após timeouts repetidos, o runner de precificação
+limita explicitamente a concorrência a dois workers, sem aumentar timeouts.
+
+### Operação local e apresentação — 12/11/2026
+
+Manter instalação assistida em uma máquina, API em loopback e aplicação
+compilada, com migrations versionadas e backup manual documentado. Percentuais
+calculados usam até duas casas apenas na apresentação, com `≈` quando
+aproximados; entradas, snapshots e motor mantêm precisão completa. Não ampliar
+automaticamente integrações entre custos, estoque e financeiro nesta revisão.
+
+### Cadastro guiado e separação dos custos — 04/11/2026
+
+Despesas fixas e variáveis da empresa são registradas no Financeiro para
+acompanhar vencimentos e resultado. Insumos e serviços consumidos por unidade
+são itens de catálogo com `directCost` na unidade de consumo e entram na
+composição do produto. O motor continua usando o parâmetro de custo fixo
+confirmado na configuração e os componentes da composição; lançamentos
+financeiros não são importados automaticamente. A página guiada deixa esse
+limite visível e não cria fórmula, integração financeira ou valor padrão novo.
+O preço de venda continua sendo uma decisão explícita de adoção ou edição
+manual após o cálculo.
 
 ### Marco 5 — preço em documentos comerciais — 01/11/2026
 
@@ -2182,6 +2254,64 @@ Itens explicitamente marcados como evolução futura não bloqueiam a primeira
 entrega.
 
 ## Resultados
+
+### Encerramento exploratório — 14/11/2026
+
+Typecheck e lint aprovados; 192 testes API e 390 web passaram, com 81 testes
+inalterados do motor em cache. A suíte ampliada passou 262 casos distintos
+após limitar a dois workers a precificação. A retomada concluiu a rodada
+`0b2f3b328ab3ddaa`: 59 E2E comerciais, cinco cenários Chromium, aplicação
+compilada e restauração conferida pela API. As bases descartáveis e o contêiner
+foram removidos. Refinamentos não bloqueantes e limites de cobertura estão no
+[relatório exploratório](../local/exploratory-testing.md).
+
+### Preparação para instalação local — 12/11/2026
+
+- Revisão da árvore atual, preservando as alterações de cadastro guiado e
+  indicadores iniciadas em 04/11. Instalação e operação documentadas em
+  [guia local](../local/installation.md); sequência do usuário em
+  [manual de uso](../manual-de-uso.md). Evidências e limitações consolidadas na
+  [verificação de liberação](../local/release-check.md).
+- Descobertas: o shell selecionava Node 22 apesar do requisito Node 24;
+  quatro fixtures E2E ainda criavam sessões sem organização ativa;
+  formulários simultâneos de competência reutilizavam IDs. As fixtures agora
+  explicitam a organização do usuário de teste e os formulários usam IDs únicos.
+  Nenhuma regra de autenticação foi relaxada.
+- Decisões: instalação assistida com Node 24, pnpm e PostgreSQL local;
+  aplicação compilada iniciada por `pnpm start`, API em loopback e migrations
+  existentes aplicadas por `db:deploy`. Sem schema ou migration novos.
+  Financeiro não alimenta automaticamente o preço, conforme escopo vigente.
+- Progresso: conferência final em 13/11 aprovou sem cache 653 testes unitários/de componentes,
+  typecheck, lint e build. A rodada ampliada, bootstrap compilado,
+  cadastro guiado real e restauração têm resultado registrado no relatório
+  de liberação, evitando usar contagens históricas como aprovação atual.
+- A conferência da instalação na máquina final permanece uma etapa operacional
+  obrigatória; esta revisão não autoriza publicação na internet.
+
+### Cadastro guiado e indicadores — 04/11/2026
+
+- A rota `/app/cadastro-guiado`, limitada a `OWNER`/`ADMIN`, reúne na mesma
+  página cadastro de despesas por tipo, competência e categoria, configuração,
+  perfil de venda, insumos, produto com composição/preço e cliente. Reutiliza
+  formulários, consultas e mutações existentes. O insumo exige custo por unidade;
+  o produto montado não recebe custo direto nem preço de venda na criação.
+- A página inicial usa o resumo financeiro da competência atual para faturamento
+  e resultado e os filtros de vencimento/status de lançamentos para os alertas.
+  `OPERATIONS` e `VIEWER` não recebem as consultas desses indicadores.
+- Testes web direcionados cobrem papéis, ausência de preço enviado ao criar
+  insumo, exigência de custo e registro de despesa sem escrita na precificação.
+  A suíte web da rodada aprovou 378 testes; o pipeline raiz aprovou os mesmos
+  378 testes web, 184 da API e 81 do motor (643 no total), além de typecheck,
+  lint e build. Uma primeira execução web teve uma falha intermitente de
+  carregamento em teste antigo da página de precificação; o arquivo passou
+  isoladamente (62 testes), e a execução web seguinte e a raiz passaram sem
+  alterar o teste ou os timeouts.
+  Esta primeira versão não importa automaticamente totais financeiros para a
+  fórmula nem cria recorrência de despesas; custos e unidades reais permanecem
+  decisão da organização. A nova rota foi aberta no Chromium com respostas da
+  API simuladas em 360, 768 e 1280 px, sem overflow horizontal. O percurso
+  completo com API e PostgreSQL reais e a validação visual com dados reais
+  continuam pendentes.
 
 Preencha esta seção ao final com:
 

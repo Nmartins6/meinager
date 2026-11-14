@@ -86,3 +86,18 @@ export function canonicalizePercentageInput(value: string): string | null {
 export function percentageFractionToInput(value: string | null): string {
   return value === null ? '' : shiftDecimalPoint(value, 2);
 }
+
+/** Presentation only: editable values and financial calculations retain their precision. */
+export function formatPercentage(value: string | null): string {
+  if (value === null) return 'Não se aplica';
+  const negative = value.startsWith('-');
+  const magnitude = negative ? value.slice(1) : value;
+  const [integer, fraction = ''] = shiftDecimalPoint(magnitude, 2).split('.');
+  const rounded =
+    BigInt(integer) * 100n +
+    BigInt(fraction.padEnd(2, '0').slice(0, 2)) +
+    (fraction.length > 2 && fraction[2] >= '5' ? 1n : 0n);
+  const decimals = (rounded % 100n).toString().padStart(2, '0').replace(/0+$/, '');
+  const approximate = /[1-9]/.test(fraction.slice(2));
+  return `${approximate ? '≈ ' : ''}${negative && rounded !== 0n ? '-' : ''}${rounded / 100n}${decimals ? `,${decimals}` : ''}%`;
+}

@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "start:local": "vite preview --host 127.0.0.1 --port 5173 --strictPort",
     "pretypecheck": "pnpm --filter @meinager/pricing-calculator build",
     "typecheck": "tsc -b --noEmit",
     "pretest": "pnpm --filter @meinager/pricing-calculator build",

@@ -20,7 +20,10 @@ const clientFormSchema = z.object({
       (value) => {
         const digits = value.replace(/\D/g, '');
 
-        return digits.length === 0 || digits.length === 11 || digits.length === 14;
+        return (
+          value === '' ||
+          (/^[\d.\s/-]+$/.test(value) && (digits.length === 11 || digits.length === 14))
+        );
       },
       {
         message: 'Informe um CPF ou CNPJ com 11 ou 14 dígitos.',
@@ -33,7 +36,10 @@ const clientFormSchema = z.object({
       (value) => {
         const digits = value.replace(/\D/g, '');
 
-        return digits.length === 0 || (digits.length >= 10 && digits.length <= 13);
+        return (
+          value === '' ||
+          (/^[\d+()\s-]+$/.test(value) && digits.length >= 10 && digits.length <= 13)
+        );
       },
       {
         message: 'Informe um telefone com 10 a 13 dígitos.',
@@ -108,9 +114,14 @@ export function ClientForm({
             id="name"
             autoComplete="name"
             aria-invalid={Boolean(errors.name)}
+            aria-describedby={errors.name ? 'client-name-error' : undefined}
             {...register('name')}
           />
-          {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+          {errors.name && (
+            <p id="client-name-error" className="text-sm text-destructive">
+              {errors.name.message}
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -120,9 +131,14 @@ export function ClientForm({
             inputMode="numeric"
             placeholder="Opcional"
             aria-invalid={Boolean(errors.document)}
+            aria-describedby={errors.document ? 'client-document-error' : undefined}
             {...register('document')}
           />
-          {errors.document && <p className="text-sm text-destructive">{errors.document.message}</p>}
+          {errors.document && (
+            <p id="client-document-error" className="text-sm text-destructive">
+              {errors.document.message}
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -133,9 +149,14 @@ export function ClientForm({
             autoComplete="tel"
             placeholder="Opcional"
             aria-invalid={Boolean(errors.phone)}
+            aria-describedby={errors.phone ? 'client-phone-error' : undefined}
             {...register('phone')}
           />
-          {errors.phone && <p className="text-sm text-destructive">{errors.phone.message}</p>}
+          {errors.phone && (
+            <p id="client-phone-error" className="text-sm text-destructive">
+              {errors.phone.message}
+            </p>
+          )}
         </div>
 
         <div className="space-y-2 sm:col-span-2">
@@ -143,12 +164,18 @@ export function ClientForm({
           <Input
             id="email"
             type="email"
+            spellCheck={false}
             autoComplete="email"
             placeholder="Opcional"
             aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? 'client-email-error' : undefined}
             {...register('email')}
           />
-          {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+          {errors.email && (
+            <p id="client-email-error" className="text-sm text-destructive">
+              {errors.email.message}
+            </p>
+          )}
         </div>
 
         <div className="space-y-2 sm:col-span-2">
@@ -159,9 +186,14 @@ export function ClientForm({
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             placeholder="Informações importantes sobre o cliente"
             aria-invalid={Boolean(errors.notes)}
+            aria-describedby={errors.notes ? 'client-notes-error' : undefined}
             {...register('notes')}
           />
-          {errors.notes && <p className="text-sm text-destructive">{errors.notes.message}</p>}
+          {errors.notes && (
+            <p id="client-notes-error" className="text-sm text-destructive">
+              {errors.notes.message}
+            </p>
+          )}
         </div>
       </div>
 

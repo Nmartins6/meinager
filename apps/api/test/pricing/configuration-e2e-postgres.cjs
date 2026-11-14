@@ -152,6 +152,8 @@ async function main() {
           'run',
           '--config',
           './vitest.config.e2e.ts',
+          '--maxWorkers',
+          '2',
           'test/pricing-configuration.e2e-spec.ts',
           'test/pricing-profiles.e2e-spec.ts',
           'test/pricing-compositions.e2e-spec.ts',

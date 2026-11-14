@@ -7,6 +7,29 @@ existente e com o trabalho ainda necessário.
 
 Última revisão inicial: 02/10/2026.
 
+Revisão de prontidão local: 12/11/2026. O [relatório de liberação](../local/release-check.md)
+registra a execução atual, os ajustes de instalação, as fixtures de sessões
+organizacionais corrigidas e a validação integrada do cadastro guiado. O
+[manual](../manual-de-uso.md) distingue registro financeiro, composição,
+simulação, versão e adoção; não promove integração automática de custos,
+recorrência ou consumo automático de estoque. O
+[guia de instalação](../local/installation.md) inclui migrations versionadas,
+início da aplicação compilada, backup, recuperação e aceite na máquina final.
+As revisões abaixo preservam a evolução histórica de cada marco.
+
+Refinamento de apresentação: `format-pricing.ts`, `pricing-preview-panel.tsx`
+e `pricing-versions-panel.tsx` limitam percentuais calculados visíveis e
+preservam sinal negativo, indicando aproximações; `format-pricing.spec.ts`
+cobre arredondamento, valores longos e independência dos valores editáveis.
+Não houve alteração na fórmula, no contrato decimal nem nos snapshots.
+
+Exploração de 13/11/2026: a [revisão exploratória](../local/exploratory-testing.md)
+registra perda de proteção de rascunho com múltiplos formulários, contatos
+inválidos normalizados como vazios e texto impreciso de retomada. Foram
+implementados guard compartilhado de precificação, validação de contatos na
+web/API e regressões específicas. Fórmulas, persistência e permissões não
+mudaram; os refinamentos de UX ainda abertos estão separados dos casos corrigidos.
+
 Correções da auditoria técnica do Marco 0: 02/10/2026. Evidências detalhadas
 em `docs/plans/pricing-engine.md`, seção `Descobertas`. Nenhum requisito novo
 de precificação foi implementado nesta revisão.

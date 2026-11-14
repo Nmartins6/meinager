@@ -138,7 +138,7 @@ describe('Pricing configuration (e2e)', () => {
     });
     const secondarySession = await app
       .get(SessionService)
-      .create(secondaryUser.id);
+      .create(secondaryUser.id, {}, primary.organizationId);
     secondaryActor = {
       cookie: `meinager_session=${secondarySession.token}`,
       organizationId: primary.organizationId,

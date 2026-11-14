@@ -5,6 +5,7 @@ import {
   canonicalizeDecimalInput,
   canonicalizePercentageInput,
   formatBrl,
+  formatPercentage,
   percentageFractionToInput,
 } from './format-pricing';
 
@@ -62,5 +63,26 @@ describe('formatBrl', () => {
   it('formats canonical decimal text for display without using it as a calculation source', () => {
     expect(formatBrl('31.5')).toBe('R$ 31,50');
     expect(formatBrl('0')).toBe('R$ 0,00');
+  });
+});
+
+describe('formatPercentage', () => {
+  it.each([
+    [null, 'Não se aplica'],
+    ['0', '0%'],
+    ['0.25', '25%'],
+    ['-1.6', '-160%'],
+    [`0.18${'3'.repeat(238)}`, '≈ 18,33%'],
+    ['0.27777777777777777778', '≈ 27,78%'],
+    ['-0.18333333333333333333', '≈ -18,33%'],
+    ['0.99999999', '≈ 100%'],
+    ['0.00000001', '≈ 0%'],
+  ])('presents %s as %s without exposing unbounded decimal digits', (value, expected) => {
+    expect(formatPercentage(value)).toBe(expected);
+  });
+
+  it('keeps editable percentages exact independently of presentation rounding', () => {
+    expect(formatPercentage('0.12345678')).toBe('≈ 12,35%');
+    expect(percentageFractionToInput('0.12345678')).toBe('12.345678');
   });
 });

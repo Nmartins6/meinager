@@ -247,6 +247,11 @@ describe('AuthController registration (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Active sessions reference membership; remove only this fixture's sessions first.
+    if (userId) {
+      await prisma.session.deleteMany({ where: { userId } });
+    }
+
     if (userId && organizationId) {
       await prisma.$transaction([
         prisma.auditLog.deleteMany({

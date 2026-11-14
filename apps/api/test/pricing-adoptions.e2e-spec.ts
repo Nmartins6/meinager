@@ -97,7 +97,9 @@ describe('Pricing price adoptions (e2e)', () => {
         memberships: { create: { organizationId: owner.organizationId, role } },
       },
     });
-    const session = await app.get(SessionService).create(user.id);
+    const session = await app
+      .get(SessionService)
+      .create(user.id, {}, owner.organizationId);
     return {
       cookie: `meinager_session=${session.token}`,
       organizationId: owner.organizationId,

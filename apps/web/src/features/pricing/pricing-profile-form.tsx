@@ -4,7 +4,9 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useFieldArray, useForm } from 'react-hook-form';
-import { useBeforeUnload, useBlocker } from 'react-router-dom';
+import { useBeforeUnload } from 'react-router-dom';
+import { PricingDraftNavigation } from './pricing-draft-navigation';
+import { usePricingDraftBlocker } from './use-pricing-draft-blocker';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,7 +46,15 @@ function cloneEmptyDeduction() {
   return structuredClone(emptyPricingDeductionFormValue);
 }
 
-export function PricingProfileForm({
+export function PricingProfileForm(props: PricingProfileFormProps) {
+  return (
+    <PricingDraftNavigation>
+      <PricingProfileFormContent {...props} />
+    </PricingDraftNavigation>
+  );
+}
+
+function PricingProfileFormContent({
   profile,
   canEdit,
   onSaved,
@@ -74,7 +84,7 @@ export function PricingProfileForm({
   });
   const { fields, append, remove, move } = useFieldArray({ control, name: 'deductions' });
   const shouldProtectDraft = canEdit && isDirty;
-  const blocker = useBlocker(shouldProtectDraft && !allowConfirmedCreateNavigation);
+  const blocker = usePricingDraftBlocker(shouldProtectDraft && !allowConfirmedCreateNavigation);
 
   useBeforeUnload(
     useCallback(
@@ -460,7 +470,7 @@ export function PricingProfileForm({
                 Descartar alterações não salvas?
               </Dialog.Title>
               <Dialog.Description className="mt-2 text-sm text-muted-foreground">
-                Escolha continuar editando ou descartar o rascunho para seguir para outra página.
+                Escolha continuar editando ou descartar todos os rascunhos desta página para sair.
               </Dialog.Description>
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <Button

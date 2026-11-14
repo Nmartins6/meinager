@@ -3,7 +3,7 @@ import type { PricingClassification, PricingCalculatorResult } from '@meinager/p
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-import { formatBrl, percentageFractionToInput } from './format-pricing';
+import { formatBrl, formatPercentage as percentage } from './format-pricing';
 import type { PricingPreviewCalculation } from './pricing-preview-adapter';
 
 export type PricingPreviewViewState =
@@ -20,13 +20,6 @@ const classificationLabels: Record<PricingClassification, string> = {
   DESIRED_MARGIN_MET: 'Margem desejada atingida',
   ABOVE_DESIRED_MARGIN: 'Acima da margem desejada',
 };
-
-function percentage(value: string | null): string {
-  if (value === null) return 'Não se aplica';
-  const negative = value.startsWith('-');
-  const magnitude = negative ? value.slice(1) : value;
-  return `${negative ? '-' : ''}${percentageFractionToInput(magnitude)}%`;
-}
 
 function ResultValue({ label, value }: { label: string; value: string }) {
   return (

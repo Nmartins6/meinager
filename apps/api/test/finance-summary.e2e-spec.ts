@@ -368,6 +368,11 @@ describe('Financial period summary (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Active sessions reference membership; remove only this fixture's sessions first.
+    if (userId) {
+      await prisma.session.deleteMany({ where: { userId } });
+    }
+
     if (organizationId && otherOrganizationId) {
       await prisma.auditLog.deleteMany({
         where: {

@@ -615,6 +615,14 @@ async function runBrowserRound(environment, grep, label) {
       `api-${label}`,
     );
     await waitFor(`${apiUrl}/__pilot_ready_${suffix}`, api);
+    const compiledWeb = label === 'guided-setup';
+    if (compiledWeb) {
+      run('pnpm', ['--filter', '@meinager/web', 'build'], {
+        ...environment,
+        NODE_ENV: 'production',
+        VITE_API_URL: `${apiUrl}/api`,
+      });
+    }
     const web = start(
       'pnpm',
       [
@@ -622,6 +630,7 @@ async function runBrowserRound(environment, grep, label) {
         '@meinager/web',
         'exec',
         'vite',
+        ...(compiledWeb ? ['preview'] : []),
         '--host',
         '127.0.0.1',
         '--port',
@@ -689,6 +698,22 @@ async function main() {
     await createOwned(admin, database);
     run('pnpm', ['--filter', '@meinager/api', 'exec', 'prisma', 'migrate', 'deploy'], environment);
     run('pnpm', ['--filter', '@meinager/api', 'build'], environment);
+    const smokePort = await freePort();
+    const smokeApi = start(
+      'node',
+      ['apps/api/dist/main.js'],
+      { ...environment, PORT: String(smokePort), API_HOST: '127.0.0.1' },
+      'compiled-api',
+    );
+    await waitFor(`http://127.0.0.1:${smokePort}/api/health`, smokeApi);
+    console.log('COMPILED_API_HEALTH_OK');
+    await stopChildren();
+    if (process.env.PILOT_TEST_FULL_API === 'YES') {
+      run('node', ['apps/api/test/pricing/configuration-e2e-postgres.cjs'], {
+        ...environment,
+        PRICING_TEST_CONFIRM_DISPOSABLE: 'YES',
+      });
+    }
     run(
       'pnpm',
       [
@@ -699,9 +724,9 @@ async function main() {
         'run',
         '--config',
         './vitest.config.e2e.ts',
-        'test/quotes.e2e-spec.ts',
-        'test/orders.e2e-spec.ts',
-        'test/products.e2e-spec.ts',
+        ...(process.env.PILOT_TEST_FULL_API === 'YES'
+          ? ['--exclude', 'test/pricing-*.e2e-spec.ts', '--no-file-parallelism']
+          : ['test/quotes.e2e-spec.ts', 'test/orders.e2e-spec.ts', 'test/products.e2e-spec.ts']),
       ],
       environment,
     );
@@ -712,6 +737,7 @@ async function main() {
     const webUrl = await runBrowserRound(environment, firstGrep, 'operations');
     if (!process.env.PILOT_TEST_GREP) {
       await runBrowserRound(environment, 'convite exige aceite', 'invitation');
+      await runBrowserRound(environment, 'cadastro guiado local', 'guided-setup');
     }
     await verifyBackupAndRestore(admin, databaseUrl, environment, webUrl);
   } catch (error) {

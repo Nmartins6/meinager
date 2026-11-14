@@ -45,6 +45,11 @@ const DashboardPage = lazy(async () => {
   return { default: module.DashboardPage };
 });
 
+const GuidedSetupPage = lazy(async () => {
+  const module = await import('@/pages/guided-setup-page');
+  return { default: module.GuidedSetupPage };
+});
+
 const ClientsPage = lazy(async () => {
   const module = await import('@/pages/clients-page');
   return { default: module.ClientsPage };
@@ -248,6 +253,14 @@ const router = createBrowserRouter(
           element={
             <LazyRoute>
               <DashboardPage />
+            </LazyRoute>
+          }
+        />
+        <Route
+          path="cadastro-guiado"
+          element={
+            <LazyRoute>
+              <GuidedSetupPage />
             </LazyRoute>
           }
         />
