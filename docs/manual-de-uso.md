@@ -2,6 +2,12 @@
 
 ## Antes de começar
 
+No Windows, se o responsável configurou os atalhos, dê dois cliques em
+**Meinager** na área de trabalho. Aguarde o navegador abrir e mantenha a janela
+do servidor aberta durante o uso. O ícone **Manual Meinager** abre este manual
+mesmo sem internet. Para encerrar o sistema, salve seu trabalho e pressione
+`Ctrl+C` na janela do servidor. Fechar só a aba do navegador não o desliga.
+
 Com o programa iniciado pelo responsável, abra <http://localhost:5173>.
 Crie sua conta e sua empresa no primeiro acesso. Nas próximas vezes, entre com
 e-mail e senha. Confira sempre o nome da organização ativa.

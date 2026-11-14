@@ -60,6 +60,42 @@ Não há senha padrão. O primeiro cadastro cria o proprietário da organizaçã
 
 ## Rotina diária
 
+### Windows: ícones na área de trabalho
+
+Após concluir a instalação e validar `pnpm start`, o responsável deve abrir
+**Windows PowerShell** e executar o instalador de atalhos que está no projeto
+WSL. Exemplo (substitua usuário, distribuição e caminho pelos reais):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\wsl.localhost\Ubuntu\home\usuario\meinager\tools\windows\Install-Shortcuts.ps1" -Distribution "Ubuntu" -ProjectPath "/home/usuario/meinager"
+```
+
+Use `wsl.exe -l -q` para consultar o nome da distribuição. Esse procedimento
+cria dois atalhos no Desktop do usuário, inclusive quando redirecionado pelo
+OneDrive. Não instala dependências nem substitui a instalação inicial.
+
+- **Meinager** inicia Docker Desktop quando necessário, sobe PostgreSQL,
+  inicia os servidores e abre o navegador após conferir sua disponibilidade.
+  Uma janela do servidor permanece aberta: mantenha-a durante o uso.
+  Se o sistema já estiver disponível, o atalho apenas abre o navegador.
+- **Manual Meinager** abre uma cópia local do manual no navegador, sem exigir
+  internet. A cópia apresenta o texto Markdown e é atualizada ao executar
+  novamente o instalador de atalhos.
+
+Para encerrar, salve os dados e pressione `Ctrl+C` na janela do servidor.
+Fechar somente o navegador não encerra o sistema. O banco permanece no Docker;
+isso não apaga cadastros. Após reiniciar o Windows, use o ícone novamente.
+Se mover o projeto ou atualizar o manual/launcher, execute o instalador de
+atalhos novamente. Mensagens de falha permanecem visíveis; consulte também
+`bash tools/start-local.sh` no Ubuntu. O atalho usa as portas padrão deste guia.
+
+Os scripts Windows precisam de validação na máquina final: criação dos ícones,
+Docker inicialmente fechado, clique repetido, abertura do manual sem internet,
+encerramento e reinício com persistência. Não foram executados em Windows
+durante a implementação no ambiente Linux.
+
+### Pelo terminal
+
 1. Inicie Docker Desktop/Docker.
 2. No terminal do projeto, execute `pnpm db:up` e depois `pnpm start`.
 3. Abra `http://localhost:5173`, entre e confira a organização ativa.

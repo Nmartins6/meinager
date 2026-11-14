@@ -18,6 +18,20 @@ revisados nesta entrega, e não a uma versão remota anterior.
 
 ## Correções e preparação
 
+### Atalhos Windows — 14/11/2026
+
+Adicionados instalador de atalhos PowerShell, launcher e script WSL de início.
+O launcher aguarda Docker/health/web antes de abrir o navegador; o script WSL
+usa lock para evitar dois processos de inicialização. O manual é copiado para
+HTML local, com texto escapado. Instalação inicial, migrations e build continuam
+sob responsabilidade do instalador, conforme [guia](installation.md).
+
+Validação executada em Linux: `bash -n`, `git diff --check` e ensaio isolado
+com comandos substitutos para instalação incompleta, ordem banco/aplicação
+e lock de segunda execução. Não houve início nem alteração do banco real nesse
+ensaio. PowerShell, atalhos, Docker Desktop e encaminhamento localhost do WSL
+precisam ser validados no Windows final; não são homologados pelos testes Linux.
+
 ### Complemento exploratório — 14/11/2026
 
 Mantido o parecer de aptidão para instalação local assistida, após corrigir
